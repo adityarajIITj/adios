@@ -168,14 +168,17 @@ def test():
     print("\n--- 31. Testing Digital Audio Synthesis & DSP Studio (Block R) ---")
     res_dsp = subprocess.run([sys.executable, "tests/test_dsp_block_r.py"])
 
-    print("\n--- 32. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 32. Testing Native Filesystem Suite Ext2 & FAT32 (Block S) ---")
+    res_vfs = subprocess.run([sys.executable, "tests/test_vfs_block_s.py"])
+
+    print("\n--- 33. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 32 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 33 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -207,6 +210,7 @@ def test():
         print("  - Window Server & Vector GUI (Canvas2D, Widgets, Z-Win): PASS")
         print("  - Multi-Core SMP & IPI Engine (Harts, CLINT, Stealing):  PASS")
         print("  - Digital Audio Synthesis & DSP Studio (PCM, WAV, ADSR): PASS")
+        print("  - Native Filesystem Architecture (Ext2, FAT32 Inodes):   PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:

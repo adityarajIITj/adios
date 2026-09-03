@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (32/32 Subsystems Passed)
+## 3. Subsystem Verification Matrix (33/33 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 32-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 33-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -119,13 +119,14 @@ The entire operating system is protected by a unified, automated 32-subsystem re
 | 29 | Window Server & GUI | `ui/` | Canvas2D Vector Primitives, Widgets, Compositor | **PASS (100%)** |
 | 30 | Multi-Core SMP & IPI | `smp/` | Harts, CLINT MSIP IPI, Work-Stealing Scheduler | **PASS (100%)** |
 | 31 | Digital Audio Synthesis | `dsp/` | Polyphonic Oscillators, ADSR, Biquad, WAV | **PASS (100%)** |
-| 32 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 32 | Native Storage Suite | `vfs/` | Ext2 Superblock & Inodes, FAT32 Cluster Chains | **PASS (100%)** |
+| 33 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 32-Subsystem Regression Test Suite
+### Running the Full 33-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -261,6 +262,9 @@ adios/
 |   `-- flight3d.py         # StarFlight 3D perspective flight simulator
 |-- fs/                     # Filesystem
 |   `-- adifs.py            # AdiFS contiguous block filesystem driver
+|-- vfs/                    # Native Storage Architecture
+|   |-- fat32.py            # Microsoft FAT32 filesystem driver
+|   `-- ext2.py             # Linux Ext2 filesystem driver
 |-- doldoc/                 # DolDoc Hypertext Subsystem
 |   `-- doldoc.py           # Universal hypertext markup parser & renderer
 |-- sound/                  # Audio Subsystems
@@ -273,7 +277,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 32 Automated Subsystem Test Suites
+|-- tests/                  # 33 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
