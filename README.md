@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (22/22 Subsystems Passed)
+## 3. Subsystem Verification Matrix (23/23 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 22-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 23-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -109,13 +109,14 @@ The entire operating system is protected by a unified, automated 22-subsystem re
 | 19 | Cyber Security & Crypto | `crypto/` | FIPS SHA-256, ChaCha20, Poly1305 AEAD, Disk Enc | **PASS (100%)** |
 | 20 | Virtual Memory & MMU | `mmu/` | Sv32 2-Level Paging, 64-Entry TLB, AddressSpace | **PASS (100%)** |
 | 21 | Process, Signals & IPC | `proc/` | TaskControlBlock, 32 Signals, Pipes, MLFQ, Syscall | **PASS (100%)** |
-| 22 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 22 | In-OS C Toolchain | `compiler/` | C99 Lexer, Parser, RV32 Codegen, ELF32 Builder | **PASS (100%)** |
+| 23 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 22-Subsystem Regression Test Suite
+### Running the Full 23-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -212,6 +213,11 @@ adios/
 |   |-- ipc.py              # Ring-buffer pipes, priority MQs, shm, mutexes
 |   |-- scheduler.py        # MLFQ 4-band preemptive scheduler & priority boost
 |   `-- syscall.py          # RISC-V ecall ABI system call dispatcher
+|-- compiler/               # In-OS C99 / AdiC native self-hosting compiler
+|   |-- c_lexer.py          # Stream tokenizer for C keywords, literals, ops
+|   |-- c_parser.py         # Recursive-descent AST parser with type system
+|   |-- c_codegen.py        # Native RV32IM assembly code generator
+|   `-- elf32.py            # Standard RISC-V ELF32 executable binary builder
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -231,7 +237,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 22 Automated Subsystem Test Suites
+|-- tests/                  # 23 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 

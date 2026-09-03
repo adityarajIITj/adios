@@ -165,7 +165,7 @@ class Assembler:
             if not line: continue
 
             # Check label at start of line
-            m = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$', line)
+            m = re.match(r'^([a-zA-Z_.][a-zA-Z0-9_.]*)\s*:\s*(.*)$', line)
             if m:
                 lbl = m.group(1)
                 self.labels[lbl] = addr
@@ -214,7 +214,7 @@ class Assembler:
         for raw in lines:
             line = raw.strip()
             if not line: continue
-            m = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$', line)
+            m = re.match(r'^([a-zA-Z_.][a-zA-Z0-9_.]*)\s*:\s*(.*)$', line)
             if m:
                 line = m.group(2).strip()
                 if not line: continue
