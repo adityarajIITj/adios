@@ -156,14 +156,17 @@ def test():
     print("\n--- 27. Testing POSIX Shell & Userland Utilities (Block N) ---")
     res_usr = subprocess.run([sys.executable, "tests/test_userland_block_n.py"])
 
-    print("\n--- 28. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 28. Testing SovereignSQL Relational Database Engine (Block O) ---")
+    res_db = subprocess.run([sys.executable, "tests/test_db_block_o.py"])
+
+    print("\n--- 29. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 28 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 29 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -191,6 +194,7 @@ def test():
         print("  - Transmission Control Protocol (TCP/IP 3-Way Engine):   PASS")
         print("  - Layer-7 Application Protocols (HTTP/1.1, DNS, DHCP):   PASS")
         print("  - POSIX Shell & Userland Utilities (Pipes, Redir, Core): PASS")
+        print("  - SovereignSQL Relational Engine (ACID, WAL, Filter):    PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
