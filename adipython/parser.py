@@ -57,6 +57,9 @@ class For(ASTNode):
         self.step = step
         self.body = body
 
+class Break(ASTNode): pass
+class Continue(ASTNode): pass
+
 class ExprStmt(ASTNode):
     def __init__(self, expr):
         self.expr = expr
@@ -151,6 +154,19 @@ class Parser:
             if tok.value == "pass":
                 self.advance()
                 return None
+            if tok.value == "global":
+                self.advance()
+                while True:
+                    self.expect(TOK_IDENT)
+                    if self.match(TOK_DELIM, ","): continue
+                    break
+                return None
+            if tok.value == "break":
+                self.advance()
+                return Break()
+            if tok.value == "continue":
+                self.advance()
+                return Continue()
 
         # Check for assignment: ident = expr or ident += expr
         if tok.type == TOK_IDENT and self.peek(1).type == TOK_OP and self.peek(1).value in ("=", "+=", "-="):
@@ -167,8 +183,13 @@ class Parser:
         return ExprStmt(expr)
 
     def parse_block(self):
-        """Parses an indented block of statements."""
+        """Parses a block of statements (indented or single-line)."""
         self.expect(TOK_DELIM, ":")
+        if self.peek().type != TOK_NEWLINE:
+            # Single-line statement, e.g. if cond: return 0
+            stmt = self.parse_statement()
+            return [stmt] if stmt else []
+
         self.expect(TOK_NEWLINE)
         self.expect(TOK_INDENT)
         stmts = []
@@ -324,6 +345,12 @@ class Parser:
             return Number(self.advance().value)
         if tok.type == TOK_STRING:
             return String(self.advance().value)
+        if tok.type == TOK_KEYWORD and tok.value == "True":
+            self.advance()
+            return Number(1)
+        if tok.type == TOK_KEYWORD and tok.value == "False":
+            self.advance()
+            return Number(0)
 
         if tok.type == TOK_IDENT:
             name = self.advance().value

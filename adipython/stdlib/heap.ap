@@ -1,0 +1,117 @@
+# ==============================================================================
+# AdiOS Systems Standard Library: heap.ap
+# Binary Min-Heap Priority Queue Data Structure
+# ==============================================================================
+
+# Heap Layout in Memory:
+#   Offset 0: capacity
+#   Offset 4: count
+#   Offset 8..: Array of Heap Nodes
+#
+# Node Layout (8 bytes):
+#   Offset 0: priority (lower number = higher priority)
+#   Offset 4: value
+
+#define HEAP_NODE_SIZE 8
+
+def heap_create(capacity):
+    ptr = malloc(8 + capacity * HEAP_NODE_SIZE)
+    poke(ptr, capacity)
+    poke(ptr + 4, 0) # count = 0
+    return ptr
+
+def heap_size(h):
+    return peek(h + 4)
+
+def heap_node_prio(h, idx):
+    return peek(h + 8 + idx * HEAP_NODE_SIZE)
+
+def heap_node_val(h, idx):
+    return peek(h + 8 + idx * HEAP_NODE_SIZE + 4)
+
+def heap_swap_nodes(h, i, j):
+    addr_i = h + 8 + i * HEAP_NODE_SIZE
+    addr_j = h + 8 + j * HEAP_NODE_SIZE
+
+    p_i = peek(addr_i)
+    v_i = peek(addr_i + 4)
+
+    p_j = peek(addr_j)
+    v_j = peek(addr_j + 4)
+
+    poke(addr_i, p_j)
+    poke(addr_i + 4, v_j)
+
+    poke(addr_j, p_i)
+    poke(addr_j + 4, v_i)
+
+def heap_push(h, priority, value):
+    cap = peek(h)
+    cnt = peek(h + 4)
+    if cnt >= cap:
+        return 0 # Full
+
+    # Place new item at end
+    idx = cnt
+    addr = h + 8 + idx * HEAP_NODE_SIZE
+    poke(addr, priority)
+    poke(addr + 4, value)
+    poke(h + 4, cnt + 1)
+
+    # Sift-Up
+    while idx > 0:
+        parent = (idx - 1) / 2
+        p_curr = heap_node_prio(h, idx)
+        p_parent = heap_node_prio(h, parent)
+
+        if p_curr < p_parent:
+            heap_swap_nodes(h, idx, parent)
+            idx = parent
+        else:
+            break
+
+    return 1
+
+def heap_peek_min(h):
+    cnt = peek(h + 4)
+    if cnt == 0: return 0
+    return heap_node_val(h, 0)
+
+def heap_pop_min(h):
+    cnt = peek(h + 4)
+    if cnt == 0: return 0
+
+    min_val = heap_node_val(h, 0)
+
+    # Move last element to root
+    last_idx = cnt - 1
+    last_prio = heap_node_prio(h, last_idx)
+    last_val  = heap_node_val(h, last_idx)
+
+    poke(h + 8, last_prio)
+    poke(h + 8 + 4, last_val)
+    poke(h + 4, last_idx) # count -= 1
+
+    # Sift-Down
+    idx = 0
+    new_cnt = last_idx
+    while True:
+        left = idx * 2 + 1
+        right = idx * 2 + 2
+        smallest = idx
+
+        if left < new_cnt:
+            if heap_node_prio(h, left) < heap_node_prio(h, smallest):
+                smallest = left
+
+        if right < new_cnt:
+            if heap_node_prio(h, right) < heap_node_prio(h, smallest):
+                smallest = right
+
+        if smallest != idx:
+            heap_swap_nodes(h, idx, smallest)
+            idx = smallest
+        else:
+            break
+
+    return min_val

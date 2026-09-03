@@ -1,0 +1,146 @@
+# ==============================================================================
+# AdiOS Systems Standard Library: matrix3d.ap
+# 4x4 Matrix Transformations & Quaternion Mathematics (Fixed-Point 8.8)
+# 1.0 = 256
+# ==============================================================================
+
+# Matrix 4x4 Layout in Memory: 16 words (64 bytes), row-major
+#   [ m0  m1  m2  m3  ]
+#   [ m4  m5  m6  m7  ]
+#   [ m8  m9  m10 m11 ]
+#   [ m12 m13 m14 m15 ]
+
+#define MAT4_SIZE 64
+#define FP_SCALE 256
+
+def mat4_create():
+    ptr = malloc(MAT4_SIZE)
+    # Clear to 0
+    for i in range(16):
+        poke(ptr + i * 4, 0)
+    return ptr
+
+def mat4_create_identity():
+    m = mat4_create()
+    # Diagonal set to 256 (1.0)
+    poke(m + 0 * 4,  FP_SCALE)
+    poke(m + 5 * 4,  FP_SCALE)
+    poke(m + 10 * 4, FP_SCALE)
+    poke(m + 15 * 4, FP_SCALE)
+    return m
+
+def mat4_get(m, row, col):
+    return peek(m + (row * 4 + col) * 4)
+
+def mat4_set(m, row, col, val):
+    poke(m + (row * 4 + col) * 4, val)
+
+def mat4_multiply(dest, a, b):
+    # Fixed-point matrix multiplication: (a * b) / 256
+    for row in range(4):
+        for col in range(4):
+            sum = 0
+            for k in range(4):
+                val_a = mat4_get(a, row, k)
+                val_b = mat4_get(b, k, col)
+                sum += (val_a * val_b) / FP_SCALE
+            mat4_set(dest, row, col, sum)
+    return dest
+
+def mat4_create_translation(tx, ty, tz):
+    m = mat4_create_identity()
+    mat4_set(m, 0, 3, tx * FP_SCALE)
+    mat4_set(m, 1, 3, ty * FP_SCALE)
+    mat4_set(m, 2, 3, tz * FP_SCALE)
+    return m
+
+def mat4_create_scale(sx, sy, sz):
+    m = mat4_create()
+    mat4_set(m, 0, 0, sx * FP_SCALE)
+    mat4_set(m, 1, 1, sy * FP_SCALE)
+    mat4_set(m, 2, 2, sz * FP_SCALE)
+    mat4_set(m, 3, 3, FP_SCALE)
+    return m
+
+def mat4_create_rot_z(deg):
+    m = mat4_create_identity()
+    c = cos_deg(deg)
+    s = sin_deg(deg)
+    mat4_set(m, 0, 0, c)
+    mat4_set(m, 0, 1, -s)
+    mat4_set(m, 1, 0, s)
+    mat4_set(m, 1, 1, c)
+    return m
+
+def mat4_create_rot_y(deg):
+    m = mat4_create_identity()
+    c = cos_deg(deg)
+    s = sin_deg(deg)
+    mat4_set(m, 0, 0, c)
+    mat4_set(m, 0, 2, s)
+    mat4_set(m, 2, 0, -s)
+    mat4_set(m, 2, 2, c)
+    return m
+
+def mat4_create_rot_x(deg):
+    m = mat4_create_identity()
+    c = cos_deg(deg)
+    s = sin_deg(deg)
+    mat4_set(m, 1, 1, c)
+    mat4_set(m, 1, 2, -s)
+    mat4_set(m, 2, 1, s)
+    mat4_set(m, 2, 2, c)
+    return m
+
+# Transforms 3D vector (x, y, z) by matrix m
+# Returns x' (stored in global result register)
+_vec_out_x = 0
+_vec_out_y = 0
+_vec_out_z = 0
+
+def mat4_transform_vec3(m, x, y, z):
+    global _vec_out_x, _vec_out_y, _vec_out_z
+    x_fp = x * FP_SCALE
+    y_fp = y * FP_SCALE
+    z_fp = z * FP_SCALE
+
+    _vec_out_x = (mat4_get(m, 0, 0) * x_fp + mat4_get(m, 0, 1) * y_fp + mat4_get(m, 0, 2) * z_fp + mat4_get(m, 0, 3) * FP_SCALE) / (FP_SCALE * FP_SCALE)
+    _vec_out_y = (mat4_get(m, 1, 0) * x_fp + mat4_get(m, 1, 1) * y_fp + mat4_get(m, 1, 2) * z_fp + mat4_get(m, 1, 3) * FP_SCALE) / (FP_SCALE * FP_SCALE)
+    _vec_out_z = (mat4_get(m, 2, 0) * x_fp + mat4_get(m, 2, 1) * y_fp + mat4_get(m, 2, 2) * z_fp + mat4_get(m, 2, 3) * FP_SCALE) / (FP_SCALE * FP_SCALE)
+    return _vec_out_x
+
+def mat4_transformed_y(): return _vec_out_y
+def mat4_transformed_z(): return _vec_out_z
+
+# ------------------------------------------------------------------------------
+# Quaternion Math (w, x, y, z)
+# ------------------------------------------------------------------------------
+def quat_create(w, x, y, z):
+    ptr = malloc(16)
+    poke(ptr + 0, w)
+    poke(ptr + 4, x)
+    poke(ptr + 8, y)
+    poke(ptr + 12, z)
+    return ptr
+
+def quat_multiply(dest, q1, q2):
+    w1 = peek(q1 + 0)
+    x1 = peek(q1 + 4)
+    y1 = peek(q1 + 8)
+    z1 = peek(q1 + 12)
+
+    w2 = peek(q2 + 0)
+    x2 = peek(q2 + 4)
+    y2 = peek(q2 + 8)
+    z2 = peek(q2 + 12)
+
+    w = (w1*w2 - x1*x2 - y1*y2 - z1*z2) / FP_SCALE
+    x = (w1*x2 + x1*w2 + y1*z2 - z1*y2) / FP_SCALE
+    y = (w1*y2 - x1*z2 + y1*w2 + z1*x2) / FP_SCALE
+    z = (w1*z2 + x1*y2 - y1*x2 + z1*w2) / FP_SCALE
+
+    poke(dest + 0, w)
+    poke(dest + 4, x)
+    poke(dest + 8, y)
+    poke(dest + 12, z)
+    return dest

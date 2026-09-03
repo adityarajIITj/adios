@@ -1,0 +1,122 @@
+# ==============================================================================
+# AdiOS Systems Standard Library: hashmap.ap
+# High-Performance Hash Table with Linear Probing
+# ==============================================================================
+
+# HashMap Layout in Memory:
+#   Offset 0: capacity (number of slots)
+#   Offset 4: count    (active keys stored)
+#   Offset 8..: Buckets array
+#
+# Bucket Layout (8 bytes per bucket):
+#   Offset 0: key_hash (uint32, 0 = empty)
+#   Offset 4: value    (uint32)
+
+#define BUCKET_SIZE 8
+
+def hash_int(k):
+    # Thomas Wang's 32-bit integer hash
+    k = (k ^ 61) ^ (k / 65536)
+    k = k + (k * 8)
+    k = k ^ (k / 16)
+    k = k * 73
+    k = k ^ (k / 256)
+    return k & 0x7FFFFFFF
+
+def hashmap_create(capacity):
+    if capacity < 8:
+        capacity = 8
+    # Header: 8 bytes, Buckets: capacity * 8 bytes
+    total_bytes = 8 + capacity * BUCKET_SIZE
+    ptr = malloc(total_bytes)
+    poke(ptr, capacity)
+    poke(ptr + 4, 0) # count = 0
+
+    # Initialize all buckets to 0
+    curr = ptr + 8
+    for i in range(capacity * 2):
+        poke(curr, 0)
+        curr += 4
+    return ptr
+
+def hashmap_capacity(hm):
+    return peek(hm)
+
+def hashmap_count(hm):
+    return peek(hm + 4)
+
+def hashmap_put(hm, key, value):
+    cap = peek(hm)
+    count = peek(hm + 4)
+
+    # Prevent key=0 from collision with empty indicator
+    if key == 0:
+        key = 0x7FFFFFFF
+
+    h = hash_int(key)
+    slot = h % cap
+    buckets_base = hm + 8
+
+    # Linear probing
+    for attempt in range(cap):
+        curr_bucket = buckets_base + slot * BUCKET_SIZE
+        existing_key = peek(curr_bucket)
+
+        if existing_key == 0:
+            # Empty slot found: insert
+            poke(curr_bucket, key)
+            poke(curr_bucket + 4, value)
+            poke(hm + 4, count + 1)
+            return 1
+        elif existing_key == key:
+            # Existing key found: update value
+            poke(curr_bucket + 4, value)
+            return 1
+
+        slot = (slot + 1) % cap
+
+    return 0 # Hashmap full
+
+def hashmap_get(hm, key):
+    cap = peek(hm)
+    if key == 0:
+        key = 0x7FFFFFFF
+
+    h = hash_int(key)
+    slot = h % cap
+    buckets_base = hm + 8
+
+    for attempt in range(cap):
+        curr_bucket = buckets_base + slot * BUCKET_SIZE
+        existing_key = peek(curr_bucket)
+
+        if existing_key == 0:
+            return 0 # Not found
+        elif existing_key == key:
+            return peek(curr_bucket + 4) # Found value!
+
+        slot = (slot + 1) % cap
+
+    return 0
+
+def hashmap_contains(hm, key):
+    cap = peek(hm)
+    if key == 0:
+        key = 0x7FFFFFFF
+
+    h = hash_int(key)
+    slot = h % cap
+    buckets_base = hm + 8
+
+    for attempt in range(cap):
+        curr_bucket = buckets_base + slot * BUCKET_SIZE
+        existing_key = peek(curr_bucket)
+
+        if existing_key == 0:
+            return 0
+        elif existing_key == key:
+            return 1
+
+        slot = (slot + 1) % cap
+
+    return 0

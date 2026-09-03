@@ -1,0 +1,106 @@
+# ==============================================================================
+# AdiOS Systems Standard Library: memory_pool.ap
+# High-Performance Slab Allocator & Arena Scratchpad Memory Pool
+# ==============================================================================
+
+# Slab Allocator Layout in Memory:
+#   Offset 0: chunk_size (e.g. 32 bytes)
+#   Offset 4: total_chunks
+#   Offset 8: free_chunks
+#   Offset 12: free_list_head (pointer to first free chunk)
+#   Offset 16..: Memory Pool Buffer
+
+def slab_create(chunk_size, num_chunks):
+    # Align chunk_size to 4 bytes
+    chunk_size = (chunk_size + 3) / 4 * 4
+    header_size = 16
+    pool_size = chunk_size * num_chunks
+    ptr = malloc(header_size + pool_size)
+
+    poke(ptr + 0, chunk_size)
+    poke(ptr + 4, num_chunks)
+    poke(ptr + 8, num_chunks) # all free initially
+
+    # Chain chunks together into a free-list
+    first_chunk = ptr + header_size
+    poke(ptr + 12, first_chunk) # free_list_head
+
+    curr = first_chunk
+    for i in range(num_chunks - 1):
+        next_chunk = curr + chunk_size
+        poke(curr, next_chunk) # Store next free chunk pointer in the chunk itself!
+        curr = next_chunk
+
+    poke(curr, 0) # Last chunk points to NULL
+    return ptr
+
+def slab_alloc(slab):
+    free_head = peek(slab + 12)
+    if free_head == 0:
+        return 0 # Out of chunks!
+
+    # Pop head from free-list
+    next_free = peek(free_head)
+    poke(slab + 12, next_free)
+
+    # Decrement free count
+    free_cnt = peek(slab + 8)
+    poke(slab + 8, free_cnt - 1)
+
+    return free_head
+
+def slab_free(slab, chunk_ptr):
+    if chunk_ptr == 0: return 0
+
+    # Push chunk back onto free-list
+    curr_head = peek(slab + 12)
+    poke(chunk_ptr, curr_head)
+    poke(slab + 12, chunk_ptr)
+
+    # Increment free count
+    free_cnt = peek(slab + 8)
+    poke(slab + 8, free_cnt + 1)
+    return 1
+
+def slab_free_count(slab):
+    return peek(slab + 8)
+
+# ------------------------------------------------------------------------------
+# Arena / Scratchpad Memory Allocator
+# ------------------------------------------------------------------------------
+# Layout:
+#   Offset 0: capacity
+#   Offset 4: offset (current bump pointer)
+#   Offset 8..: Buffer
+
+def arena_create(capacity):
+    ptr = malloc(8 + capacity)
+    poke(ptr + 0, capacity)
+    poke(ptr + 4, 0) # offset = 0
+    return ptr
+
+def arena_alloc(arena, size_bytes):
+    # Align to 4 bytes
+    size_aligned = (size_bytes + 3) / 4 * 4
+    cap = peek(arena + 0)
+    curr_off = peek(arena + 4)
+
+    if curr_off + size_aligned > cap:
+        return 0 # Arena out of memory
+
+    res_ptr = arena + 8 + curr_off
+    poke(arena + 4, curr_off + size_aligned)
+    return res_ptr
+
+def arena_save(arena):
+    """Saves current allocation marker."""
+    return peek(arena + 4)
+
+def arena_restore(arena, marker):
+    """Restores allocation marker, instantaneously freeing all newer allocations."""
+    poke(arena + 4, marker)
+    return marker
+
+def arena_reset(arena):
+    poke(arena + 4, 0)
+    return 0

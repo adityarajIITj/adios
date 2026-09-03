@@ -8,12 +8,16 @@ import sys
 import time
 from .parser import (
     Program, Assign, AugAssign, FunctionDef, Return, If, While, For,
-    ExprStmt, Call, BinaryOp, UnaryOp, Number, String, Identifier
+    ExprStmt, Call, BinaryOp, UnaryOp, Number, String, Identifier,
+    Break, Continue
 )
 
 class ReturnSignal(Exception):
     def __init__(self, value):
         self.value = value
+
+class BreakSignal(Exception): pass
+class ContinueSignal(Exception): pass
 
 class Environment:
     def __init__(self, parent=None):
@@ -221,9 +225,20 @@ class Runtime:
                 return self.execute_block(node.else_body, env)
             return None
 
+        if isinstance(node, Break):
+            raise BreakSignal()
+
+        if isinstance(node, Continue):
+            raise ContinueSignal()
+
         if isinstance(node, While):
             while self.eval_expr(node.cond, env):
-                self.execute_block(node.body, env)
+                try:
+                    self.execute_block(node.body, env)
+                except BreakSignal:
+                    break
+                except ContinueSignal:
+                    continue
             return None
 
         if isinstance(node, For):
@@ -232,7 +247,12 @@ class Runtime:
             step = self.eval_expr(node.step, env)
             for i in range(start, end, step):
                 env.set(node.var, i)
-                self.execute_block(node.body, env)
+                try:
+                    self.execute_block(node.body, env)
+                except BreakSignal:
+                    break
+                except ContinueSignal:
+                    continue
             return None
 
         if isinstance(node, ExprStmt):

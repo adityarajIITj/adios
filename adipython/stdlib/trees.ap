@@ -1,0 +1,197 @@
+# ==============================================================================
+# AdiOS Systems Standard Library: trees.ap
+# Self-Balancing Binary Search Tree & Dynamic Index Structures
+# ==============================================================================
+
+# Node Layout in RAM (32-bit words):
+#   Offset  0: key (int)
+#   Offset  4: value (int)
+#   Offset  8: left_ptr (node pointer)
+#   Offset 12: right_ptr (node pointer)
+#   Offset 16: parent_ptr (node pointer)
+#   Offset 20: height (int)
+# Total Node Size: 24 bytes
+
+#define NODE_SIZE 24
+
+def bst_create_node(key, value):
+    ptr = malloc(NODE_SIZE)
+    poke(ptr, key)
+    poke(ptr + 4, value)
+    poke(ptr + 8, 0)      # left = NULL
+    poke(ptr + 12, 0)     # right = NULL
+    poke(ptr + 16, 0)     # parent = NULL
+    poke(ptr + 20, 1)     # height = 1
+    return ptr
+
+def bst_get_key(node):
+    if node == 0: return 0
+    return peek(node)
+
+def bst_get_val(node):
+    if node == 0: return 0
+    return peek(node + 4)
+
+def bst_get_left(node):
+    if node == 0: return 0
+    return peek(node + 8)
+
+def bst_get_right(node):
+    if node == 0: return 0
+    return peek(node + 12)
+
+def bst_get_height(node):
+    if node == 0: return 0
+    return peek(node + 20)
+
+def bst_max(a, b):
+    if a > b: return a
+    return b
+
+def bst_update_height(node):
+    if node != 0:
+        h_l = bst_get_height(bst_get_left(node))
+        h_r = bst_get_height(bst_get_right(node))
+        new_h = bst_max(h_l, h_r) + 1
+        poke(node + 20, new_h)
+
+def bst_balance_factor(node):
+    if node == 0: return 0
+    return bst_get_height(bst_get_left(node)) - bst_get_height(bst_get_right(node))
+
+# ------------------------------------------------------------------------------
+# Tree Rotations for Balance
+# ------------------------------------------------------------------------------
+
+def bst_rotate_right(y):
+    x = bst_get_left(y)
+    t2 = bst_get_right(x)
+
+    # Perform rotation
+    poke(x + 12, y)       # x.right = y
+    poke(y + 8, t2)       # y.left = t2
+
+    # Update heights
+    bst_update_height(y)
+    bst_update_height(x)
+
+    return x
+
+def bst_rotate_left(x):
+    y = bst_get_right(x)
+    t2 = bst_get_left(y)
+
+    # Perform rotation
+    poke(y + 8, x)        # y.left = x
+    poke(x + 12, t2)      # x.right = t2
+
+    # Update heights
+    bst_update_height(x)
+    bst_update_height(y)
+
+    return y
+
+# ------------------------------------------------------------------------------
+# Insert & Rebalance
+# ------------------------------------------------------------------------------
+
+def bst_insert(root, key, value):
+    # 1. Standard BST insertion
+    if root == 0:
+        return bst_create_node(key, value)
+
+    curr_key = peek(root)
+    if key < curr_key:
+        new_left = bst_insert(bst_get_left(root), key, value)
+        poke(root + 8, new_left)
+        poke(new_left + 16, root) # parent
+    elif key > curr_key:
+        new_right = bst_insert(bst_get_right(root), key, value)
+        poke(root + 12, new_right)
+        poke(new_right + 16, root) # parent
+    else:
+        # Key already exists: update value
+        poke(root + 4, value)
+        return root
+
+    # 2. Update height
+    bst_update_height(root)
+
+    # 3. Check balance factor & rotate if needed
+    balance = bst_balance_factor(root)
+
+    # Left-Left Case
+    if balance > 1:
+        left_child = bst_get_left(root)
+        if key < peek(left_child):
+            return bst_rotate_right(root)
+
+    # Right-Right Case
+    if balance < -1:
+        right_child = bst_get_right(root)
+        if key > peek(right_child):
+            return bst_rotate_left(root)
+
+    # Left-Right Case
+    if balance > 1:
+        left_child = bst_get_left(root)
+        if key > peek(left_child):
+            new_left = bst_rotate_left(left_child)
+            poke(root + 8, new_left)
+            return bst_rotate_right(root)
+
+    # Right-Left Case
+    if balance < -1:
+        right_child = bst_get_right(root)
+        if key < peek(right_child):
+            new_right = bst_rotate_right(right_child)
+            poke(root + 12, new_right)
+            return bst_rotate_left(root)
+
+    return root
+
+# ------------------------------------------------------------------------------
+# Search & Queries
+# ------------------------------------------------------------------------------
+
+def bst_search(root, key):
+    curr = root
+    while curr != 0:
+        k = peek(curr)
+        if key == k:
+            return peek(curr + 4) # Return value
+        elif key < k:
+            curr = bst_get_left(curr)
+        else:
+            curr = bst_get_right(curr)
+    return 0 # Not found
+
+def bst_contains(root, key):
+    curr = root
+    while curr != 0:
+        k = peek(curr)
+        if key == k:
+            return 1
+        elif key < k:
+            curr = bst_get_left(curr)
+        else:
+            curr = bst_get_right(curr)
+    return 0
+
+def bst_min_node(root):
+    curr = root
+    if curr == 0: return 0
+    while bst_get_left(curr) != 0:
+        curr = bst_get_left(curr)
+    return curr
+
+def bst_max_node(root):
+    curr = root
+    if curr == 0: return 0
+    while bst_get_right(curr) != 0:
+        curr = bst_get_right(curr)
+    return curr
+
+def bst_count(root):
+    if root == 0: return 0
+    return 1 + bst_count(bst_get_left(root)) + bst_count(bst_get_right(root))

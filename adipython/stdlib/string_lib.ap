@@ -1,0 +1,163 @@
+# ==============================================================================
+# AdiOS Systems Standard Library: string_lib.ap
+# High-Performance String Utilities, Formatting & Dynamic StringBuilder
+# ==============================================================================
+
+# StringBuilder Layout in Memory:
+#   Offset 0: capacity
+#   Offset 4: length
+#   Offset 8..: Character buffer (null-terminated)
+
+def str_len(s_ptr):
+    if s_ptr == 0: return 0
+    l = 0
+    while peek(s_ptr + l) & 0xFF != 0:
+        l += 1
+    return l
+
+def str_cmp(s1, s2):
+    i = 0
+    while True:
+        c1 = peek(s1 + i) & 0xFF
+        c2 = peek(s2 + i) & 0xFF
+        if c1 != c2:
+            return c1 - c2
+        if c1 == 0:
+            return 0
+        i += 1
+
+def str_cpy(dest, src):
+    i = 0
+    while True:
+        c = peek(src + i) & 0xFF
+        poke(dest + i, c)
+        if c == 0:
+            break
+        i += 1
+    return dest
+
+def str_find(haystack, needle):
+    """Substrings search returning starting index or -1 if not found."""
+    h_len = str_len(haystack)
+    n_len = str_len(needle)
+    if n_len == 0: return 0
+    if n_len > h_len: return -1
+
+    for i in range(h_len - n_len + 1):
+        match = 1
+        for j in range(n_len):
+            c_h = peek(haystack + i + j) & 0xFF
+            c_n = peek(needle + j) & 0xFF
+            if c_h != c_n:
+                match = 0
+                break
+        if match == 1:
+            return i
+    return -1
+
+def is_digit(c):
+    if 48 <= c and c <= 57:
+        return 1
+    return 0
+
+def is_alpha(c):
+    if 65 <= c and c <= 90:
+        return 1
+    if 97 <= c and c <= 122:
+        return 1
+    return 0
+
+def str_to_int(s_ptr):
+    val = 0
+    sign = 1
+    i = 0
+    first_c = peek(s_ptr) & 0xFF
+    if first_c == 45: # '-'
+        sign = -1
+        i = 1
+
+    while True:
+        c = peek(s_ptr + i) & 0xFF
+        if c < 48 or c > 57:
+            break
+        val = val * 10 + (c - 48)
+        i += 1
+    return val * sign
+
+def int_to_str(buf, num):
+    """Converts 32-bit integer to decimal ASCII string in buffer."""
+    if num == 0:
+        poke(buf, 48) # '0'
+        poke(buf + 1, 0)
+        return buf
+
+    temp = malloc(16)
+    idx = 0
+    val = num
+    is_neg = 0
+    if val < 0:
+        is_neg = 1
+        val = -val
+
+    while val > 0:
+        digit = val % 10
+        poke(temp + idx, 48 + digit)
+        idx += 1
+        val = val / 10
+
+    # Write to destination buffer in reverse
+    out_idx = 0
+    if is_neg == 1:
+        poke(buf, 45) # '-'
+        out_idx = 1
+
+    for i in range(idx):
+        c = peek(temp + (idx - 1 - i)) & 0xFF
+        poke(buf + out_idx, c)
+        out_idx += 1
+
+    poke(buf + out_idx, 0) # Null terminator
+    return buf
+
+# ------------------------------------------------------------------------------
+# Dynamic StringBuilder
+# ------------------------------------------------------------------------------
+
+def sb_create(capacity):
+    if capacity < 16: capacity = 16
+    ptr = malloc(8 + capacity)
+    poke(ptr, capacity)
+    poke(ptr + 4, 0) # length = 0
+    poke(ptr + 8, 0) # null terminator
+    return ptr
+
+def sb_length(sb):
+    return peek(sb + 4)
+
+def sb_append_char(sb, char_code):
+    cap = peek(sb)
+    l = peek(sb + 4)
+    if l + 1 >= cap:
+        return 0 # Out of capacity
+    poke(sb + 8 + l, char_code)
+    poke(sb + 8 + l + 1, 0)
+    poke(sb + 4, l + 1)
+    return 1
+
+def sb_append_str(sb, str_ptr):
+    cap = peek(sb)
+    l = peek(sb + 4)
+    s_len = str_len(str_ptr)
+    if l + s_len >= cap:
+        return 0
+
+    for i in range(s_len):
+        c = peek(str_ptr + i) & 0xFF
+        poke(sb + 8 + l + i, c)
+
+    poke(sb + 8 + l + s_len, 0)
+    poke(sb + 4, l + s_len)
+    return 1
+
+def sb_get_str(sb):
+    return sb + 8

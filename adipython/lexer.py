@@ -21,7 +21,7 @@ TOK_DELIM     = "DELIM"
 
 KEYWORDS = {
     "def", "return", "if", "elif", "else", "while", "for", "in", "range",
-    "break", "continue", "pass", "and", "or", "not", "True", "False", "None"
+    "break", "continue", "pass", "global", "and", "or", "not", "True", "False", "None"
 }
 
 BUILTINS = {

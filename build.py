@@ -114,14 +114,17 @@ def test():
     print("\n--- 13. Testing CastleAdiOS 3D Raycasting Game Engine ---")
     res_cas = subprocess.run([sys.executable, "tests/test_castle3d.py"])
 
-    print("\n--- 14. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 14. Testing Advanced Systems Standard Library (Block A) ---")
+    res_stda = subprocess.run([sys.executable, "tests/test_stdlib_block_a.py"])
+
+    print("\n--- 15. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 14 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 15 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -135,6 +138,7 @@ def test():
         print("  - Sovereign Window Manager & Desktop Compositor:         PASS")
         print("  - In-OS Code Editor & Syntax Highlighting:               PASS")
         print("  - CastleAdiOS 3D Raycasting Dungeon Game:                PASS")
+        print("  - Advanced Systems Stdlib (Trees, Maps, Heaps, Matrix):  PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
