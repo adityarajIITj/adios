@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (33/33 Subsystems Passed)
+## 3. Subsystem Verification Matrix (34/34 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 33-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 34-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -120,13 +120,14 @@ The entire operating system is protected by a unified, automated 33-subsystem re
 | 30 | Multi-Core SMP & IPI | `smp/` | Harts, CLINT MSIP IPI, Work-Stealing Scheduler | **PASS (100%)** |
 | 31 | Digital Audio Synthesis | `dsp/` | Polyphonic Oscillators, ADSR, Biquad, WAV | **PASS (100%)** |
 | 32 | Native Storage Suite | `vfs/` | Ext2 Superblock & Inodes, FAT32 Cluster Chains | **PASS (100%)** |
-| 33 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 33 | TLS 1.3 Cryptography | `crypto/tls13.py` | RFC 8446 Record Layer, HKDF, Finished Tag | **PASS (100%)** |
+| 34 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 33-Subsystem Regression Test Suite
+### Running the Full 34-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -214,6 +215,7 @@ adios/
 |   |-- sha256.py           # FIPS 180-4 SHA-256 & RFC 2104 HMAC-SHA256
 |   |-- chacha20.py         # RFC 7539 ChaCha20 256-bit stream cipher
 |   |-- poly1305.py         # RFC 7539 Poly1305 MAC & ChaCha20-Poly1305 AEAD
+|   |-- tls13.py            # RFC 8446 TLS 1.3 Record Layer & HKDF Key Schedule
 |   `-- disk_crypto.py      # Encrypted virtual disk block storage driver
 |-- mmu/                    # Virtual memory & hardware MMU subsystem
 |   |-- sv32.py             # RISC-V Sv32 2-level paging & hardware page faults
@@ -277,7 +279,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 33 Automated Subsystem Test Suites
+|-- tests/                  # 34 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
