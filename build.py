@@ -123,14 +123,17 @@ def test():
     print("\n--- 16. Testing Core Bare-Metal Assembly Kernel Suite (Block C) ---")
     res_kblkc = subprocess.run([sys.executable, "tests/test_kernel_block_c.py"])
 
-    print("\n--- 17. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 17. Testing Sovereign Interactive Cyber Suite (Block D) ---")
+    res_blkd = subprocess.run([sys.executable, "tests/test_holy_block_d.py"])
+
+    print("\n--- 18. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 17 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 18 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -147,6 +150,7 @@ def test():
         print("  - Advanced Systems Stdlib (Trees, Maps, Heaps, Matrix):  PASS")
         print("  - Compiler IR, CFG, Optimizer & Linear Scan RegAlloc:    PASS")
         print("  - Core Bare-Metal Assembly Kernel (Sched, PAlloc, VFS):  PASS")
+        print("  - Sovereign Cyber Interactive Suite (Oracle, Synth, 3D): PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
@@ -218,11 +222,21 @@ def run_desktop():
 def play_hymn():
     from vm.vm import VM
     from audio import AudioTracker, HYMN_OF_ADIOS
-    print("[AdiOS Audio] Playing 'Hymn of AdiOS' via PC Speaker MMIO...")
+def run_cyber_shell():
+    from holy.holy_shell import SovereignCyberShell
+    from vm.vm import VM
+    print("[AdiOS] Launching Sovereign Cyber Shell...")
     vm = VM()
-    tracker = AudioTracker(vm)
-    tracker.play_track(HYMN_OF_ADIOS, sleep_between=True)
-    print("[AdiOS Audio] Hymn complete.")
+    shell = SovereignCyberShell(vm)
+    print(shell.cmd_help())
+    while shell.running:
+        try:
+            line = input("adios-cyber> ")
+            if line.strip():
+                print(shell.execute_line(line))
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting AdiOS Cyber Shell.")
+            break
 
 if __name__ == "__main__":
     if "--build" in sys.argv:
@@ -231,6 +245,8 @@ if __name__ == "__main__":
         test()
     elif "--desktop" in sys.argv:
         run_desktop()
+    elif "--shell" in sys.argv or "--cyber" in sys.argv:
+        run_cyber_shell()
     elif "--castle" in sys.argv or "--fps" in sys.argv:
         run_castle3d()
     elif "--hymn" in sys.argv or "--song" in sys.argv:
