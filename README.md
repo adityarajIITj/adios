@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (39/39 Subsystems Passed)
+## 3. Subsystem Verification Matrix (40/40 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 39-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 40-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -126,13 +126,14 @@ The entire operating system is protected by a unified, automated 39-subsystem re
 | 36 | 3D Spatial Physics | `spatial/physics3d.py`| Rigid Dynamics, Impulse Restitution, Octree | **PASS (100%)** |
 | 37 | Web Engine & Layout | `browser/layout_engine.py`| HTML/CSS DOM Tree, Box Model Flow, Links | **PASS (100%)** |
 | 38 | Dynamic Bytecode VM | `bytecode/lisp_vm.py`| S-Expression Compiler, Call Frames, Recursion | **PASS (100%)** |
-| 39 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 39 | Type-1 Hypervisor | `core/hypervisor.py` | H-Extension CSRs, Stage-2 Nested Paging (SLAT)| **PASS (100%)** |
+| 40 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 39-Subsystem Regression Test Suite
+### Running the Full 40-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -294,7 +295,10 @@ adios/
 |   `-- layout_engine.py    # HTML/CSS parser, DOM tree, Box Model flow
 |-- bytecode/               # Sovereign Dynamic Bytecode VM & Lisp Engine
 |   `-- lisp_vm.py          # S-Expression compiler, call frames, stack VM
-|-- tests/                  # 39 Automated Subsystem Test Suites
+|-- core/                   # Type-1 Hypervisor & Master Integration
+|   |-- hypervisor.py       # RISC-V H-Extension, Stage-2 nested paging (SLAT)
+|   `-- system_matrix.py    # Cross-subsystem autonomous verification
+|-- tests/                  # 40 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
