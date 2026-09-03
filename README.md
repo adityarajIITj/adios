@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (34/34 Subsystems Passed)
+## 3. Subsystem Verification Matrix (35/35 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 34-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 35-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -121,13 +121,14 @@ The entire operating system is protected by a unified, automated 34-subsystem re
 | 31 | Digital Audio Synthesis | `dsp/` | Polyphonic Oscillators, ADSR, Biquad, WAV | **PASS (100%)** |
 | 32 | Native Storage Suite | `vfs/` | Ext2 Superblock & Inodes, FAT32 Cluster Chains | **PASS (100%)** |
 | 33 | TLS 1.3 Cryptography | `crypto/tls13.py` | RFC 8446 Record Layer, HKDF, Finished Tag | **PASS (100%)** |
-| 34 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 34 | In-OS Debugger & GDB | `debug/gdb_stub.py` | GDB Remote Serial Protocol, Breakpoints, Unwind | **PASS (100%)** |
+| 35 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 34-Subsystem Regression Test Suite
+### Running the Full 35-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -279,7 +280,9 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 34 Automated Subsystem Test Suites
+|-- debug/                  # In-OS Debugger & GDB Remote Serial Protocol
+|   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
+|-- tests/                  # 35 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
