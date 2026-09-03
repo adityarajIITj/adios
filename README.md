@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (30/30 Subsystems Passed)
+## 3. Subsystem Verification Matrix (31/31 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 30-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 31-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -117,13 +117,14 @@ The entire operating system is protected by a unified, automated 30-subsystem re
 | 27 | POSIX Shell & Userland | `userland/` | Shell Pipelines, Redirection, CoreUtils Suite | **PASS (100%)** |
 | 28 | SovereignSQL Database | `db/engine.py` | SQL Parser, ACID Transactions, WAL Recovery | **PASS (100%)** |
 | 29 | Window Server & GUI | `ui/` | Canvas2D Vector Primitives, Widgets, Compositor | **PASS (100%)** |
-| 30 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 30 | Multi-Core SMP & IPI | `smp/` | Harts, CLINT MSIP IPI, Work-Stealing Scheduler | **PASS (100%)** |
+| 31 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 30-Subsystem Regression Test Suite
+### Running the Full 31-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -247,6 +248,9 @@ adios/
 |   |-- canvas2d.py         # 2D vector primitives, clipping, alpha blend
 |   |-- widgets.py          # Hierarchy, Button, TextBox, Slider, Window
 |   `-- window_server.py    # Multi-window compositor & event router
+|-- smp/                    # Multi-Core SMP & Microkernel IPC
+|   |-- cpu_core.py         # Harts, CLINT MSIP IPI, TicketLock
+|   `-- smp_scheduler.py    # Work-stealing multi-queue task scheduler
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -266,7 +270,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 30 Automated Subsystem Test Suites
+|-- tests/                  # 31 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
