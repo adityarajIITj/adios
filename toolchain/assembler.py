@@ -143,7 +143,16 @@ class Assembler:
                 inc_path = os.path.join(base_dir, inc_rel) if base_dir else inc_rel
                 expanded.extend(self.load_lines(inc_path))
             else:
-                expanded.append(line)
+                code = stripped.split('#')[0].strip()
+                if not code:
+                    continue
+                if '"' in code:
+                    expanded.append(code + "\n")
+                else:
+                    for sub in code.split(';'):
+                        sub = sub.strip()
+                        if sub:
+                            expanded.append(sub + "\n")
         return expanded
 
     def assemble_file(self, filename, output_bin):
@@ -152,7 +161,7 @@ class Assembler:
         # Pass 1: Collect labels and calculate addresses
         addr = BASE_ADDR
         for raw in lines:
-            line = raw.split('#')[0].split(';')[0].strip()
+            line = raw.strip()
             if not line: continue
 
             # Check label at start of line
@@ -203,7 +212,7 @@ class Assembler:
         byte_stream = bytearray()
 
         for raw in lines:
-            line = raw.split('#')[0].split(';')[0].strip()
+            line = raw.strip()
             if not line: continue
             m = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$', line)
             if m:

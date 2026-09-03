@@ -56,11 +56,28 @@ class DisplayWindow:
         self.mouse_y = max(0, min(FB_HEIGHT - 1, event.y))
         self.mouse_event = 1
 
+        # Context-sensitive cursor styling
+        # Paint Canvas: (365..615, 80..235) -> pencil/crosshair
+        if 365 <= self.mouse_x <= 615 and 80 <= self.mouse_y <= 235:
+            self.root.config(cursor="crosshair")
+        # Buttons / Start Pill / Menu / Calc / Swatches -> hand2
+        elif (self.mouse_y <= 24 and self.mouse_x <= 75) or \
+             (360 <= self.mouse_x <= 620 and 58 <= self.mouse_y <= 78) or \
+             (360 <= self.mouse_x <= 620 and 315 <= self.mouse_y <= 425) or \
+             (self.mouse_x <= 150 and self.mouse_y <= 140):
+            self.root.config(cursor="hand2")
+        else:
+            self.root.config(cursor="arrow")
+
     def _on_lbutton_down(self, event):
+        self.mouse_x = max(0, min(FB_WIDTH - 1, event.x))
+        self.mouse_y = max(0, min(FB_HEIGHT - 1, event.y))
         self.mouse_buttons |= 0x01
         self.mouse_event = 1
 
     def _on_lbutton_up(self, event):
+        self.mouse_x = max(0, min(FB_WIDTH - 1, event.x))
+        self.mouse_y = max(0, min(FB_HEIGHT - 1, event.y))
         self.mouse_buttons &= ~0x01
         self.mouse_event = 1
 
