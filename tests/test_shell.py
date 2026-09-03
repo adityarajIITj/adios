@@ -21,5 +21,5 @@ def run_commands(commands):
             v.step()
 
 if __name__ == "__main__":
-    test_cmds = ["help", "info", "mem", "ps", "spawn", "matrix"]
+    test_cmds = ["help", "info", "mem", "ps", "spawn", "disk", "ls", "matrix"]
     run_commands(test_cmds)

@@ -80,21 +80,25 @@ def test():
     print("\n--- 2. Testing In-House AdiPython Language & Ring-0 Hardware Runtime ---")
     res_ap = subprocess.run([sys.executable, "tests/test_adipython.py"])
 
-    print("\n--- 3. Testing Bare-Metal Shell Subsystem ---")
+    print("\n--- 3. Testing AdiFS Contiguous Block Filesystem Subsystem ---")
+    res_fs = subprocess.run([sys.executable, "tests/test_adifs.py"])
+
+    print("\n--- 4. Testing Bare-Metal Shell Subsystem (with Disk & LS Commands) ---")
     assemble("kernel/asm_kernel.s", "adios.bin")
     res_cli = subprocess.run([sys.executable, "tests/test_shell.py"])
 
-    print("\n--- 4. Testing Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 5. Testing Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_cli, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_fs, res_cli, res_gui])
     if all_pass:
         print("\n===========================================================")
         print("[AdiOS] ALL SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
-        print("  - Bare-Metal CLI Shell Subsystem:                        PASS")
+        print("  - AdiFS Contiguous Block Filesystem:                     PASS")
+        print("  - Bare-Metal CLI Shell Subsystem (with Disk & LS):       PASS")
         print("  - Graphical Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:

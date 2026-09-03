@@ -176,6 +176,18 @@ execute_command:
     call str_eq
     bnez a0, do_reboot
 
+    # Check "disk"
+    la a0, cmd_buf
+    la a1, cmd_disk_str
+    call str_eq
+    bnez a0, do_disk
+
+    # Check "ls"
+    la a0, cmd_buf
+    la a1, cmd_ls_str
+    call str_eq
+    bnez a0, do_ls
+
     # Check "shutdown"
     la a0, cmd_buf
     la a1, cmd_shutdown_str
@@ -244,6 +256,56 @@ do_reboot:
     li t0, 0x10000040
     li t1, 2
     sw t1, 0(t0)
+    j cmd_done
+
+do_disk:
+    la a0, disk_info_text
+    call print_str
+    # Read sector 0 into disk_sector_buf
+    li t0, 0x10001000
+    sw zero, 0(t0)
+    la t1, disk_sector_buf
+    sw t1, 4(t0)
+    li t2, 1
+    sw t2, 8(t0)
+    j cmd_done
+
+do_ls:
+    la a0, ls_header_text
+    call print_str
+    # Read sector 1 into disk_sector_buf
+    li t0, 0x10001000
+    li t1, 1
+    sw t1, 0(t0)
+    la t1, disk_sector_buf
+    sw t1, 4(t0)
+    li t2, 1
+    sw t2, 8(t0)
+    # Scan first 8 entries in sector 1
+    li s0, 0
+    li s1, 0
+ls_entry_loop:
+    li t0, 8
+    bge s0, t0, ls_check_empty
+    slli t1, s0, 6
+    la t2, disk_sector_buf
+    add t2, t2, t1
+    lw t3, 32(t2)
+    beqz t3, ls_entry_next
+    # Print entry name
+    mv a0, t2
+    call print_str
+    la a0, ls_entry_suffix
+    call print_str
+    addi s1, s1, 1
+ls_entry_next:
+    addi s0, s0, 1
+    j ls_entry_loop
+ls_check_empty:
+    bnez s1, ls_all_done
+    la a0, ls_empty_text
+    call print_str
+ls_all_done:
     j cmd_done
 
 do_shutdown:
@@ -447,13 +509,27 @@ cmd_info_str:     .string "info"
 cmd_mem_str:      .string "mem"
 cmd_ps_str:       .string "ps"
 cmd_spawn_str:    .string "spawn"
+cmd_disk_str:     .string "disk"
+cmd_ls_str:       .string "ls"
 cmd_matrix_str:   .string "matrix"
 cmd_clear_str:    .string "clear"
 cmd_reboot_str:   .string "reboot"
 cmd_shutdown_str: .string "shutdown"
 
 help_text:
-    .string "\nAvailable AdiOS Commands:\n  help      - Show this command reference\n  info      - System specifications & architecture\n  mem       - Memory allocation & page stats\n  ps        - List running tasks & PIDs\n  spawn     - Launch a concurrent background task\n  matrix    - Cyberpunk digital visual banner\n  clear     - Clear terminal screen\n  reboot    - Restart the virtual machine\n  shutdown  - Power off system\n\n"
+    .string "\nAvailable AdiOS Commands:\n  help      - Show this command reference\n  info      - System specifications & architecture\n  mem       - Memory allocation & page stats\n  ps        - List running tasks & PIDs\n  spawn     - Launch a concurrent background task\n  disk      - Virtual disk hardware specifications\n  ls        - List files on virtual disk (AdiFS)\n  matrix    - Cyberpunk digital visual banner\n  clear     - Clear terminal screen\n  reboot    - Restart the virtual machine\n  shutdown  - Power off system\n\n"
+
+disk_info_text:
+    .string "\n--- Virtual Disk Controller (MMIO 0x10001000) ---\n  Filesystem:   AdiFS (Contiguous Block Filesystem)\n  Sector Size:  512 Bytes\n  Sector Range: 0 to 16383 (8 MB Disk Image)\n  DMA Mode:     Direct RAM Transfer\n\n"
+
+ls_header_text:
+    .string "\nNAME                             TYPE    SECTOR\n------------------------------------------------\n"
+
+ls_entry_suffix:
+    .string "                  [FILE]  CONTIGUOUS\n"
+
+ls_empty_text:
+    .string "(No files found on disk. Use AdiFS to create files)\n\n"
 
 info_text:
     .string "\n--- AdiOS System Architecture ---\n  OS:           AdiOS v1.0\n  Architecture: RISC-V 32-bit (RV32IM)\n  Total Memory: 32 MB (8,192 pages of 4KB)\n  Execution:    Host Simulation Layer (MMIO Paravirtualization)\n  Multitasking: Preemptive Timer-driven Round-Robin\n\n"
@@ -503,3 +579,7 @@ saved_context_0:
     .space 132
 saved_context_1:
     .space 132
+
+.align 4
+disk_sector_buf:
+    .space 512
