@@ -92,27 +92,35 @@ def test():
     print("\n--- 6. Testing DolDoc Universal Hypertext Engine ---")
     res_doc = subprocess.run([sys.executable, "tests/test_doldoc.py"])
 
-    print("\n--- 7. Testing AdiFS Contiguous Block Filesystem Subsystem ---")
+    print("\n--- 7. Testing 3D Graphics Engine & Software Rasterizer ---")
+    res_3d = subprocess.run([sys.executable, "tests/test_engine3d.py"])
+
+    print("\n--- 8. Testing PC Speaker Music Tracker & Synthesizer ---")
+    res_trk = subprocess.run([sys.executable, "tests/test_tracker.py"])
+
+    print("\n--- 9. Testing AdiFS Contiguous Block Filesystem Subsystem ---")
     res_fs = subprocess.run([sys.executable, "tests/test_adifs.py"])
 
-    print("\n--- 8. Testing Bare-Metal Shell Subsystem (with Disk & LS Commands) ---")
+    print("\n--- 10. Testing Bare-Metal Shell Subsystem (with Disk & LS Commands) ---")
     assemble("kernel/asm_kernel.s", "adios.bin")
     res_cli = subprocess.run([sys.executable, "tests/test_shell.py"])
 
-    print("\n--- 9. Testing Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 11. Testing Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_fs, res_cli, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 9 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 11 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
         print("  - RV32IM In-Memory Disassembler:                         PASS")
         print("  - AdiPython Standard Library (Math, Mem, Collections):   PASS")
         print("  - DolDoc Universal Hypertext Engine:                     PASS")
+        print("  - 3D Software Rasterizer & Mesh Pipeline:                PASS")
+        print("  - PC Speaker Music Tracker & Synthesizer:                PASS")
         print("  - AdiFS Contiguous Block Filesystem:                     PASS")
         print("  - Bare-Metal CLI Shell Subsystem (with Disk & LS):       PASS")
         print("  - Graphical Windowing Desktop & Applications:           PASS")
@@ -121,11 +129,22 @@ def test():
         print("\n[AdiOS] Test failure detected.")
         sys.exit(1)
 
+def play_hymn():
+    from vm.vm import VM
+    from audio import AudioTracker, HYMN_OF_ADIOS
+    print("[AdiOS Audio] Playing 'Hymn of AdiOS' via PC Speaker MMIO...")
+    vm = VM()
+    tracker = AudioTracker(vm)
+    tracker.play_track(HYMN_OF_ADIOS, sleep_between=True)
+    print("[AdiOS Audio] Hymn complete.")
+
 if __name__ == "__main__":
     if "--build" in sys.argv:
         assemble("kernel/gui_kernel.s", "adios.bin")
     elif "--test" in sys.argv:
         test()
+    elif "--hymn" in sys.argv or "--song" in sys.argv:
+        play_hymn()
     elif "--3d" in sys.argv or "--game" in sys.argv:
         run_game_3d()
     elif "--run" in sys.argv:
