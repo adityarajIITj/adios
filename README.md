@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (21/21 Subsystems Passed)
+## 3. Subsystem Verification Matrix (22/22 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 21-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 22-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -108,13 +108,14 @@ The entire operating system is protected by a unified, automated 21-subsystem re
 | 18 | Networking & Comms Stack | `net/` | SLIP Framing, Ethernet II, ARP, IPv4, UDP, Telnet | **PASS (100%)** |
 | 19 | Cyber Security & Crypto | `crypto/` | FIPS SHA-256, ChaCha20, Poly1305 AEAD, Disk Enc | **PASS (100%)** |
 | 20 | Virtual Memory & MMU | `mmu/` | Sv32 2-Level Paging, 64-Entry TLB, AddressSpace | **PASS (100%)** |
-| 21 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 21 | Process, Signals & IPC | `proc/` | TaskControlBlock, 32 Signals, Pipes, MLFQ, Syscall | **PASS (100%)** |
+| 22 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 21-Subsystem Regression Test Suite
+### Running the Full 22-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -205,6 +206,12 @@ adios/
 |   |-- sv32.py             # RISC-V Sv32 2-level paging & hardware page faults
 |   |-- tlb.py              # 64-entry fully associative TLB with LRU & sfence.vma
 |   `-- address_space.py    # Process address space manager & 64MB identity maps
+|-- proc/                   # Process, signals & IPC subsystem
+|   |-- process.py          # TaskControlBlock & parent-child process lifecycle
+|   |-- signals.py          # POSIX & Sovereign 32-signal dispatcher & sigreturn
+|   |-- ipc.py              # Ring-buffer pipes, priority MQs, shm, mutexes
+|   |-- scheduler.py        # MLFQ 4-band preemptive scheduler & priority boost
+|   `-- syscall.py          # RISC-V ecall ABI system call dispatcher
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -224,7 +231,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 21 Automated Subsystem Test Suites
+|-- tests/                  # 22 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
