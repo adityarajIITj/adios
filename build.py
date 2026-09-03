@@ -177,14 +177,17 @@ def test():
     print("\n--- 34. Testing In-OS Debugger & GDB Remote Serial Protocol (Block U) ---")
     res_dbg = subprocess.run([sys.executable, "tests/test_debug_block_u.py"])
 
-    print("\n--- 35. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 35. Testing Software OpenGL 1.1 3D Graphics Engine (Block V) ---")
+    res_gl = subprocess.run([sys.executable, "tests/test_gl_block_v.py"])
+
+    print("\n--- 36. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 35 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 36 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -219,6 +222,7 @@ def test():
         print("  - Native Filesystem Architecture (Ext2, FAT32 Inodes):   PASS")
         print("  - TLS 1.3 Record Layer & Handshake Engine (HKDF, AEAD):  PASS")
         print("  - In-OS Debugger & GDB Remote Serial Protocol (RSP):     PASS")
+        print("  - Software OpenGL 1.1 3D Pipeline (Matrix, Z-Buf, DDA):  PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:

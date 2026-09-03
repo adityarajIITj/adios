@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (35/35 Subsystems Passed)
+## 3. Subsystem Verification Matrix (36/36 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 35-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 36-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -122,13 +122,14 @@ The entire operating system is protected by a unified, automated 35-subsystem re
 | 32 | Native Storage Suite | `vfs/` | Ext2 Superblock & Inodes, FAT32 Cluster Chains | **PASS (100%)** |
 | 33 | TLS 1.3 Cryptography | `crypto/tls13.py` | RFC 8446 Record Layer, HKDF, Finished Tag | **PASS (100%)** |
 | 34 | In-OS Debugger & GDB | `debug/gdb_stub.py` | GDB Remote Serial Protocol, Breakpoints, Unwind | **PASS (100%)** |
-| 35 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 35 | Software OpenGL 1.1 | `gl/gl_core.py` | Matrix Stack, Perspective, Barycentric, Z-Buf | **PASS (100%)** |
+| 36 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 35-Subsystem Regression Test Suite
+### Running the Full 36-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -282,7 +283,9 @@ adios/
 |   `-- disasm.py           # RV32IM disassembler
 |-- debug/                  # In-OS Debugger & GDB Remote Serial Protocol
 |   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
-|-- tests/                  # 35 Automated Subsystem Test Suites
+|-- gl/                     # Software OpenGL 1.1 3D Graphics Engine
+|   `-- gl_core.py          # Fixed-function pipeline, matrix stack, Z-buffer
+|-- tests/                  # 36 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
