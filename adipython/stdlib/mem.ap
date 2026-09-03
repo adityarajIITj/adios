@@ -1,0 +1,58 @@
+# =====================================================================
+# AdiPython Standard Library: mem.ap
+# Low-Level Memory Management, Buffer Manipulation, and Direct Pointers
+# =====================================================================
+
+# Global Dynamic Heap Bump Pointer in RAM (Starts at 0x82800000)
+#define HEAP_START 0x82800000
+
+# Fills a block of 32-bit words with a specific value
+def memset32(addr, val, count):
+    curr = addr
+    for i in range(count):
+        poke(curr, val)
+        curr += 4
+    return addr
+
+# Copies a block of 32-bit words from src to dest
+def memcpy32(dest, src, count):
+    d = dest
+    s = src
+    for i in range(count):
+        v = peek(s)
+        poke(d, v)
+        d += 4
+        s += 4
+    return dest
+
+# Compares two memory blocks (returns 0 if identical, non-zero if different)
+def memcmp32(addr1, addr2, count):
+    p1 = addr1
+    p2 = addr2
+    for i in range(count):
+        v1 = peek(p1)
+        v2 = peek(p2)
+        if v1 != v2:
+            return v1 - v2
+        p1 += 4
+        p2 += 4
+    return 0
+
+# Zeroes out a block of memory
+def memzero32(addr, count):
+    return memset32(addr, 0, count)
+
+# Simple Fast Bump Allocator for Memory Chunks
+# Allocates size bytes (aligned to 4 bytes)
+_heap_ptr = HEAP_START
+
+def malloc(size_bytes):
+    # Align size to 4 bytes
+    aligned_size = (size_bytes + 3) / 4 * 4
+    ptr = _heap_ptr
+    _heap_ptr += aligned_size
+    return ptr
+
+def heap_reset():
+    _heap_ptr = HEAP_START
+    return _heap_ptr

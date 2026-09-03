@@ -1,0 +1,109 @@
+# =====================================================================
+# AdiPython Standard Library: math.ap
+# High-Performance Integer & Fixed-Point Mathematics for 3D Graphics
+# =====================================================================
+
+# Constant Multipliers for 8.8 Fixed-Point Math
+# 1.0 in 8.8 fixed-point is 256
+#define FP_ONE 256
+#define PI_DEG 180
+
+# Integer Square Root using Newton-Raphson Method
+def isqrt(n):
+    if n <= 0:
+        return 0
+    if n == 1:
+        return 1
+    x0 = n / 2
+    if x0 == 0:
+        x0 = 1
+    x1 = (x0 + n / x0) / 2
+    while x1 < x0:
+        x0 = x1
+        x1 = (x0 + n / x0) / 2
+    return x0
+
+# Integer Sine Function (-180 to +180 degrees, returns value scaled by 256)
+# Approximation using polynomial interpolation:
+# sin(x) approx (4 * x * (180 - |x|)) / 405 for x in [0, 180]
+def sin_deg(deg):
+    # Normalize degree to -180..180
+    d = deg % 360
+    if d > 180:
+        d = d - 360
+    elif d < -180:
+        d = d + 360
+
+    if d >= 0:
+        prod = d * (180 - d)
+        num = 4 * prod * 256
+        den = 40500 - prod
+        if den == 0:
+            return 256
+        return num / den
+    else:
+        abs_d = -d
+        prod = abs_d * (180 - abs_d)
+        num = 4 * prod * 256
+        den = 40500 - prod
+        if den == 0:
+            return -256
+        return -(num / den)
+
+# Integer Cosine Function (returns value scaled by 256)
+def cos_deg(deg):
+    return sin_deg(deg + 90)
+
+# 3D Vector Operations
+# Vector represented as (x, y, z) components
+
+def vec3_dot(x1, y1, z1, x2, y2, z2):
+    return x1 * x2 + y1 * y2 + z1 * z2
+
+def vec3_dist_sq(x1, y1, z1, x2, y2, z2):
+    dx = x1 - x2
+    dy = y1 - y2
+    dz = z1 - z2
+    return dx * dx + dy * dy + dz * dz
+
+def vec3_dist(x1, y1, z1, x2, y2, z2):
+    return isqrt(vec3_dist_sq(x1, y1, z1, x2, y2, z2))
+
+# 3D Coordinate Rotation around Y-Axis (Yaw)
+# Rotates (x, z) by angle in degrees:
+# X' = (X*cos - Z*sin) / 256
+# Z' = (X*sin + Z*cos) / 256
+def rot_yaw_x(x, z, angle):
+    c = cos_deg(angle)
+    s = sin_deg(angle)
+    return (x * c - z * s) / 256
+
+def rot_yaw_z(x, z, angle):
+    c = cos_deg(angle)
+    s = sin_deg(angle)
+    return (x * s + z * c) / 256
+
+# 3D Coordinate Rotation around X-Axis (Pitch)
+# Y' = (Y*cos - Z*sin) / 256
+# Z' = (Y*sin + Z*cos) / 256
+def rot_pitch_y(y, z, angle):
+    c = cos_deg(angle)
+    s = sin_deg(angle)
+    return (y * c - z * s) / 256
+
+def rot_pitch_z(y, z, angle):
+    c = cos_deg(angle)
+    s = sin_deg(angle)
+    return (y * s + z * c) / 256
+
+# Perspective Projection Function
+# Maps 3D point (x, y, z) with focal length f onto 2D screen centered at (cx, cy)
+def project_screen_x(x, z, f, cx):
+    if z <= 10:
+        return cx
+    return cx + (x * f) / z
+
+def project_screen_y(y, z, f, cy):
+    if z <= 10:
+        return cy
+    return cy - (y * f) / z

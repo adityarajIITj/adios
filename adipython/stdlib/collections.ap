@@ -1,0 +1,104 @@
+# =====================================================================
+# AdiPython Standard Library: collections.ap
+# High-Speed Dynamic Array & Ring Buffer Data Structures
+# =====================================================================
+
+# Dynamic Array Layout in Memory:
+#   Offset 0: capacity (uint32)
+#   Offset 4: length   (uint32)
+#   Offset 8..: elements (32-bit words)
+
+def array_create(capacity):
+    # Header: 8 bytes, Elements: capacity * 4 bytes
+    ptr = malloc(8 + capacity * 4)
+    poke(ptr, capacity)     # capacity
+    poke(ptr + 4, 0)        # initial length = 0
+    return ptr
+
+def array_len(arr):
+    return peek(arr + 4)
+
+def array_capacity(arr):
+    return peek(arr)
+
+def array_get(arr, idx):
+    length = peek(arr + 4)
+    if idx < 0:
+        return 0
+    if idx >= length:
+        return 0
+    elem_addr = arr + 8 + idx * 4
+    return peek(elem_addr)
+
+def array_set(arr, idx, val):
+    length = peek(arr + 4)
+    if idx >= 0:
+        if idx < length:
+            elem_addr = arr + 8 + idx * 4
+            poke(elem_addr, val)
+            return 1
+    return 0
+
+def array_push(arr, val):
+    cap = peek(arr)
+    length = peek(arr + 4)
+    if length < cap:
+        elem_addr = arr + 8 + length * 4
+        poke(elem_addr, val)
+        poke(arr + 4, length + 1)
+        return length + 1
+    return 0 # Array full
+
+def array_pop(arr):
+    length = peek(arr + 4)
+    if length > 0:
+        last_idx = length - 1
+        elem_addr = arr + 8 + last_idx * 4
+        val = peek(elem_addr)
+        poke(arr + 4, last_idx)
+        return val
+    return 0 # Empty
+
+# Ring Buffer / Circular Queue Layout in Memory:
+#   Offset 0: capacity (uint32)
+#   Offset 4: head (uint32)
+#   Offset 8: tail (uint32)
+#   Offset 12: count (uint32)
+#   Offset 16..: elements
+
+def queue_create(capacity):
+    ptr = malloc(16 + capacity * 4)
+    poke(ptr, capacity)
+    poke(ptr + 4, 0) # head
+    poke(ptr + 8, 0) # tail
+    poke(ptr + 12, 0) # count
+    return ptr
+
+def queue_count(q):
+    return peek(q + 12)
+
+def queue_enqueue(q, val):
+    cap = peek(q)
+    cnt = peek(q + 12)
+    if cnt < cap:
+        tail = peek(q + 8)
+        elem_addr = q + 16 + tail * 4
+        poke(elem_addr, val)
+        new_tail = (tail + 1) % cap
+        poke(q + 8, new_tail)
+        poke(q + 12, cnt + 1)
+        return 1
+    return 0 # Queue Full
+
+def queue_dequeue(q):
+    cnt = peek(q + 12)
+    if cnt > 0:
+        cap = peek(q)
+        head = peek(q + 4)
+        elem_addr = q + 16 + head * 4
+        val = peek(elem_addr)
+        new_head = (head + 1) % cap
+        poke(q + 4, new_head)
+        poke(q + 12, cnt - 1)
+        return val
+    return 0 # Queue Empty
