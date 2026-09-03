@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (19/19 Subsystems Passed)
+## 3. Subsystem Verification Matrix (21/21 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 19-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 21-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -106,13 +106,15 @@ The entire operating system is protected by a unified, automated 19-subsystem re
 | 16 | Assembly Kernel Suite | `kernel/sched.s` | Preemptive Scheduler, Dual-Heap PAlloc, VFS | **PASS (100%)** |
 | 17 | Sovereign Cyber Suite | `holy/` | Cosmic Entropy Oracle, Baroque Synth, Citadel 3D | **PASS (100%)** |
 | 18 | Networking & Comms Stack | `net/` | SLIP Framing, Ethernet II, ARP, IPv4, UDP, Telnet | **PASS (100%)** |
-| 19 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 19 | Cyber Security & Crypto | `crypto/` | FIPS SHA-256, ChaCha20, Poly1305 AEAD, Disk Enc | **PASS (100%)** |
+| 20 | Virtual Memory & MMU | `mmu/` | Sv32 2-Level Paging, 64-Entry TLB, AddressSpace | **PASS (100%)** |
+| 21 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 19-Subsystem Regression Test Suite
+### Running the Full 21-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -194,6 +196,15 @@ adios/
 |   |-- ipv4.py             # Ethernet II, ARP, and IPv4 header engine
 |   |-- transport.py        # ICMP echo, UDP sockets, and NetworkStack
 |   `-- telnet.py           # RFC 854 Sovereign Cyber Telnet server
+|-- crypto/                 # In-house cryptographic subsystem
+|   |-- sha256.py           # FIPS 180-4 SHA-256 & RFC 2104 HMAC-SHA256
+|   |-- chacha20.py         # RFC 7539 ChaCha20 256-bit stream cipher
+|   |-- poly1305.py         # RFC 7539 Poly1305 MAC & ChaCha20-Poly1305 AEAD
+|   `-- disk_crypto.py      # Encrypted virtual disk block storage driver
+|-- mmu/                    # Virtual memory & hardware MMU subsystem
+|   |-- sv32.py             # RISC-V Sv32 2-level paging & hardware page faults
+|   |-- tlb.py              # 64-entry fully associative TLB with LRU & sfence.vma
+|   `-- address_space.py    # Process address space manager & 64MB identity maps
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -213,7 +224,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 19 Automated Subsystem Test Suites
+|-- tests/                  # 21 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 

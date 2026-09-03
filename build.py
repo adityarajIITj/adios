@@ -129,14 +129,20 @@ def test():
     print("\n--- 18. Testing Networking & Communications Subsystem (Block E) ---")
     res_net = subprocess.run([sys.executable, "tests/test_net_block_e.py"])
 
-    print("\n--- 19. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 19. Testing Advanced Cyber Security & Cryptography Subsystem (Block F) ---")
+    res_cry = subprocess.run([sys.executable, "tests/test_crypto_block_f.py"])
+
+    print("\n--- 20. Testing Virtual Memory, Sv32 Paging & TLB Subsystem (Block G) ---")
+    res_mmu = subprocess.run([sys.executable, "tests/test_mmu_block_g.py"])
+
+    print("\n--- 21. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 19 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 21 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -155,6 +161,8 @@ def test():
         print("  - Core Bare-Metal Assembly Kernel (Sched, PAlloc, VFS):  PASS")
         print("  - Sovereign Cyber Interactive Suite (Oracle, Synth, 3D): PASS")
         print("  - Networking Stack (SLIP, Ethernet, ARP, IPv4, UDP):     PASS")
+        print("  - Cyber Security & Cryptography (SHA256, ChaCha, AEAD):  PASS")
+        print("  - Virtual Memory & MMU (Sv32 Paging, 64-Entry TLB, AS):  PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
