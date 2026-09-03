@@ -1,0 +1,43 @@
+# =====================================================================
+# AdiOS AdiPython Demonstration: 3D Wireframe Polyhedron
+# Like Terry A. Davis's TempleOS 3D wireframe models, written in AdiPython!
+# =====================================================================
+
+print("AdiOS 3D Engine: Initializing Wireframe Cube Demo...")
+
+# Clear Framebuffer with dark navy background
+clear(0x0010121C)
+
+# Draw Title Card
+rect(20, 20, 600, 36, 0x001F2335)
+print("StarFlight 3D Engine: Framebuffer Ready (640x480)")
+
+# Cube Center & Size
+cx = 320
+cy = 240
+size = 70
+
+# Draw Front Face (Cyan: 0x007DCFFF)
+line(cx - size, cy - size, cx + size, cy - size, CYAN)
+line(cx + size, cy - size, cx + size, cy + size, CYAN)
+line(cx + size, cy + size, cx - size, cy + size, CYAN)
+line(cx - size, cy + size, cx - size, cy - size, CYAN)
+
+# Draw Back Face Offset (Electric Blue: 0x007AA2F7)
+offset = 45
+line(cx - size + offset, cy - size - offset, cx + size + offset, cy - size - offset, BLUE)
+line(cx + size + offset, cy - size - offset, cx + size + offset, cy + size - offset, BLUE)
+line(cx + size + offset, cy + size - offset, cx - size + offset, cy + size - offset, BLUE)
+line(cx - size + offset, cy + size - offset, cx - size + offset, cy - size - offset, BLUE)
+
+# Connect 3D Depth Edges (Green: 0x009ECE6A)
+line(cx - size, cy - size, cx - size + offset, cy - size - offset, GREEN)
+line(cx + size, cy - size, cx + size + offset, cy - size - offset, GREEN)
+line(cx + size, cy + size, cx + size + offset, cy + size - offset, GREEN)
+line(cx - size, cy + size, cx - size + offset, cy + size - offset, GREEN)
+
+# Play 3D chime through MMIO sound synthesizer
+tone(587, 100)
+tone(880, 150)
+
+print("3D Wireframe Cube successfully rendered to AdiOS Framebuffer!")
