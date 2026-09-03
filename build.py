@@ -150,14 +150,17 @@ def test():
     print("\n--- 25. Testing Transmission Control Protocol Engine (Block L) ---")
     res_tcp = subprocess.run([sys.executable, "tests/test_tcp_block_l.py"])
 
-    print("\n--- 26. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 26. Testing Layer-7 Network Application Protocols (Block M) ---")
+    res_proto = subprocess.run([sys.executable, "tests/test_net_protocols_block_m.py"])
+
+    print("\n--- 27. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 26 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 27 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -183,6 +186,7 @@ def test():
         print("  - Zero-Dependency Standard C Library (stdio, stdlib):    PASS")
         print("  - Hardware Drivers & VirtIO Bus (Net, Blk, PCI, RTC):    PASS")
         print("  - Transmission Control Protocol (TCP/IP 3-Way Engine):   PASS")
+        print("  - Layer-7 Application Protocols (HTTP/1.1, DNS, DHCP):   PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
