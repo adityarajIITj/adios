@@ -287,6 +287,22 @@ class Assembler:
             rs2 = parse_reg(args[1])
             target = parse_imm(args[2], self.labels, addr)
             return struct.pack("<I", encode_b(0x63, 0x5, rs2, rs1, target - addr)) # bge rs2, rs1, target
+        if op == "bgtz":
+            rs = parse_reg(args[0])
+            target = parse_imm(args[1], self.labels, addr)
+            return struct.pack("<I", encode_b(0x63, 0x4, 0, rs, target - addr)) # blt x0, rs, target
+        if op == "blez":
+            rs = parse_reg(args[0])
+            target = parse_imm(args[1], self.labels, addr)
+            return struct.pack("<I", encode_b(0x63, 0x5, 0, rs, target - addr)) # bge x0, rs, target
+        if op == "bltz":
+            rs = parse_reg(args[0])
+            target = parse_imm(args[1], self.labels, addr)
+            return struct.pack("<I", encode_b(0x63, 0x4, rs, 0, target - addr)) # blt rs, x0, target
+        if op == "bgez":
+            rs = parse_reg(args[0])
+            target = parse_imm(args[1], self.labels, addr)
+            return struct.pack("<I", encode_b(0x63, 0x5, rs, 0, target - addr)) # bge rs, x0, target
         if op == "nop":
             return struct.pack("<I", encode_i(0x13, 0x0, 0, 0, 0)) # addi x0, x0, 0
         if op == "ret":
@@ -295,6 +311,14 @@ class Assembler:
             rd = parse_reg(args[0])
             rs1 = parse_reg(args[1])
             return struct.pack("<I", encode_i(0x13, 0x0, rd, rs1, 0)) # addi rd, rs1, 0
+        if op == "not":
+            rd = parse_reg(args[0])
+            rs1 = parse_reg(args[1]) if len(args) > 1 else rd
+            return struct.pack("<I", encode_i(0x13, 0x4, rd, rs1, -1)) # xori rd, rs1, -1
+        if op == "neg":
+            rd = parse_reg(args[0])
+            rs1 = parse_reg(args[1]) if len(args) > 1 else rd
+            return struct.pack("<I", encode_r(0x33, 0x0, 0x20, rd, 0, rs1)) # sub rd, x0, rs1
         if op == "j":
             target = parse_imm(args[0], self.labels, addr)
             offset = target - addr

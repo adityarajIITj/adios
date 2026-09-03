@@ -94,6 +94,7 @@ class VM:
         self.timer_time = 0
         self.timer_cmp = 0xFFFFFFFFFFFFFFFF
         self.rx_buffer = []
+        self.uart_callback = None
 
         # PC Speaker Audio State
         self.audio_freq = 0
@@ -279,8 +280,11 @@ class VM:
             self.fb[addr - FB_BASE] = val
             return
         if addr == UART_DATA:
-            sys.stdout.write(chr(val))
-            sys.stdout.flush()
+            if self.uart_callback:
+                self.uart_callback(val)
+            else:
+                sys.stdout.write(chr(val))
+                sys.stdout.flush()
             return
         if addr == POWER_BASE:
             if val == 1:
@@ -312,8 +316,11 @@ class VM:
             self.fb[offset+3] = (val >> 24) & 0xFF
             return
         if addr == UART_DATA:
-            sys.stdout.write(chr(val & 0xFF))
-            sys.stdout.flush()
+            if self.uart_callback:
+                self.uart_callback(val & 0xFF)
+            else:
+                sys.stdout.write(chr(val & 0xFF))
+                sys.stdout.flush()
             return
         if addr == TIMER_TIME:
             self.timer_time = (self.timer_time & 0xFFFFFFFF00000000) | val
