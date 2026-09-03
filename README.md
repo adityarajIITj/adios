@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (23/23 Subsystems Passed)
+## 3. Subsystem Verification Matrix (24/24 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 23-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 24-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -110,13 +110,14 @@ The entire operating system is protected by a unified, automated 23-subsystem re
 | 20 | Virtual Memory & MMU | `mmu/` | Sv32 2-Level Paging, 64-Entry TLB, AddressSpace | **PASS (100%)** |
 | 21 | Process, Signals & IPC | `proc/` | TaskControlBlock, 32 Signals, Pipes, MLFQ, Syscall | **PASS (100%)** |
 | 22 | In-OS C Toolchain | `compiler/` | C99 Lexer, Parser, RV32 Codegen, ELF32 Builder | **PASS (100%)** |
-| 23 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 23 | Standard C Library | `libc/` | string, stdio (sprintf, streams), stdlib, math | **PASS (100%)** |
+| 24 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 23-Subsystem Regression Test Suite
+### Running the Full 24-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -218,6 +219,11 @@ adios/
 |   |-- c_parser.py         # Recursive-descent AST parser with type system
 |   |-- c_codegen.py        # Native RV32IM assembly code generator
 |   `-- elf32.py            # Standard RISC-V ELF32 executable binary builder
+|-- libc/                   # Zero-dependency Standard C Library
+|   |-- string.py           # strlen, strcmp, strstr, strcpy, memcpy, memset
+|   |-- stdio.py            # sprintf, snprintf, fopen, fread, fwrite, fseek
+|   |-- stdlib.py           # malloc, free, calloc, realloc, atoi, qsort, rand
+|   `-- math.py             # sin, cos, tan, sqrt, pow, exp, log, fabs
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -237,7 +243,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 23 Automated Subsystem Test Suites
+|-- tests/                  # 24 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 

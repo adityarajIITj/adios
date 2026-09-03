@@ -141,14 +141,17 @@ def test():
     print("\n--- 22. Testing In-OS C Compiler & ELF32 Toolchain (Block I) ---")
     res_cc = subprocess.run([sys.executable, "tests/test_compiler_block_i.py"])
 
-    print("\n--- 23. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 23. Testing Zero-Dependency Standard C Library (Block J) ---")
+    res_libc = subprocess.run([sys.executable, "tests/test_libc_block_j.py"])
+
+    print("\n--- 24. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 23 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 24 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -171,6 +174,7 @@ def test():
         print("  - Virtual Memory & MMU (Sv32 Paging, 64-Entry TLB, AS):  PASS")
         print("  - Process, Signals & IPC (TCB, MLFQ, Pipes, Syscalls):   PASS")
         print("  - In-OS C Compiler & Toolchain (C99, RV32, ELF32):       PASS")
+        print("  - Zero-Dependency Standard C Library (stdio, stdlib):    PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
