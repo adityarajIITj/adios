@@ -108,14 +108,20 @@ def test():
     print("\n--- 11. Testing Sovereign Desktop Window Manager & Compositor ---")
     res_wm = subprocess.run([sys.executable, "tests/test_desktop_wm.py"])
 
-    print("\n--- 12. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 12. Testing In-OS Code Editor (AdiIDE) ---")
+    res_ed = subprocess.run([sys.executable, "tests/test_editor.py"])
+
+    print("\n--- 13. Testing CastleAdiOS 3D Raycasting Game Engine ---")
+    res_cas = subprocess.run([sys.executable, "tests/test_castle3d.py"])
+
+    print("\n--- 14. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 12 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 14 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -127,11 +133,45 @@ def test():
         print("  - AdiFS Contiguous Block Filesystem:                     PASS")
         print("  - Bare-Metal CLI Shell Subsystem (with Disk & LS):       PASS")
         print("  - Sovereign Window Manager & Desktop Compositor:         PASS")
+        print("  - In-OS Code Editor & Syntax Highlighting:               PASS")
+        print("  - CastleAdiOS 3D Raycasting Dungeon Game:                PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
         sys.exit(1)
+
+def run_castle3d():
+    print("=====================================================")
+    print("        CastleAdiOS 3D: Dungeon Crawler              ")
+    print("=====================================================")
+    print("[CastleAdiOS 3D] Initializing DDA Raycasting Engine...")
+    from vm.vm import VM
+    from vm.display import DisplayWindow
+    from games.castle3d import CastleAdiOS3D
+
+    vm = VM()
+    game = CastleAdiOS3D(vm)
+    disp = DisplayWindow(vm.fb, uart_callback=lambda c: None)
+    vm.display = disp
+
+    print("[CastleAdiOS 3D] Move mouse to look. Close window to exit.")
+    last_frame = time.time()
+    last_mouse_x = disp.mouse_x
+    try:
+        while True:
+            now = time.time()
+            if now - last_frame >= 0.025:  # ~40 FPS
+                dx = disp.mouse_x - last_mouse_x
+                last_mouse_x = disp.mouse_x
+                game.render_frame(mouse_dx=dx)
+                disp.render_frame()
+                if not disp.update():
+                    break
+                last_frame = now
+            time.sleep(0.002)
+    except KeyboardInterrupt:
+        print("\n[CastleAdiOS 3D] Exited.")
 
 def run_desktop():
     print("=====================================================")
@@ -179,6 +219,8 @@ if __name__ == "__main__":
         test()
     elif "--desktop" in sys.argv:
         run_desktop()
+    elif "--castle" in sys.argv or "--fps" in sys.argv:
+        run_castle3d()
     elif "--hymn" in sys.argv or "--song" in sys.argv:
         play_hymn()
     elif "--3d" in sys.argv or "--game" in sys.argv:
