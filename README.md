@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (18/18 Subsystems Passed)
+## 3. Subsystem Verification Matrix (19/19 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 18-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 19-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -105,13 +105,14 @@ The entire operating system is protected by a unified, automated 18-subsystem re
 | 15 | Compiler & Optimizer | `adipython/optimizer.py` | TAC IR, CFG, DCE, Strength Reduction, RegAlloc | **PASS (100%)** |
 | 16 | Assembly Kernel Suite | `kernel/sched.s` | Preemptive Scheduler, Dual-Heap PAlloc, VFS | **PASS (100%)** |
 | 17 | Sovereign Cyber Suite | `holy/` | Cosmic Entropy Oracle, Baroque Synth, Citadel 3D | **PASS (100%)** |
-| 18 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 18 | Networking & Comms Stack | `net/` | SLIP Framing, Ethernet II, ARP, IPv4, UDP, Telnet | **PASS (100%)** |
+| 19 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 18-Subsystem Regression Test Suite
+### Running the Full 19-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -188,6 +189,11 @@ adios/
 |   |-- hymn.py             # Algorithmic 4-part SATB polyphonic synthesizer
 |   |-- sanctuary3d.py      # 3D Cyber Citadel & Quantum Core wireframe engine
 |   `-- holy_shell.py       # Unified interactive Sovereign Cyber Shell
+|-- net/                    # Networking & communications subsystem
+|   |-- slip.py             # RFC 1055 SLIP packet framing driver
+|   |-- ipv4.py             # Ethernet II, ARP, and IPv4 header engine
+|   |-- transport.py        # ICMP echo, UDP sockets, and NetworkStack
+|   `-- telnet.py           # RFC 854 Sovereign Cyber Telnet server
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -207,7 +213,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 18 Automated Subsystem Test Suites
+|-- tests/                  # 19 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
