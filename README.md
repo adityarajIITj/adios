@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (36/36 Subsystems Passed)
+## 3. Subsystem Verification Matrix (37/37 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 36-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 37-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -123,13 +123,14 @@ The entire operating system is protected by a unified, automated 36-subsystem re
 | 33 | TLS 1.3 Cryptography | `crypto/tls13.py` | RFC 8446 Record Layer, HKDF, Finished Tag | **PASS (100%)** |
 | 34 | In-OS Debugger & GDB | `debug/gdb_stub.py` | GDB Remote Serial Protocol, Breakpoints, Unwind | **PASS (100%)** |
 | 35 | Software OpenGL 1.1 | `gl/gl_core.py` | Matrix Stack, Perspective, Barycentric, Z-Buf | **PASS (100%)** |
-| 36 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 36 | 3D Spatial Physics | `spatial/physics3d.py`| Rigid Dynamics, Impulse Restitution, Octree | **PASS (100%)** |
+| 37 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 36-Subsystem Regression Test Suite
+### Running the Full 37-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -285,7 +286,9 @@ adios/
 |   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
 |-- gl/                     # Software OpenGL 1.1 3D Graphics Engine
 |   `-- gl_core.py          # Fixed-function pipeline, matrix stack, Z-buffer
-|-- tests/                  # 36 Automated Subsystem Test Suites
+|-- spatial/                # 3D Physics Engine & Spatial Partitioning
+|   `-- physics3d.py        # Rigid dynamics, impulse restitution, Octree
+|-- tests/                  # 37 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
