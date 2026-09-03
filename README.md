@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (31/31 Subsystems Passed)
+## 3. Subsystem Verification Matrix (32/32 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 31-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 32-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -118,13 +118,14 @@ The entire operating system is protected by a unified, automated 31-subsystem re
 | 28 | SovereignSQL Database | `db/engine.py` | SQL Parser, ACID Transactions, WAL Recovery | **PASS (100%)** |
 | 29 | Window Server & GUI | `ui/` | Canvas2D Vector Primitives, Widgets, Compositor | **PASS (100%)** |
 | 30 | Multi-Core SMP & IPI | `smp/` | Harts, CLINT MSIP IPI, Work-Stealing Scheduler | **PASS (100%)** |
-| 31 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 31 | Digital Audio Synthesis | `dsp/` | Polyphonic Oscillators, ADSR, Biquad, WAV | **PASS (100%)** |
+| 32 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 31-Subsystem Regression Test Suite
+### Running the Full 32-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -264,13 +265,15 @@ adios/
 |   `-- doldoc.py           # Universal hypertext markup parser & renderer
 |-- sound/                  # Audio Subsystems
 |   `-- tracker.py          # PC Speaker music tracker & synthesizer
+|-- dsp/                    # Digital Audio Synthesis & DSP Studio
+|   `-- synth.py            # Oscillators, ADSR, Biquad filter, WAV
 |-- vm/                     # In-house hardware simulation layer
 |   |-- vm.py               # 64MB RV32IM CPU core with decode cache
 |   `-- display.py          # 640x480 Framebuffer window & mouse driver
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 31 Automated Subsystem Test Suites
+|-- tests/                  # 32 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
