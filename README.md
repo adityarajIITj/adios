@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (25/25 Subsystems Passed)
+## 3. Subsystem Verification Matrix (26/26 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 25-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 26-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -112,13 +112,14 @@ The entire operating system is protected by a unified, automated 25-subsystem re
 | 22 | In-OS C Toolchain | `compiler/` | C99 Lexer, Parser, RV32 Codegen, ELF32 Builder | **PASS (100%)** |
 | 23 | Standard C Library | `libc/` | string, stdio (sprintf, streams), stdlib, math | **PASS (100%)** |
 | 24 | Hardware Drivers & VirtIO | `drivers/` | Split Virtqueues, VirtIO Net/Blk, PCI, RTC | **PASS (100%)** |
-| 25 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 25 | TCP/IP Transport Engine | `net/tcp.py` | RFC 793 3-Way Handshake, Flow Control, Teardown | **PASS (100%)** |
+| 26 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 25-Subsystem Regression Test Suite
+### Running the Full 26-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -199,6 +200,7 @@ adios/
 |   |-- slip.py             # RFC 1055 SLIP packet framing driver
 |   |-- ipv4.py             # Ethernet II, ARP, and IPv4 header engine
 |   |-- transport.py        # ICMP echo, UDP sockets, and NetworkStack
+|   |-- tcp.py              # RFC 793 Transmission Control Protocol engine
 |   `-- telnet.py           # RFC 854 Sovereign Cyber Telnet server
 |-- crypto/                 # In-house cryptographic subsystem
 |   |-- sha256.py           # FIPS 180-4 SHA-256 & RFC 2104 HMAC-SHA256
@@ -250,7 +252,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 25 Automated Subsystem Test Suites
+|-- tests/                  # 26 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
