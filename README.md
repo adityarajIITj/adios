@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (27/27 Subsystems Passed)
+## 3. Subsystem Verification Matrix (28/28 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 27-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 28-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -114,13 +114,14 @@ The entire operating system is protected by a unified, automated 27-subsystem re
 | 24 | Hardware Drivers & VirtIO | `drivers/` | Split Virtqueues, VirtIO Net/Blk, PCI, RTC | **PASS (100%)** |
 | 25 | TCP/IP Transport Engine | `net/tcp.py` | RFC 793 3-Way Handshake, Flow Control, Teardown | **PASS (100%)** |
 | 26 | Layer-7 Protocols | `net/protocols.py` | HTTP/1.1 Server/Router, DNS Resolver, DHCP DORA | **PASS (100%)** |
-| 27 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 27 | POSIX Shell & Userland | `userland/` | Shell Pipelines, Redirection, CoreUtils Suite | **PASS (100%)** |
+| 28 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 27-Subsystem Regression Test Suite
+### Running the Full 28-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -235,6 +236,9 @@ adios/
 |   |-- virtio_net.py       # VirtIO network adapter RX/TX driver
 |   |-- pci.py              # PCI Host controller & configuration space
 |   `-- rtc.py              # Motorola MC146818 CMOS Real-Time Clock
+|-- userland/               # POSIX & sovereign userland utilities & shell
+|   |-- coreutils.py        # cat, ls, cp, mv, rm, touch, wc, grep, sha256sum
+|   `-- sh.py               # POSIX shell with pipelines and redirections
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -254,7 +258,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 27 Automated Subsystem Test Suites
+|-- tests/                  # 28 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
