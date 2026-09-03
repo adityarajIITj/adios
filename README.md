@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (29/29 Subsystems Passed)
+## 3. Subsystem Verification Matrix (30/30 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 29-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 30-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -116,13 +116,14 @@ The entire operating system is protected by a unified, automated 29-subsystem re
 | 26 | Layer-7 Protocols | `net/protocols.py` | HTTP/1.1 Server/Router, DNS Resolver, DHCP DORA | **PASS (100%)** |
 | 27 | POSIX Shell & Userland | `userland/` | Shell Pipelines, Redirection, CoreUtils Suite | **PASS (100%)** |
 | 28 | SovereignSQL Database | `db/engine.py` | SQL Parser, ACID Transactions, WAL Recovery | **PASS (100%)** |
-| 29 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 29 | Window Server & GUI | `ui/` | Canvas2D Vector Primitives, Widgets, Compositor | **PASS (100%)** |
+| 30 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 29-Subsystem Regression Test Suite
+### Running the Full 30-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -242,6 +243,10 @@ adios/
 |   `-- sh.py               # POSIX shell with pipelines and redirections
 |-- db/                     # SovereignSQL relational database engine
 |   `-- engine.py           # SQL parser, ACID transactions, WAL recovery
+|-- ui/                     # Vector GUI toolkit & Window Server
+|   |-- canvas2d.py         # 2D vector primitives, clipping, alpha blend
+|   |-- widgets.py          # Hierarchy, Button, TextBox, Slider, Window
+|   `-- window_server.py    # Multi-window compositor & event router
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -261,7 +266,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 29 Automated Subsystem Test Suites
+|-- tests/                  # 30 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
