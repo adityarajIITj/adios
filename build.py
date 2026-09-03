@@ -105,14 +105,17 @@ def test():
     assemble("kernel/asm_kernel.s", "adios.bin")
     res_cli = subprocess.run([sys.executable, "tests/test_shell.py"])
 
-    print("\n--- 11. Testing Graphical Desktop & Mouse Subsystem ---")
+    print("\n--- 11. Testing Sovereign Desktop Window Manager & Compositor ---")
+    res_wm = subprocess.run([sys.executable, "tests/test_desktop_wm.py"])
+
+    print("\n--- 12. Testing Bare-Metal Graphical Desktop & Mouse Subsystem ---")
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_gui])
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_gui])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 11 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 12 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -123,11 +126,42 @@ def test():
         print("  - PC Speaker Music Tracker & Synthesizer:                PASS")
         print("  - AdiFS Contiguous Block Filesystem:                     PASS")
         print("  - Bare-Metal CLI Shell Subsystem (with Disk & LS):       PASS")
-        print("  - Graphical Windowing Desktop & Applications:           PASS")
+        print("  - Sovereign Window Manager & Desktop Compositor:         PASS")
+        print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
         sys.exit(1)
+
+def run_desktop():
+    print("=====================================================")
+    print("        AdiOS Sovereign Desktop Environment          ")
+    print("=====================================================")
+    print("[AdiOS Desktop] Initializing Window Compositor, DolDoc & 3D Viewport...")
+    from vm.vm import VM
+    from vm.display import DisplayWindow
+    from desktop import SovereignDesktop
+
+    vm = VM()
+    desktop = SovereignDesktop(vm)
+    disp = DisplayWindow(vm.fb, uart_callback=lambda c: None)
+    vm.display = disp
+
+    print("[AdiOS Desktop] 640x480 Sovereign Desktop Running. Close window to exit.")
+    last_frame = time.time()
+    try:
+        while True:
+            now = time.time()
+            if now - last_frame >= 0.025:  # ~40 FPS
+                desktop.step_frame(disp.mouse_x, disp.mouse_y)
+                desktop.render(vm.fb)
+                disp.render_frame()
+                if not disp.update():
+                    break
+                last_frame = now
+            time.sleep(0.002)
+    except KeyboardInterrupt:
+        print("\n[AdiOS Desktop] Closed.")
 
 def play_hymn():
     from vm.vm import VM
@@ -143,6 +177,8 @@ if __name__ == "__main__":
         assemble("kernel/gui_kernel.s", "adios.bin")
     elif "--test" in sys.argv:
         test()
+    elif "--desktop" in sys.argv:
+        run_desktop()
     elif "--hymn" in sys.argv or "--song" in sys.argv:
         play_hymn()
     elif "--3d" in sys.argv or "--game" in sys.argv:
