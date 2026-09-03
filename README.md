@@ -82,9 +82,9 @@ AdiOS is built from absolute scratch without external dependencies, bloat, or th
 
 ---
 
-## 3. Subsystem Verification Matrix (24/24 Subsystems Passed)
+## 3. Subsystem Verification Matrix (25/25 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 24-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 25-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -111,13 +111,14 @@ The entire operating system is protected by a unified, automated 24-subsystem re
 | 21 | Process, Signals & IPC | `proc/` | TaskControlBlock, 32 Signals, Pipes, MLFQ, Syscall | **PASS (100%)** |
 | 22 | In-OS C Toolchain | `compiler/` | C99 Lexer, Parser, RV32 Codegen, ELF32 Builder | **PASS (100%)** |
 | 23 | Standard C Library | `libc/` | string, stdio (sprintf, streams), stdlib, math | **PASS (100%)** |
-| 24 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 24 | Hardware Drivers & VirtIO | `drivers/` | Split Virtqueues, VirtIO Net/Blk, PCI, RTC | **PASS (100%)** |
+| 25 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
 
 ---
 
 ## 4. Quick Start Guide
 
-### Running the Full 24-Subsystem Regression Test Suite
+### Running the Full 25-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 ```
@@ -224,6 +225,12 @@ adios/
 |   |-- stdio.py            # sprintf, snprintf, fopen, fread, fwrite, fseek
 |   |-- stdlib.py           # malloc, free, calloc, realloc, atoi, qsort, rand
 |   `-- math.py             # sin, cos, tan, sqrt, pow, exp, log, fabs
+|-- drivers/                # Hardware device drivers & bus architecture
+|   |-- virtio_ring.py      # VirtIO v1.0 standard split virtqueues
+|   |-- virtio_blk.py       # VirtIO block storage sector I/O driver
+|   |-- virtio_net.py       # VirtIO network adapter RX/TX driver
+|   |-- pci.py              # PCI Host controller & configuration space
+|   `-- rtc.py              # Motorola MC146818 CMOS Real-Time Clock
 |-- desktop/                # Sovereign Desktop Environment
 |   |-- window_manager.py   # Multi-window Z-order compositor
 |   |-- desktop.py          # Taskbar, Start Pill, and app integration
@@ -243,7 +250,7 @@ adios/
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
-|-- tests/                  # 24 Automated Subsystem Test Suites
+|-- tests/                  # 25 Automated Subsystem Test Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
