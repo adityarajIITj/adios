@@ -22,6 +22,12 @@ TIMER_TIMECMP = 0x10000018
 
 POWER_BASE  = 0x10000040
 
+FB_BASE       = 0x20000000
+FB_WIDTH      = 640
+FB_HEIGHT     = 480
+FB_SIZE       = FB_WIDTH * FB_HEIGHT * 4  # 1,228,800 bytes
+FB_CTRL_BASE  = 0x20130000
+
 CSR_MSTATUS  = 0x300
 CSR_MIE      = 0x304
 CSR_MTVEC    = 0x305
@@ -40,6 +46,8 @@ def sign_extend(val, bits):
 class VM:
     def __init__(self, ram_size=RAM_SIZE):
         self.ram = bytearray(ram_size)
+        self.fb = bytearray(FB_SIZE)
+        self.display = None
         self.regs = [0] * 32
         self.pc = RAM_BASE
         
@@ -70,6 +78,8 @@ class VM:
     def read8(self, addr):
         if RAM_BASE <= addr < RAM_BASE + len(self.ram):
             return self.ram[addr - RAM_BASE]
+        if FB_BASE <= addr < FB_BASE + FB_SIZE:
+            return self.fb[addr - FB_BASE]
         if addr == UART_DATA:
             return self.input_buffer.pop(0) if self.input_buffer else 0
         if addr == UART_STATUS:
@@ -77,6 +87,12 @@ class VM:
             if self.input_buffer:
                 status |= 0x01  # Rx ready
             return status
+        if addr == 0x20130018:
+            return self.display.mouse_buttons if self.display else 0
+        if addr == 0x2013001C:
+            val = self.display.mouse_event if self.display else 0
+            if self.display: self.display.mouse_event = 0
+            return val
         return 0
 
     def read16(self, addr):
@@ -86,6 +102,9 @@ class VM:
         if RAM_BASE <= addr <= RAM_BASE + len(self.ram) - 4:
             offset = addr - RAM_BASE
             return struct.unpack_from("<I", self.ram, offset)[0]
+        if FB_BASE <= addr <= FB_BASE + FB_SIZE - 4:
+            offset = addr - FB_BASE
+            return struct.unpack_from("<I", self.fb, offset)[0]
         if addr == UART_DATA:
             return self.input_buffer.pop(0) if self.input_buffer else 0
         if addr == UART_STATUS:
@@ -100,12 +119,26 @@ class VM:
             return self.timer_cmp & 0xFFFFFFFF
         if addr == TIMER_TIMECMP + 4:
             return (self.timer_cmp >> 32) & 0xFFFFFFFF
+        # Display & Mouse Control Registers
+        if addr == 0x20130000: return FB_WIDTH
+        if addr == 0x20130004: return FB_HEIGHT
+        if addr == 0x20130008: return FB_WIDTH * 4
+        if addr == 0x20130010: return self.display.mouse_x if self.display else 320
+        if addr == 0x20130014: return self.display.mouse_y if self.display else 240
+        if addr == 0x20130018: return self.display.mouse_buttons if self.display else 0
+        if addr == 0x2013001C:
+            val = self.display.mouse_event if self.display else 0
+            if self.display: self.display.mouse_event = 0
+            return val
         return 0
 
     def write8(self, addr, val):
         val &= 0xFF
         if RAM_BASE <= addr < RAM_BASE + len(self.ram):
             self.ram[addr - RAM_BASE] = val
+            return
+        if FB_BASE <= addr < FB_BASE + FB_SIZE:
+            self.fb[addr - FB_BASE] = val
             return
         if addr == UART_DATA:
             sys.stdout.write(chr(val))
@@ -129,6 +162,10 @@ class VM:
             offset = addr - RAM_BASE
             struct.pack_into("<I", self.ram, offset, val)
             return
+        if FB_BASE <= addr <= FB_BASE + FB_SIZE - 4:
+            offset = addr - FB_BASE
+            struct.pack_into("<I", self.fb, offset, val)
+            return
         if addr == UART_DATA:
             sys.stdout.write(chr(val & 0xFF))
             sys.stdout.flush()
@@ -144,6 +181,10 @@ class VM:
             return
         if addr == TIMER_TIMECMP + 4:
             self.timer_cmp = (self.timer_cmp & 0x00000000FFFFFFFF) | (val << 32)
+            return
+        if addr == 0x2013000C: # FB_FLUSH
+            if val == 1 and self.display:
+                self.display.render_frame()
             return
         if addr == POWER_BASE:
             self.write8(addr, val & 0xFF)
@@ -327,7 +368,7 @@ class VM:
         r[0] = 0
         return True
 
-def run_interactive(bin_path="adios.bin"):
+def run_interactive(bin_path="adios.bin", use_gui=True):
     vm = VM()
     if not os.path.exists(bin_path):
         print(f"Error: binary '{bin_path}' not found.")
@@ -339,10 +380,22 @@ def run_interactive(bin_path="adios.bin"):
     print("=====================================================")
     print(f"[VM] Loaded {size} bytes into RAM at 0x{RAM_BASE:08X}")
     print("[VM] Virtual RAM: 32 MB | Terminal: MMIO 0x10000000")
+    print("[VM] Framebuffer: 640x480 MMIO 0x20000000")
+
+    if use_gui:
+        try:
+            from display import DisplayWindow
+            vm.display = DisplayWindow(vm.fb, uart_callback=lambda c: vm.push_input(c))
+            print("[VM] GUI Display Window initialized (640x480)")
+        except Exception as e:
+            print(f"[VM] Note: GUI display fallback ({e})")
+            use_gui = False
+
     print("[VM] Booting AdiOS...\n")
 
     import msvcrt
     cycles = 0
+    last_frame_time = time.time()
     while vm.running:
         if not vm.step():
             break
@@ -357,8 +410,19 @@ def run_interactive(bin_path="adios.bin"):
                     ch = b'\n'
                 vm.push_input(ord(ch))
 
+        if use_gui and vm.display and (cycles & 0x3FFF) == 0:
+            now = time.time()
+            if now - last_frame_time >= 0.025: # ~40 FPS
+                vm.display.render_frame()
+                if not vm.display.update():
+                    print("\n[AdiOS VM] Display window closed by user.")
+                    break
+                last_frame_time = now
+
     print(f"\n[VM] Stopped. Total cycles: {cycles}")
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "adios.bin"
-    run_interactive(path)
+    gui_mode = "--cli" not in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--cli"]
+    path = args[0] if args else "adios.bin"
+    run_interactive(path, use_gui=gui_mode)

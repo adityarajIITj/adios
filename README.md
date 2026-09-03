@@ -1,14 +1,14 @@
-# AdiOS (v0.1.0-alpha)
+# AdiOS (v0.2.0-alpha)
 
-A minimalist, bare-metal operating system and micro-simulation layer implemented for the 32-bit RISC-V (RV32I/M) instruction set architecture.
+A minimalist, bare-metal operating system, graphical windowing environment, and micro-simulation layer implemented for the 32-bit RISC-V (RV32I/M) instruction set architecture.
 
 ---
 
 ## 1. Overview
 
-AdiOS is an educational, research-oriented operating system built from first principles. It decouples the core computer science primitives of an operating system—task scheduling, memory allocation, trap handling, and userland execution—from modern physical hardware driver complexity.
+AdiOS is an educational and systems-research operating system built from first principles. It decouples the foundational computer science primitives of an operating system—preemptive multitasking, physical page allocation, trap handling, Memory-Mapped I/O (MMIO), and graphical window composition—from physical hardware driver complexity.
 
-Rather than targeting proprietary chipset interfaces (such as UEFI, xHCI, or NVMe protocols), AdiOS executes on a purpose-built paravirtualization layer. The host simulation environment exposes clean Memory-Mapped I/O (MMIO) registers to the bare-metal kernel, allowing direct execution of low-level algorithms without hardware bloat.
+Rather than relying on modern physical graphics buses (PCIe, DRM/KMS, GPU command rings), AdiOS interfaces with a direct Memory-Mapped Framebuffer and peripheral bus. The bare-metal RISC-V kernel renders 2D primitives, bitmap typography, interactive window chrome, and desktop applications directly to video memory.
 
 ---
 
@@ -25,49 +25,47 @@ Rather than targeting proprietary chipset interfaces (such as UEFI, xHCI, or NVM
 |       - 0x10000000: Serial UART Console (Tx / Rx Registers)             |
 |       - 0x10000010: Real-Time Hardware Timer and Comparator Registers   |
 |       - 0x10000040: Power Management Unit (Reboot / Poweroff Signals)   |
+|       - 0x20000000: 640x480 32-bit ARGB Linear Framebuffer (1.2 MB)     |
+|       - 0x20130000: Display Controller & Hardware Mouse Registers       |
 +------------------------------------+------------------------------------+
-                                     | Machine Instructions & Traps
+                                     | Machine Instructions & MMIO Traps
 +------------------------------------v------------------------------------+
 |                         AdiOS BARE-METAL KERNEL                         |
 |                                                                         |
-|   * boot.s       : Bootstrap sequence, stack init, trap vector setup    |
-|   * memory.c     : Bitmap-managed physical page frame allocator (4 KB)  |
-|   * scheduler.c  : Preemptive, timer-driven Round-Robin task scheduler  |
-|   * shell.c      : Interactive command interpreter and runtime monitor  |
-|   * uart.c       : MMIO serial driver and formatted I/O (printf)        |
+|   * boot.s / gui_kernel.s : Bootstrap, trap vector, graphics engine     |
+|   * font8x8.s             : 8x8 bitmap font blitter for ASCII 32-126    |
+|   * Window Manager        : Compositor, window chrome, and drop shadows |
+|   * Desktop App Suite     : Terminal, Paint Studio, SysMon, Calculator  |
+|   * scheduler.c           : Preemptive, timer-driven Round-Robin        |
+|   * memory.c              : Bitmap-managed physical page frame alloc    |
 +-------------------------------------------------------------------------+
 ```
 
 ---
 
-## 3. Core Subsystems
+## 3. Graphical Desktop and Windowing System
 
-### 3.1 Bootstrap and Trap Vector
-Execution begins at base address `0x80000000`. The bootstrap routine initializes the stack pointer at `0x81000000` (16 MB mark), configures the Machine Trap-Vector Base-Address (`mtvec`), enables Machine Timer Interrupts (`mie.MTIE`), and transitions control to the kernel main entrypoint.
+AdiOS v0.2 introduces a complete 2D desktop windowing environment running directly on bare-metal RISC-V:
 
-### 3.2 Preemptive Multitasking Scheduler
-The kernel incorporates a preemptive Round-Robin scheduler driven by machine timer interrupts (`mcause = 0x80000007`):
-* Context switching preserves the full 32-register execution frame into the current task's Process Control Block (PCB).
-* Timer compare registers (`mtimecmp`) are dynamically re-armed on every quantum expiration (50,000 cycles).
-* Supports dynamic task creation (`task_create`) with dedicated, isolated stacks.
+### 3.1 2D Graphics Engine & Typography
+* **Linear Framebuffer**: Direct memory-mapped ARGB pixel memory spanning `0x20000000` to `0x2012C000`.
+* **Rendering Primitives**: Optimized rectangle fills (`gfx_fill_rect`), borders (`gfx_draw_rect_outline`), and screen clearing (`gfx_clear`).
+* **Monochrome Bitmap Blitter**: Built-in 8x8 font table supporting full ASCII (characters 32 to 126) for arbitrary text rendering with configurable foreground and background colors.
 
-### 3.3 Physical Memory Allocation
-Memory is managed through a physical page frame allocator over 32 MB of contiguous virtual RAM:
-* Divides physical memory into 8,192 pages (4,096 bytes per page).
-* First 4 MB (`0x80000000` to `0x80400000`) is statically reserved for kernel binary, bootstrap stack, and static data.
-* Dynamic allocations are tracked via an in-memory page bitmap.
+### 3.2 Desktop Compositor & Window Manager
+* **Desktop Canvas**: Modern dark theme slate wallpaper with subtle drop-shadow window effects.
+* **Global Taskbar**: Fixed top bar (`y=0..24`) featuring:
+  * Interactive **"AdiOS" Start Pill Button** toggling an application launcher dropdown.
+  * System architecture indicator.
+  * Real-time hardware uptime / frame status monitor.
+* **Window Chrome**: Rectangular window framing with title bars, close controls (`[X]`), and drop shadows.
+* **Hardware Mouse Pointer**: 11x16 arrow cursor tracked through MMIO mouse registers (`0x20130010 - 0x20130018`).
 
-### 3.4 Interactive Shell and Monitor
-A lightweight command shell executes as Task 1, providing real-time kernel observability and diagnostic tools:
-* `help` - Command reference and syntax guide
-* `info` - Hardware architecture, paravirtualization specifications, and memory sizing
-* `mem` - Live page allocation statistics and free memory metrics
-* `ps` - Process table inspection (PID, state, stack pointer, task name)
-* `spawn` - Launches concurrent background worker threads to demonstrate timer preemption
-* `matrix` - Terminal visual diagnostic display
-* `clear` - ANSI terminal display reset
-* `reboot` - Soft restart via MMIO power management register
-* `shutdown` - Graceful virtual machine halt
+### 3.3 Built-in Desktop Applications
+1. **AdiOS Terminal Shell**: Embedded graphical console running the interactive shell command interpreter.
+2. **Paint Studio**: Freehand mouse drawing canvas with multi-color palette swatches (Black, Red, Green, Blue, Yellow).
+3. **System Monitor (SysMon)**: Hardware diagnostic widget featuring a live physical RAM allocation progress bar, CPU frequency display, and active scheduler task metrics.
+4. **Desktop Calculator**: Arithmetic unit with a 12-button interactive keypad (`0-9`, `+`, `-`, `*`, `/`, `=`) and LCD readout.
 
 ---
 
@@ -83,34 +81,45 @@ The simulation environment communicates with the kernel exclusively through defi
 | `0x10000010 - 0x10000014` | Timer Counter | 64-bit cycle counter (`mtime`) |
 | `0x10000018 - 0x1000001C` | Timer Compare | 64-bit interrupt comparator (`mtimecmp`) |
 | `0x10000040` | Power Management | Write 1: System Halt; Write 2: System Reboot |
+| `0x20000000 - 0x2012C000` | Framebuffer | 640x480x4 bytes (32-bit `0x00RRGGBB` ARGB) |
+| `0x20130000` | Display Width | Constant: 640 |
+| `0x20130004` | Display Height | Constant: 480 |
+| `0x20130008` | Display Stride | Constant: 2,560 bytes |
+| `0x2013000C` | Display Flush | Write 1: Flush framebuffer to host screen |
+| `0x20130010` | Mouse X | Read: Current cursor X coordinate (0-639) |
+| `0x20130014` | Mouse Y | Read: Current cursor Y coordinate (0-479) |
+| `0x20130018` | Mouse Buttons | Bit 0: Left button pressed; Bit 1: Right button pressed |
 
 ---
 
 ## 5. Toolchain and Build System
 
-AdiOS includes a zero-dependency, self-contained two-pass RV32I/M assembler (`toolchain/assembler.py`). It encodes standard RISC-V assembly, labels, pseudo-instructions, and directives directly into raw bootable machine code binaries (`adios.bin`) without requiring external GCC or Clang cross-compilers.
-
-For modular development, a C kernel codebase (`kernel/*.c`) and linker script (`kernel/linker.ld`) are also provided for compilation with LLVM/Clang (`-target riscv32 -nostdlib`).
+AdiOS includes a zero-dependency, self-contained two-pass RV32I/M assembler (`toolchain/assembler.py`). It encodes standard RISC-V assembly, labels, pseudo-instructions, and recursive `.include` directives directly into raw bootable machine code binaries (`adios.bin`) in ~40ms without requiring external GCC or Clang cross-compilers.
 
 ---
 
 ## 6. Getting Started
 
 ### Prerequisites
-* Python 3.8+ (for toolchain and simulation layer)
+* Python 3.8+ (with standard `tkinter` for graphical desktop display)
 
-### Execution
-Clone the repository and run the unified build script:
+### Execution Modes
 
 ```bash
-# Assemble kernel and launch the interactive operating system
+# 1. Launch the full Graphical Desktop Windowing System
 python build.py
 
-# Alternatively, run automated regression tests
+# 2. Launch the headless Terminal Console Shell (CLI mode)
+python build.py --cli
+
+# 3. Run the complete automated regression test suite (CLI + GUI)
 python build.py --test
+
+# 4. Assemble kernel binaries only
+python build.py --build
 ```
 
-On Windows, `boot.bat` is also provided for single-click execution.
+On Windows, `boot.bat` is also provided for single-click desktop startup.
 
 ---
 
@@ -119,28 +128,31 @@ On Windows, `boot.bat` is also provided for single-click execution.
 ```
 adios/
 |-- kernel/
-|   |-- asm_kernel.s       # Production bare-metal assembly kernel
+|   |-- gui_kernel.s       # Bare-metal Graphical Desktop Kernel (v0.2)
+|   |-- font8x8.s          # 8x8 ASCII monochrome font table
+|   |-- asm_kernel.s       # Bare-metal CLI Shell Kernel (v0.1)
 |   |-- boot.s             # Assembly bootstrap and trap vector
-|   |-- kernel.c           # C kernel entrypoint and panic handling
-|   |-- kernel.h           # System types, prototypes, and MMIO definitions
+|   |-- kernel.c           # C kernel entrypoint
 |   |-- memory.c           # Physical page frame allocator
-|   |-- scheduler.c        # Round-Robin preemptive task scheduler
+|   |-- scheduler.c        # Preemptive Round-Robin scheduler
 |   |-- shell.c            # Command interpreter implementation
-|   |-- uart.c             # Serial console driver and formatted output
+|   |-- uart.c             # Serial console driver
 |   `-- linker.ld          # Linker script targeting 0x80000000
 |-- vm/
-|   |-- vm.py              # Pure-Python RV32I virtual machine
+|   |-- vm.py              # RV32I virtual machine with MMIO display bus
+|   |-- display.py         # Tkinter 640x480 desktop window & mouse driver
 |   |-- cpu.c / cpu.h      # Native C CPU core implementation
 |   |-- bus.c / bus.h      # Native C MMIO bus controller
 |   `-- main.c             # Native C terminal emulator entrypoint
 |-- toolchain/
-|   `-- assembler.py       # Two-pass RV32I assembler and linker
+|   `-- assembler.py       # Two-pass RV32I assembler with .include support
 |-- tests/
-|   |-- test_boot.py       # CPU boot regression test
-|   `-- test_shell.py      # Automated shell command tests
-|-- build.py               # Unified build manager
+|   |-- test_gui.py        # Automated framebuffer & mouse MMIO tests
+|   |-- test_shell.py      # Automated shell command tests
+|   `-- test_boot.py       # CPU boot regression test
+|-- build.py               # Unified build manager (GUI / CLI / Test)
 |-- boot.bat               # Windows batch launcher
-`-- README.md              # Project documentation
+`-- README.md              # System documentation
 ```
 
 ---

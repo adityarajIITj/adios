@@ -125,13 +125,29 @@ def encode_j(opcode, rd, imm):
     imm19_12 = (imm >> 12) & 0xFF
     return (imm20 << 31) | (imm10_1 << 21) | (imm11 << 20) | (imm19_12 << 12) | (rd << 7) | opcode
 
+import os
+
 class Assembler:
     def __init__(self):
         self.labels = {}
 
-    def assemble_file(self, filename, output_bin):
+    def load_lines(self, filename):
+        base_dir = os.path.dirname(filename)
         with open(filename, "r") as f:
-            lines = f.readlines()
+            raw_lines = f.readlines()
+        expanded = []
+        for line in raw_lines:
+            stripped = line.strip()
+            if stripped.startswith(".include"):
+                inc_rel = stripped.split('"')[1]
+                inc_path = os.path.join(base_dir, inc_rel) if base_dir else inc_rel
+                expanded.extend(self.load_lines(inc_path))
+            else:
+                expanded.append(line)
+        return expanded
+
+    def assemble_file(self, filename, output_bin):
+        lines = self.load_lines(filename)
 
         # Pass 1: Collect labels and calculate addresses
         addr = BASE_ADDR
