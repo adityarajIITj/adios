@@ -149,6 +149,8 @@ class SHA256:
 def sha256_hash(data: bytes) -> bytes:
     return SHA256(data).digest()
 
+sha256 = sha256_hash
+
 def hmac_sha256(key: bytes, message: bytes) -> bytes:
     """
     RFC 2104 Keyed-Hashing for Message Authentication (HMAC-SHA256).
