@@ -1,13 +1,13 @@
-# AdiOS (v1.0.0 Sovereign Stable Release)
+# AdiOS (v1.1.0 Sovereign Master Desktop & Deepened Architecture Release)
 
 **AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
 
 Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. Davis's legendary operating system architecture, AdiOS reimagines sovereign computing within a rigorous modern mathematical, cryptographic, and cyber-engineering framework.
 
-- **Release Status**: `v1.0.0-LTS (First Stable Release)`
+- **Release Status**: `v1.1.0-LTS (Master Desktop & Deepened Architecture Release)`
 - **Target Architecture**: RISC-V 32-bit (RV32IM + H-Extension)
-- **Codebase Scale**: **26,970 Lines of Code (>0.26 Lakh LOC)**
-- **Verification Harness**: **40/40 Automated Subsystems Passing (100% Success)**
+- **Codebase Scale**: **30,752 Lines of Code (>0.30 Lakh LOC)**
+- **Verification Harness**: **45/45 Automated Subsystems Passing (100% Success)**
 - **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly.
 
 ---
@@ -19,9 +19,9 @@ AdiOS is engineered without third-party libraries, bloated frameworks, or black-
 ### Key Architectural Tenets:
 1. **Sovereign Ring-0 Freedom**: The user and application have unrestricted, zero-overhead access to hardware registers, linear framebuffers, memory-mapped I/O, and CPU states.
 2. **Absolute Determinism**: Instantaneous sub-second boot times, cycle-accurate instruction timing, zero garbage-collection pauses, and contiguous non-fragmented storage layouts.
-3. **Cryptographic & Network Autonomy**: Complete in-house implementation of FIPS SHA-256, RFC 7539 ChaCha20-Poly1305 AEAD, RFC 793 TCP/IP, RFC 8446 TLS 1.3, and RFC 1035 DNS.
-4. **Self-Contained Toolchain**: In-OS C99 compiler emitting native ELF32 binaries, custom two-pass RV32IM assembler, disassembler, GDB Remote Serial Protocol debugger, and dynamic bytecode VM.
-5. **Unified Verification**: Every commit is strictly guarded by an automated 40-subsystem regression harness verifying hardware, kernel, protocols, graphics, compilers, and spatial engines.
+3. **Cryptographic & Network Autonomy**: Complete in-house implementation of FIPS SHA-256, RFC 7539 ChaCha20-Poly1305 AEAD, RFC 793 TCP/IP, RFC 5681 TCP Reno Congestion Control, RFC 6455 WebSocket, RFC 8446 TLS 1.3, ASN.1 DER X.509 certificates, and FIPS 197 AES-128/192/256.
+4. **Self-Contained Toolchain**: In-OS C99 compiler with macro preprocessor, rich struct/union type system, native ELF32 emitter, custom two-pass RV32IM assembler, disassembler, GDB Remote Serial Protocol debugger, and dynamic bytecode Lisp VM.
+5. **Unified Verification**: Every part is strictly verified and tested against a 45-subsystem regression harness verifying hardware, kernel, protocols, graphics, compilers, spatial engines, database query planners, and audio trackers.
 
 ---
 
@@ -51,6 +51,8 @@ AdiOS is engineered without third-party libraries, bloated frameworks, or black-
 |   * mem_manager.s : 16,384 Physical Page Frame Bitmap Allocator (64MB RAM Pool)       |
 |   * vfs.s         : Contiguous DMA Block Filesystem Driver (AdiFS)                    |
 |   * gui_kernel.s  : Direct Framebuffer Window Compositor & Event Loop                 |
+|   * threads.py    : Kernel Threads, Sleeping Mutexes, CondVars & Counting Semaphores  |
+|   * page_alloc.py : 64MB Page Allocator with CLOCK Eviction & Copy-On-Write (COW)     |
 +===========================================+===========================================+
                                             |
 +===========================================v===========================================+
@@ -82,14 +84,32 @@ AdiOS is engineered without third-party libraries, bloated frameworks, or black-
 |   [X] Web Browser       : HTML Parser, DOM Tree, CSS Cascade Engine, Box Model Layout |
 |   [Y] Bytecode Lisp VM  : S-Expression Compiler, 16-Opcode Stack VM, Recursive Frames |
 |   [Z] Hypervisor Matrix : Type-1 RISC-V Hypervisor, Stage-2 Paging, Master Matrix     |
++===========================================+===========================================+
+                                            |
++===========================================v===========================================+
+|               UNIFIED SOVEREIGN MASTER DESKTOP & 4-PASS DEEPENED SUBSYSTEMS           |
+|                                                                                       |
+|   * Master Desktop    : 640x480 Compositor hosting 8 Integrated Applications          |
+|       - Sovereign Browser      : Live HTML/CSS DOM Web Engine Window                  |
+|       - SovereignSQL Terminal  : Interactive Relational Database Prompt               |
+|       - Lisp REPL              : Interactive Bytecode Virtual Machine Console         |
+|       - OpenGL 3D Viewer       : Real-time Rotating 3D Mesh Wireframe/Solid           |
+|       - Sovereign File Explorer: Dual FAT32 / Ext2 Storage Inspector                  |
+|       - Network & Crypto Mon   : Real-time TCP Sockets, TLS 1.3, SHA-256 Hash         |
+|       - Sovereign Terminal     : POSIX Shell Pipelines & CoreUtils                    |
+|       - Paint & Calculator     : Color Swatch Canvas & Hardware Math Tool             |
+|   * Pass 1 (Systems)  : C Preprocessor, Struct/Union Memory Layout, COW, Threads      |
+|   * Pass 2 (Security) : ASN.1 DER X.509 Decoder, AES-128/192/256, Reno, WebSocket    |
+|   * Pass 3 (Storage)  : Ext2 Indirect Blocks (1/2/3), B+ Tree, Volcano Query Planner  |
+|   * Pass 4 (Spatial)  : Software OpenGL Textures, Bilinear, Blinn-Phong, 6-DOF, Audio |
 +=======================================================================================+
 ```
 
 ---
 
-## 3. Subsystem Verification Matrix (40/40 Subsystems Passed)
+## 3. Subsystem Verification Matrix (45/45 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 40-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 45-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -133,189 +153,81 @@ The entire operating system is protected by a unified, automated 40-subsystem re
 | 38 | Dynamic Bytecode VM | `bytecode/lisp_vm.py`| S-Expression Compiler, Call Frames, Recursion | **PASS (100%)** |
 | 39 | Type-1 Hypervisor | `core/hypervisor.py` | H-Extension CSRs, Stage-2 Nested Paging (SLAT)| **PASS (100%)** |
 | 40 | Windowing Desktop & Apps | `kernel/gui_kernel.s` | Interactive Graphical Desktop & Paint Studio | **PASS (100%)** |
+| 41 | Unified Master Desktop | `desktop/master_desktop.py` | 8 Apps: Browser, SQL, Lisp, 3D, Files, Net, Shell, Paint | **PASS (100%)** |
+| 42 | Pass 1: Systems Core | `compiler/`, `mmu/`, `proc/` | C Preprocessor, Struct Types, COW Paging, Kernel Threads | **PASS (100%)** |
+| 43 | Pass 2: Security & Net | `crypto/`, `net/` | X.509 DER, AES (ECB/CBC/CTR), TCP Reno, WebSocket RFC6455 | **PASS (100%)** |
+| 44 | Pass 3: Storage & Data | `vfs/`, `db/` | Ext2 Multi-Level Indirect, Disk B+ Tree, Volcano Planner | **PASS (100%)** |
+| 45 | Pass 4: 3D, Spatial & DSP | `gl/`, `spatial/`, `dsp/` | GL Textures & Bilinear, Blinn-Phong, 6-DOF, Audio Tracker | **PASS (100%)** |
 
 ---
 
-## 4. Comprehensive Feature Catalogue (Blocks A - Z)
+## 4. Unified Sovereign Master Desktop (8 Integrated Applications)
 
-### Block A -- Advanced Systems Data Structures & Stdlib
-- **Balanced Binary Search Trees (`trees.ap`)**: AVL trees with deterministic left/right rotations maintaining strict O(log N) lookups; recursive in-order traversals.
-- **Open-Addressed Hash Table (`hashmap.ap`)**: Murmur3-inspired integer hashing, linear probing collision resolution, dynamic prime table sizing.
-- **Binary Min-Heap (`heap.ap`)**: Complete binary tree array representation with sift-up and sift-down operations powering the kernel priority scheduler.
-- **Fixed-Point 3D Mathematics (`matrix3d.ap`)**: 16.16 fixed-point 4x4 transformation matrices, yaw/pitch/roll rotations, normalized vector cross products.
+The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive 640x480 32-bit ARGB desktop environment featuring a composited taskbar, system clock, Start Menu, active window management, and 8 integrated applications:
 
-### Block B -- Compiler IR, CFG & Multi-Pass Optimizer
-- **Three-Address Code (TAC)**: Intermediate representation decoupling frontend AST from target machine code (`x = y op z`).
-- **Control Flow Graph (CFG)**: Basic block partitioning with directed edge tracking and loop detection.
-- **Optimization Passes**: Constant folding, algebraic strength reduction (e.g. x * 8 -> x << 3), dead code elimination, and instruction peephole tuning.
-- **Linear Scan Register Allocator**: Computes variable live intervals and assigns across 27 general-purpose physical RISC-V registers, inserting spill/reload instructions when pressure exceeds capacity.
-
-### Block C -- Core Bare-Metal Assembly Kernel
-- **Preemptive Scheduler (`sched.s`)**: Context switches all 32 integer registers, Program Counter (`sepc`), and status registers (`sstatus`) upon timer tick interrupt.
-- **Dual-Heap Physical Allocator (`mem_manager.s`)**: Manages 16,384 4KB page frames (64MB) using bitmap allocation and buddy-system coalescing.
-- **VFS Contiguous Block Driver (`vfs.s`)**: Sector-level direct DMA transfers to virtual ATA disk images.
-
-### Block D -- Sovereign Cyber Interactive Suite
-- **Cosmic Entropy Oracle (`oracle.py`)**: Hardware entropy harvester collecting uninitialized RAM jitter, timer ticks, and mouse entropy to seed algorithmic philosophical axiom generation.
-- **Baroque Polyphonic Synthesizer (`hymn.py`)**: Algorithmic 4-part SATB counterpoint generator observing Johann Sebastian Bach's voice leading rules (preventing parallel fifths and octaves) rendered via tone MMIO.
-- **Cyber Citadel 3D (`sanctuary3d.py`)**: Perspective wireframe rendering of the Sovereign Sanctuary with 12 Doric colonnade pillars and central glowing core.
-
-### Block E -- RFC-Compliant Networking & Communications
-- **SLIP Framing Driver (`slip.py`)**: RFC 1055 byte-stuffed serial framing (`0xC0` END, `0xDB 0xDC` ESC).
-- **Ethernet & IPv4 Stack (`ipv4.py`, `transport.py`)**: ARP request/reply cache, IPv4 packet routing, ICMP echo responder, UDP socket demultiplexing.
-- **Sovereign Telnet Server (`telnet.py`)**: RFC 854 remote interactive command shell over virtual sockets.
-
-### Block F -- Advanced Cyber Security & Cryptography
-- **FIPS 180-4 SHA-256 (`sha256.py`)**: 64-round cryptographic hashing and RFC 2104 HMAC-SHA256 authenticated message authentication.
-- **RFC 7539 ChaCha20 Stream Cipher (`chacha20.py`)**: 256-bit symmetric encryption with 64-bit quarter-round matrix permutation.
-- **RFC 7539 Poly1305 AEAD (`poly1305.py`)**: Authenticated Encryption with Associated Data (AEAD) generating 128-bit authentication tags.
-- **Encrypted Block Storage (`disk_crypto.py`)**: Sector-level on-the-fly hardware block encryption.
-
-### Block G -- Virtual Memory & Sv32 MMU
-- **RISC-V Sv32 Paging Engine (`sv32.py`)**: 2-level hierarchical page table walks translating 32-bit Virtual Addresses to Physical Addresses with 4KB pages and 4MB megapages.
-- **Associative TLB (`tlb.py`)**: 64-entry fully associative Translation Lookaside Buffer with LRU eviction and `sfence.vma` address space invalidation.
-- **Address Space Manager (`address_space.py`)**: Per-process isolated address spaces and kernel identity mappings.
-
-### Block H -- Process Lifecycle, Signals, IPC & Syscalls
-- **Task Control Block (`process.py`)**: Process states (`READY`, `RUNNING`, `BLOCKED`, `ZOMBIE`), parent-child tree hierarchy, process IDs.
-- **32-Signal Dispatcher (`signals.py`)**: Synchronous and asynchronous signal handling, signal masks, pending queues, and `sigreturn` stack frame restoration.
-- **Inter-Process Communication (`ipc.py`)**: Circular ring-buffer anonymous pipes, priority message queues, shared memory, and mutual exclusion locks.
-- **RISC-V Syscall ABI (`syscall.py`)**: Standard RISC-V `ecall` convention dispatching POSIX-compatible system calls (`read`, `write`, `fork`, `exec`, `yield`, `exit`).
-
-### Block I -- In-OS C99 / AdiC Self-Hosting Compiler
-- **C Lexer & Parser (`c_lexer.py`, `c_parser.py`)**: Full lexical stream analysis and recursive-descent parsing for C99 expressions, types, and control flow.
-- **Native RV32IM Codegen (`c_codegen.py`)**: Lowers typed AST into register-allocated RISC-V assembly instructions.
-- **ELF32 Binary Builder (`elf32.py`)**: Packages compiled assembly into standard ELF executable format with ELF Header, Section Headers (`.text`, `.data`, `.rodata`, `.bss`), and Symbol Tables.
-
-### Block J -- Zero-Dependency Standard C Library
-- **`string.h` (`libc/string.py`)**: `strlen`, `strcmp`, `strncmp`, `strcpy`, `strncpy`, `strcat`, `strstr`, `memcpy`, `memmove`, `memset`.
-- **`stdio.h` (`libc/stdio.py`)**: Formatted printing (`sprintf`, `snprintf`), file stream buffers (`fopen`, `fread`, `fwrite`, `fseek`, `fclose`).
-- **`stdlib.h` (`libc/stdlib.py`)**: Buddy-heap allocator (`malloc`, `calloc`, `realloc`, `free`), numerical conversions (`atoi`, `itoa`), quicksort (`qsort`), pseudo-random generator (`rand`).
-- **`math.h` (`libc/math.py`)**: Fixed-point and IEEE floating-point trigonometry (`sin`, `cos`, `tan`), power (`pow`, `sqrt`), logarithms (`log`, `exp`), and absolute values.
-
-### Block K -- Hardware Drivers & VirtIO Bus Architecture
-- **VirtIO v1.0 Ring Buffers (`virtio_ring.py`)**: Standard split virtqueues with Descriptor Tables, Available Rings, and Used Rings.
-- **VirtIO Block Driver (`virtio_blk.py`)**: Asynchronous sector-level storage device requests.
-- **VirtIO Network Adapter (`virtio_net.py`)**: High-throughput packet receive and transmit virtqueues.
-- **PCI Host Controller (`pci.py`)**: Type-0 and Type-1 PCI configuration space address decoding and device discovery.
-- **Motorola MC146818 RTC (`rtc.py`)**: BCD-decoded hardware CMOS real-time calendar and clock.
-
-### Block L -- Transmission Control Protocol (TCP/IP)
-- **RFC 793 State Machine (`net/tcp.py`)**: 11 standard states (`CLOSED`, `LISTEN`, `SYN_SENT`, `SYN_RECEIVED`, `ESTABLISHED`, `FIN_WAIT_1`, `FIN_WAIT_2`, `CLOSE_WAIT`, `CLOSING`, `LAST_ACK`, `TIME_WAIT`).
-- **Flow Control & Congestion**: Sequence and acknowledgment tracking, sliding window advertised receive buffer, selective acknowledgment, and retransmission timeouts.
-
-### Block M -- Layer-7 Application Protocols
-- **HTTP/1.1 Web Server (`net/protocols.py`)**: Full request parser, URI routing, MIME headers, `Content-Length` framing, and 404 response handler.
-- **RFC 1035 DNS Resolver (`net/protocols.py`)**: UDP query builder, response parser, and DNS label pointer decompression (`0xC00C`).
-- **RFC 2131 DHCP Client (`net/protocols.py`)**: Four-phase DORA state machine (`INIT` -> `SELECTING` -> `REQUESTING` -> `BOUND`) acquiring IP, subnet mask, and gateway.
-
-### Block N -- POSIX Userland Utilities & Command Shell
-- **Unix CoreUtils (`userland/coreutils.py`)**: Zero-dependency implementations of `cat`, `ls`, `cp`, `mv`, `rm`, `touch`, `echo`, `grep`, `wc`, `head`, `tail`, `sha256sum`, `uname`.
-- **Command Shell Interpreter (`userland/sh.py`)**: Environment variable expansion (`$VAR`), multi-stage piping (`cmd1 | cmd2 | cmd3`), and file redirection (`>`, `>>`).
-
-### Block O -- SovereignSQL Relational Database Engine
-- **Relational Storage Engine (`db/engine.py`)**: Strongly-typed schemas (`INT`, `FLOAT`, `TEXT`, `BOOL`).
-- **SQL Parser**: Supports `CREATE TABLE`, `INSERT INTO`, `SELECT ... WHERE`, `UPDATE ... WHERE`, `DELETE FROM`.
-- **ACID Transactions & WAL**: `BEGIN`, `COMMIT`, and `ROLLBACK` restoring transactional snapshots; write-ahead log recovery.
-
-### Block P -- Sovereign Window Server & 2D Vector GUI
-- **Canvas2D Graphics Toolkit (`ui/canvas2d.py`)**: 32-bit ARGB framebuffer rasterizer, Bresenham line drawing, anti-aliased circles, solid/rounded rectangles, scissor clipping stacks, and alpha blending.
-- **Widget Hierarchy (`ui/widgets.py`)**: `Label`, `Button`, `TextBox` (text editing, backspace, focus), `Slider` (draggable value tracking), `WindowWidget` (titlebar drag, minimize, close).
-- **Window Server & Compositor (`ui/window_server.py`)**: Multi-window Z-order compositor, active window promotion, mouse pointer rendering, event dispatch.
-
-### Block Q -- Multi-Core Symmetric Multiprocessing (SMP)
-- **Multi-Hart Hardware Model (`smp/cpu_core.py`)**: Multi-threaded RISC-V execution contexts, per-CPU caches, and Core Local Interruptor (CLINT) MSIP registers.
-- **Synchronization**: Fair FIFO `TicketLock` preventing thread starvation.
-- **Inter-Processor Interrupts (IPI)**: Cross-core remote function dispatch (`smp_call_function`).
-- **Work-Stealing Scheduler (`smp/smp_scheduler.py`)**: Per-core runqueues with automatic thread migration and idle-core work stealing.
-
-### Block R -- Digital Audio Synthesis & DSP Studio
-- **Oscillators (`dsp/synth.py`)**: Sine, Square (PWM), Triangle, Sawtooth, and White Noise generators.
-- **Envelope & Filter**: 4-stage ADSR envelope generator (Attack, Decay, Sustain, Release) and 2-Pole Resonant Low-Pass Biquad Filter.
-- **PCM & WAV Packaging**: Polyphonic voice mixer serializing 16-bit 44.1kHz CD-quality RIFF/WAV audio files.
-
-### Block S -- Extensible Native Storage Architecture
-- **Microsoft FAT32 Driver (`vfs/fat32.py`)**: BIOS Parameter Block (BPB) parsing, File Allocation Table (FAT) cluster chain traversal, 32-byte directory entry decoding (8.3 filenames, size, cluster pointers).
-- **Linux Ext2 Driver (`vfs/ext2.py`)**: Superblock verification (Magic `0xEF53`), Block Group Descriptors (BGD), Inode table traversal (direct blocks `i_block[0..11]`), directory records (`ext2_dir_entry_2`).
-
-### Block T -- RFC 8446 Transport Layer Security (TLS 1.3)
-- **Record Layer Framing (`crypto/tls13.py`)**: Packs and unpackages TLS records (`handshake`, `application_data`, `alert`).
-- **RFC 5869 HKDF Key Schedule**: Computes `early_secret`, `handshake_secret`, and `master_secret`, deriving client/server handshake and application write keys.
-- **Authenticated Encryption**: ChaCha20-Poly1305 AEAD record encryption with sequence number nonces and Finished HMAC-SHA256 authentication tags.
-
-### Block U -- In-OS Debugger & GDB Remote Serial Protocol
-- **GDB Remote Protocol (`debug/gdb_stub.py`)**: `$packet#checksum` encoding, register inspection (`g`), memory reading/writing (`m`/`M`), and software breakpoints (`Z0`/`z0`) injecting `ebreak` opcodes.
-- **Call Stack Unwinder**: Reconstructs frame pointers (`s0`/`fp`) and return addresses (`ra`) to resolve function backtraces.
-
-### Block V -- Software OpenGL 1.1 3D Graphics Engine
-- **Matrix Stack Pipeline (`gl/gl_core.py`)**: `GL_MODELVIEW` and `GL_PROJECTION` stacks, `glLoadIdentity`, `glPushMatrix`, `glPopMatrix`, `glTranslatef`, `glScalef`, `gluPerspective`.
-- **Rasterization & Depth Buffer**: Barycentric coordinate triangle rasterizer with 32-bit floating-point Z-buffering (depth testing), Gouraud color interpolation, and Blinn-Phong lighting.
-
-### Block W -- Cyberpunk Spatial Environment & 3D Physics
-- **Vector & Quaternion Math (`spatial/physics3d.py`)**: 3D vector operations (dot, cross, norm) and orientation quaternions.
-- **Rigid Body Dynamics**: Symplectic Euler numerical integrator computing linear velocity and position under gravity and forces.
-- **Impulse Collisions**: Sphere-sphere collision resolution with elastic restitution coefficients.
-- **Hierarchical Octree**: 8-way spatial subdivision tree accelerating broad-phase spatial queries from O(N^2) to O(N log N).
-
-### Block X -- Web Engine & Hypertext Layout Browser
-- **HTML/XML Parser (`browser/layout_engine.py`)**: Tokenizes tags, attributes, and text nodes into an in-memory Document Object Model (DOM) tree.
-- **CSS Cascade Engine**: Parses stylesheet rules and cascades calculated styles down DOM nodes.
-- **Box Model Layout**: Calculates geometry for block and inline formatting contexts; extracts clickable hyperlink hitboxes.
-
-### Block Y -- Sovereign Dynamic Bytecode VM & Lisp Engine
-- **S-Expression Parser (`bytecode/lisp_vm.py`)**: Tokenizes and parses recursive Lisp AST forms.
-- **Bytecode Compiler**: Lowers forms into a 16-opcode stack-based Virtual Machine ISA with jump relocation.
-- **Virtual Machine Runtime**: Activation call frames, local variable scoping, arithmetic evaluation, and recursive execution (e.g. factorial/fibonacci).
-
-### Block Z -- Type-1 Hypervisor & Master Integration Matrix
-- **RISC-V H-Extension Hypervisor (`core/hypervisor.py`)**: Hardware virtualization supporting Virtual Supervisor (VS) and Virtual User (VU) modes, hypervisor CSRs (`hstatus`, `hedeleg`, `hideleg`, `hgatp`).
-- **Stage-2 Nested Paging (SLAT)**: Translates Guest Physical Addresses (GPA) to Host Physical Addresses (HPA) with page-fault trapping.
-- **VM-Exit Trapping**: Intercepts guest MMIO accesses, virtualizes virtual devices, advances guest PC, and resumes execution.
-- **Master Sovereign System Matrix (`core/system_matrix.py`)**: Automated cross-subsystem orchestration test verifying MMU, SMP, Crypto, Storage, Graphics, Physics, Web, and Bytecode engines concurrently.
+1. **Sovereign Web Browser**: Live HTML/CSS layout renderer supporting heading hierarchy, paragraphs, bordered boxes, inline hyperlinks, and scrollable DOM viewports.
+2. **SovereignSQL Terminal**: Interactive relational database shell with live schema tables, query execution (`SELECT`, `INSERT`, `UPDATE`), ACID transactions, and Write-Ahead Logging status.
+3. **Sovereign Lisp REPL**: Interactive dynamic bytecode compiler with recursive call frames, variable environment bindings, and arithmetic evaluation (`(+ (* 3 4) 5)`).
+4. **OpenGL 3D Interactive Viewer**: Real-time rotating 3D software pipeline with wireframe and solid rendering modes, Z-buffering, perspective projection, and interactive pause/resume.
+5. **Sovereign File Explorer**: Dual-filesystem storage inspector capable of mounting and browsing Linux Ext2 and Microsoft FAT32 disk images with direct file inspection.
+6. **Network & Cryptography Monitor**: Live telemetry dashboard tracking active TCP socket states (SYN, ESTABLISHED, FIN), TLS 1.3 handshake cryptographic keys, and SHA-256 integrity verification.
+7. **Sovereign Terminal Shell**: Bare-metal POSIX command shell supporting multi-stage pipelines, I/O redirection, environment variables, and Unix core utilities (`cat`, `grep`, `wc`, `ls`).
+8. **Paint Studio & Calculator**: Interactive mouse canvas with color swatches, brush tool, and 32-bit hardware arithmetic calculator.
 
 ---
 
-## 5. Quick Start Guide
+## 5. The 4 Deepening Passes
 
-### Running the Full 40-Subsystem Regression Test Suite
+### Pass 1: Core Systems & Toolchain Deepening
+- **C99 Macro Preprocessor (`compiler/preprocessor.py`)**: Function-like macros with variable arguments, token concatenation (`##`), stringification (`#`), conditional compilation (`#ifdef`, `#ifndef`, `#if`, `#elif`, `#else`, `#endif`), `#include` resolution via VFS, and `#pragma once` header deduplication.
+- **Rich C Type System (`compiler/c_types.py`)**: Struct layout with natural 4-byte RISC-V alignment and padding calculation, union overlapping offsets, typedef aliases, and scaled pointer arithmetic.
+- **Copy-On-Write (COW) Page Frame Allocator (`mmu/page_alloc.py`)**: Manages 16,384 4KB page frames across 64MB physical RAM. Implements CLOCK (second chance) page eviction, reference-counted page frames, read-only COW page duplication, and page-fault copy resolution.
+- **Kernel Threads & Synchronization (`proc/threads.py`)**: Thread Control Blocks (TCB), 4-state lifecycle (`READY`, `RUNNING`, `BLOCKED`, `TERMINATED`), priority-based preemptive thread scheduler, sleeping Mutexes, Condition Variables (`wait`, `signal`, `broadcast`), and Counting Semaphores.
+
+### Pass 2: Security & Communications Deepening
+- **ASN.1 DER X.509 Certificate Decoder (`crypto/x509.py`)**: Recursive Type-Length-Value (TLV) decoder, X.500 Distinguished Name parser (CN, O, OU, C), Object Identifier (OID) database, RSA public key and exponent extractor, and certificate validity period verification.
+- **FIPS 197 AES Block Cipher (`crypto/aes.py`)**: AES-128, AES-192, and AES-256 block cipher with S-box Galois Field $GF(2^8)$ transformations, ShiftRows, MixColumns, AddRoundKey, and operating modes: ECB, CBC with initialization vector (IV) and PKCS#7 padding, and CTR streaming counter mode.
+- **RFC 5681 TCP Reno Congestion Control (`net/tcp_congestion.py`)**: Slow Start phase (exponential cwnd growth), Congestion Avoidance phase (additive increase / multiplicative decrease), Fast Retransmit on 3 duplicate ACKs, and Fast Recovery.
+- **RFC 6455 WebSocket Protocol Engine (`net/websocket.py`)**: Binary/Text framing, XOR client payload unmasking, fragmentation reassembly, and pure in-house SHA-1 / Base64 `Sec-WebSocket-Accept` handshake token calculation.
+
+### Pass 3: Storage & Relational Database Deepening
+- **Ext2 Multi-Level Indirect Block Addressing (`vfs/ext2_deep.py`)**: Direct block pointers (`i_block[0..11]`), Single Indirect pointers (`i_block[12]`), Double Indirect pointers (`i_block[13]`), and Triple Indirect pointers (`i_block[14]`), supporting file sizes up to 4GB. Implements `bmap` logical-to-physical translation and hierarchical path resolution (`/usr/bin/sh`).
+- **Disk B+ Tree Index Engine (`db/bplus_tree.py`)**: Order-M B+ Tree index with internal node routing, leaf node splitting with median promotion, logarithmic search, and bidirectional leaf sibling pointers for high-throughput range scans (`range_query(low, high)`).
+- **Volcano Relational Query Planner (`db/query_planner.py`)**: Volcano iterator execution model (`open`, `next`, `close`), physical operator tree (`SeqScanNode`, `IndexScanNode`, `FilterNode`, `ProjectNode`), in-memory Hash Join (`HashJoinNode`), and streaming Aggregates (`AggregateNode`: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` with optional `GROUP BY`).
+
+### Pass 4: 3D Graphics, Physics & Audio DSP Deepening
+- **Software OpenGL 2D Textures & Bilinear Filtering (`gl/gl_texture.py`)**: Texture object management, nearest-neighbor (`GL_NEAREST`), 4-texel bilinear interpolation (`GL_LINEAR`), coordinate wrap modes (`GL_REPEAT`, `GL_CLAMP_TO_EDGE`), and texture coordinate mapping.
+- **Blinn-Phong Lighting Pipeline (`gl/gl_lighting.py`)**: Physically based lighting with ambient, Lambertian diffuse, and Blinn-Phong specular halfway vector computation. Supports directional and point light sources with distance attenuation.
+- **6-DOF Rigid Body Dynamics Engine (`spatial/rigidbody3d.py`)**: Six degrees of freedom Newtonian motion with mass, 3x3 inertia tensor matrix, angular velocity, orientation quaternions, torque cross products ($\boldsymbol{\tau} = \mathbf{r} \times \mathbf{F}$), and ground collision restitution with Coulomb friction.
+- **4-Channel Polyphonic Audio Tracker Studio (`dsp/tracker_studio.py`)**: 4-voice polyphonic synthesizer supporting Sine, Square, Triangle, Sawtooth, and White Noise oscillators, per-channel 4-stage ADSR volume envelopes, hyperbolic tangent (`tanh`) soft-clipping audio limiter, and 44.1kHz 16-bit stereo WAV stream encoding.
+
+---
+
+## 6. Quick Start Guide
+
+### Running the Full 45-Subsystem Regression Test Suite
 ```bash
 python build.py --test
+```
+
+### Launching the Unified Sovereign Master Desktop (All 8 Integrated Apps)
+```bash
+python build.py --desktop
 ```
 
 ### Launching the Bare-Metal Assembly Desktop (Interactive GUI)
 ```bash
 python build.py
 ```
-Contains:
-* Interactive Paint Studio (click swatches to paint, click [CLEAR] to wipe).
-* Bare-Metal Calculator (hardware RISC-V integer arithmetic: 7 + 5 = 12).
-* Taskbar with Start Pill, hardware clock, and drop-down menu.
 
 ### Launching the Sovereign Cyber Shell (Interactive Command Terminal)
 ```bash
 python build.py --shell
 ```
-Available Shell Commands:
-* `oracle [n]` -- Consult the hardware entropy oracle for n scientific/philosophical words.
-* `axiom` -- Generate a philosophical or scientific axiom.
-* `synth [mode]` -- Compose and synthesize an algorithmic 4-part baroque counterpoint piece (`Major`, `Minor`, `Dorian`, `Lydian`, `Mixolydian`).
-* `citadel` -- Render the 3D Cyber Citadel wireframe into the framebuffer.
-* `palloc` -- Display physical 4KB page frame allocator status (16,384 pages / 64MB).
-* `tasks` / `ps` -- Display active Task Control Blocks (TCBs) and scheduler states.
-* `ls` -- List contiguous files on the virtual hard disk via AdiFS.
-* `cat <file>` -- Read and display file contents directly from disk.
-* `disk` -- Display virtual disk superblock and drive geometry.
-* `matrix` -- Display sovereign cyberpunk cyberspace banner.
 
 ### Launching the CastleAdiOS 3D Dungeon Crawler
 ```bash
 python build.py --castle
-```
-* **Controls**: `W/S` (Move forward/back), `A/D` (Turn left/right), `Q/E` (Strafe left/right), `Space` (Fire / Open).
-
-### Launching the Sovereign Multi-Window Desktop
-```bash
-python build.py --desktop
 ```
 
 ### Launching the StarFlight 3D Flight Simulator
@@ -330,10 +242,77 @@ python build.py --run scripts/cube3d.ap
 
 ---
 
-## 6. Complete Repository Layout
+## 7. Complete Repository Layout
 
 ```text
 adios/
+|-- desktop/                # Unified Sovereign Master Desktop & Windowing
+|   |-- master_desktop.py   # Unified Master Desktop Compositor & 8 Integrated Apps
+|   |-- font.py             # 95-glyph 8x8 ASCII font bitmap loader
+|   |-- window_manager.py   # Z-order window compositor
+|   |-- desktop.py          # Framebuffer desktop driver
+|   `-- editor.py           # AdiIDE in-OS code editor with syntax highlighting
+|-- compiler/               # In-OS C99 / AdiC Toolchain & Preprocessor
+|   |-- preprocessor.py     # C99 macro expansion, token pasting, stringification
+|   |-- c_types.py          # Struct layout, natural alignment, unions, typedefs
+|   |-- c_lexer.py          # Stream tokenizer for C keywords, literals, ops
+|   |-- c_parser.py         # Recursive-descent AST parser with type system
+|   |-- c_codegen.py        # Native RV32IM assembly code generator
+|   `-- elf32.py            # Standard RISC-V ELF32 executable binary builder
+|-- mmu/                    # Virtual Memory, Paging & Frame Allocation
+|   |-- page_alloc.py       # 64MB Page Frame Allocator, CLOCK Eviction & COW
+|   |-- sv32.py             # RISC-V Sv32 2-level paging & hardware page faults
+|   |-- tlb.py              # 64-entry fully associative TLB with LRU & sfence.vma
+|   `-- address_space.py    # Process address space manager & 64MB identity maps
+|-- proc/                   # Process, Threads, Signals & IPC Subsystem
+|   |-- threads.py          # Kernel TCBs, priority scheduler, Mutexes, CondVars
+|   |-- process.py          # TaskControlBlock & parent-child process lifecycle
+|   |-- signals.py          # POSIX & Sovereign 32-signal dispatcher & sigreturn
+|   |-- ipc.py              # Ring-buffer pipes, priority MQs, shm, mutexes
+|   |-- scheduler.py        # MLFQ 4-band preemptive scheduler & priority boost
+|   `-- syscall.py          # RISC-V ecall ABI system call dispatcher
+|-- crypto/                 # In-House Cryptographic Subsystem
+|   |-- x509.py             # ASN.1 DER recursive decoder, OID & X.509 cert parser
+|   |-- aes.py              # FIPS 197 AES-128/192/256 cipher (ECB, CBC, CTR)
+|   |-- sha256.py           # FIPS 180-4 SHA-256 & RFC 2104 HMAC-SHA256
+|   |-- chacha20.py         # RFC 7539 ChaCha20 256-bit stream cipher
+|   |-- poly1305.py         # RFC 7539 Poly1305 MAC & ChaCha20-Poly1305 AEAD
+|   |-- tls13.py            # RFC 8446 TLS 1.3 Record Layer & HKDF Key Schedule
+|   `-- disk_crypto.py      # Encrypted virtual disk block storage driver
+|-- net/                    # Networking, Transports & Application Protocols
+|   |-- tcp_congestion.py   # RFC 5681 TCP Reno (Slow Start, Avoidance, Fast Recovery)
+|   |-- websocket.py        # RFC 6455 WebSocket Framing & SHA-1 Handshake
+|   |-- slip.py             # RFC 1055 SLIP packet framing driver
+|   |-- ipv4.py             # Ethernet II, ARP, and IPv4 header engine
+|   |-- transport.py        # ICMP echo, UDP sockets, and NetworkStack
+|   |-- tcp.py              # RFC 793 Transmission Control Protocol engine
+|   |-- protocols.py        # HTTP/1.1 Web Server, DNS Resolver, DHCP DORA
+|   `-- telnet.py           # RFC 854 Sovereign Cyber Telnet server
+|-- vfs/                    # Filesystems & Storage Architectures
+|   |-- ext2_deep.py        # Multi-level indirect block resolver (direct, 1, 2, 3)
+|   |-- ext2.py             # Linux Ext2 superblock, inodes, directory entries
+|   `-- fat32.py            # Microsoft FAT32 BPB, cluster chains, 8.3 directory
+|-- db/                     # Relational Database, Indexing & Query Planning
+|   |-- bplus_tree.py       # Order-M Disk B+ Tree with node splits & range queries
+|   |-- query_planner.py    # Volcano iterator execution model & Hash Joins
+|   `-- engine.py           # SovereignSQL relational engine, parser, ACID, WAL
+|-- gl/                     # Software OpenGL 1.1 3D Graphics Engine
+|   |-- gl_texture.py       # 2D Texture sampler, GL_LINEAR bilinear filter, wrap modes
+|   |-- gl_lighting.py      # Blinn-Phong ambient/diffuse/specular lighting model
+|   `-- gl_core.py          # Fixed-function pipeline, matrix stack, Z-buffer
+|-- spatial/                # 3D Physics & Rigid Body Dynamics
+|   |-- rigidbody3d.py      # 6-DOF Newtonian dynamics, inertia tensor, torques
+|   `-- physics3d.py        # Rigid dynamics, impulse restitution, Octree
+|-- dsp/                    # Digital Audio Synthesis & Sound Studios
+|   |-- tracker_studio.py   # 4-channel polyphonic synth, ADSR, tanh limiter, WAV
+|   `-- synth.py            # Oscillators (Sine, Saw, PWM), Biquad filter, WAV
+|-- browser/                # Web Engine & Hypertext Layout Browser
+|   `-- layout_engine.py    # HTML/CSS parser, DOM tree, Box Model flow
+|-- bytecode/               # Sovereign Dynamic Bytecode VM & Lisp Engine
+|   `-- lisp_vm.py          # S-Expression compiler, call frames, stack VM
+|-- core/                   # Type-1 Hypervisor & Master Integration
+|   |-- hypervisor.py       # RISC-V H-Extension, Stage-2 nested paging (SLAT)
+|   `-- system_matrix.py    # Cross-subsystem autonomous verification
 |-- adipython/              # In-house systems programming language
 |   |-- lexer.py            # Stream tokenizer
 |   |-- parser.py           # Recursive-descent AST parser
@@ -345,12 +324,6 @@ adios/
 |   |-- jit.py              # Native RV32IM machine code generator
 |   |-- disassembler.py     # RV32IM runtime disassembler
 |   `-- stdlib/             # Advanced systems standard library
-|       |-- trees.ap        # Balanced Binary Search Trees (AVL/BST)
-|       |-- hashmap.ap      # Open-addressed hash table with linear probing
-|       |-- heap.ap         # Binary Min-Heap Priority Queue
-|       |-- matrix3d.ap     # Fixed-point 4x4 matrix & quaternion math
-|       |-- memory_pool.ap  # Slab allocator & Arena scratchpad pools
-|       `-- string_lib.ap   # Dynamic StringBuilder & string algorithms
 |-- kernel/                 # Core bare-metal RISC-V assembly kernel
 |   |-- sched.s             # Preemptive multi-tasking scheduler (TCBs)
 |   |-- mem_manager.s       # Dual-heap 16,384 physical page frame allocator
@@ -363,39 +336,6 @@ adios/
 |   |-- hymn.py             # Algorithmic 4-part SATB polyphonic synthesizer
 |   |-- sanctuary3d.py      # 3D Cyber Citadel & Quantum Core wireframe engine
 |   `-- holy_shell.py       # Unified interactive Sovereign Cyber Shell
-|-- net/                    # Networking & communications subsystem
-|   |-- slip.py             # RFC 1055 SLIP packet framing driver
-|   |-- ipv4.py             # Ethernet II, ARP, and IPv4 header engine
-|   |-- transport.py        # ICMP echo, UDP sockets, and NetworkStack
-|   |-- tcp.py              # RFC 793 Transmission Control Protocol engine
-|   |-- protocols.py        # HTTP/1.1 Web Server, DNS Resolver, DHCP DORA
-|   `-- telnet.py           # RFC 854 Sovereign Cyber Telnet server
-|-- crypto/                 # In-house cryptographic subsystem
-|   |-- sha256.py           # FIPS 180-4 SHA-256 & RFC 2104 HMAC-SHA256
-|   |-- chacha20.py         # RFC 7539 ChaCha20 256-bit stream cipher
-|   |-- poly1305.py         # RFC 7539 Poly1305 MAC & ChaCha20-Poly1305 AEAD
-|   |-- tls13.py            # RFC 8446 TLS 1.3 Record Layer & HKDF Key Schedule
-|   `-- disk_crypto.py      # Encrypted virtual disk block storage driver
-|-- mmu/                    # Virtual memory & hardware MMU subsystem
-|   |-- sv32.py             # RISC-V Sv32 2-level paging & hardware page faults
-|   |-- tlb.py              # 64-entry fully associative TLB with LRU & sfence.vma
-|   `-- address_space.py    # Process address space manager & 64MB identity maps
-|-- proc/                   # Process, signals & IPC subsystem
-|   |-- process.py          # TaskControlBlock & parent-child process lifecycle
-|   |-- signals.py          # POSIX & Sovereign 32-signal dispatcher & sigreturn
-|   |-- ipc.py              # Ring-buffer pipes, priority MQs, shm, mutexes
-|   |-- scheduler.py        # MLFQ 4-band preemptive scheduler & priority boost
-|   `-- syscall.py          # RISC-V ecall ABI system call dispatcher
-|-- compiler/               # In-OS C99 / AdiC native self-hosting compiler
-|   |-- c_lexer.py          # Stream tokenizer for C keywords, literals, ops
-|   |-- c_parser.py         # Recursive-descent AST parser with type system
-|   |-- c_codegen.py        # Native RV32IM assembly code generator
-|   `-- elf32.py            # Standard RISC-V ELF32 executable binary builder
-|-- libc/                   # Zero-Dependency Standard C Library
-|   |-- string.py           # strlen, strcmp, strstr, strcpy, memcpy, memset
-|   |-- stdio.py            # sprintf, snprintf, fopen, fread, fwrite, fseek
-|   |-- stdlib.py           # malloc, free, calloc, realloc, atoi, qsort, rand
-|   `-- math.py             # sin, cos, tan, sqrt, pow, exp, log, fabs
 |-- drivers/                # Hardware device drivers & bus architecture
 |   |-- virtio_ring.py      # VirtIO v1.0 standard split virtqueues
 |   |-- virtio_blk.py       # VirtIO block storage sector I/O driver
@@ -405,8 +345,6 @@ adios/
 |-- userland/               # POSIX & sovereign userland utilities & shell
 |   |-- coreutils.py        # cat, ls, cp, mv, rm, touch, wc, grep, sha256sum
 |   `-- sh.py               # POSIX shell with pipelines and redirections
-|-- db/                     # SovereignSQL relational database engine
-|   `-- engine.py           # SQL parser, ACID transactions, WAL recovery
 |-- ui/                     # Vector GUI toolkit & Window Server
 |   |-- canvas2d.py         # 2D vector primitives, clipping, alpha blend
 |   |-- widgets.py          # Hierarchy, Button, TextBox, Slider, Window
@@ -414,24 +352,20 @@ adios/
 |-- smp/                    # Multi-Core SMP & Microkernel IPC
 |   |-- cpu_core.py         # Harts, CLINT MSIP IPI, TicketLock
 |   `-- smp_scheduler.py    # Work-stealing multi-queue task scheduler
-|-- desktop/                # Sovereign Desktop Environment
-|   |-- window_manager.py   # Multi-window Z-order compositor
-|   |-- desktop.py          # Taskbar, Start Pill, and app integration
-|   `-- editor.py           # In-OS AdiIDE code editor with syntax highlighting
+|-- libc/                   # Zero-Dependency Standard C Library
+|   |-- string.py           # strlen, strcmp, strstr, strcpy, memcpy, memset
+|   |-- stdio.py            # sprintf, snprintf, fopen, fread, fwrite, fseek
+|   |-- stdlib.py           # malloc, free, calloc, realloc, atoi, qsort, rand
+|   `-- math.py             # sin, cos, tan, sqrt, pow, exp, log, fabs
 |-- games/                  # 3D Games & Graphics
 |   |-- castle3d.py         # CastleAdiOS 3D DDA raycaster engine
 |   `-- flight3d.py         # StarFlight 3D perspective flight simulator
 |-- fs/                     # Filesystem
 |   `-- adifs.py            # AdiFS contiguous block filesystem driver
-|-- vfs/                    # Native Storage Architecture
-|   |-- fat32.py            # Microsoft FAT32 filesystem driver
-|   `-- ext2.py             # Linux Ext2 filesystem driver
 |-- doldoc/                 # DolDoc Hypertext Subsystem
 |   `-- doldoc.py           # Universal hypertext markup parser & renderer
 |-- sound/                  # Audio Subsystems
 |   `-- tracker.py          # PC Speaker music tracker & synthesizer
-|-- dsp/                    # Digital Audio Synthesis & DSP Studio
-|   `-- synth.py            # Oscillators, ADSR, Biquad filter, WAV
 |-- vm/                     # In-house hardware simulation layer
 |   |-- vm.py               # 64MB RV32IM CPU core with decode cache
 |   `-- display.py          # 640x480 Framebuffer window & mouse driver
@@ -440,23 +374,18 @@ adios/
 |   `-- disasm.py           # RV32IM disassembler
 |-- debug/                  # In-OS Debugger & GDB Remote Serial Protocol
 |   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
-|-- gl/                     # Software OpenGL 1.1 3D Graphics Engine
-|   `-- gl_core.py          # Fixed-function pipeline, matrix stack, Z-buffer
-|-- spatial/                # 3D Physics Engine & Spatial Partitioning
-|   `-- physics3d.py        # Rigid dynamics, impulse restitution, Octree
-|-- browser/                # Web Engine & Hypertext Layout Browser
-|   `-- layout_engine.py    # HTML/CSS parser, DOM tree, Box Model flow
-|-- bytecode/               # Sovereign Dynamic Bytecode VM & Lisp Engine
-|   `-- lisp_vm.py          # S-Expression compiler, call frames, stack VM
-|-- core/                   # Type-1 Hypervisor & Master Integration
-|   |-- hypervisor.py       # RISC-V H-Extension, Stage-2 nested paging (SLAT)
-|   `-- system_matrix.py    # Cross-subsystem autonomous verification
-|-- tests/                  # 40 Automated Subsystem Test Suites
+|-- tests/                  # 45 Automated Subsystem Test Suites
+|   |-- test_master_desktop.py # Sovereign Master Desktop & 8 GUI applications
+|   |-- test_deep_pass1.py     # C Preprocessor, Types, COW Paging, Threads
+|   |-- test_deep_pass2.py     # X.509 DER, AES Modes, TCP Reno, WebSocket
+|   |-- test_deep_pass3.py     # Ext2 Indirect, B+ Tree, Volcano Query Planner
+|   |-- test_deep_pass4.py     # GL Textures, Blinn-Phong, 6-DOF, Audio Tracker
+|   `-- ...                    # 40 Subsystem Block Regression Suites
 `-- build.py                # Unified build, test, and launcher driver
 ```
 
 ---
 
-## 7. License
+## 8. License
 
 AdiOS is sovereign, open-source software released under the **MIT License**.
