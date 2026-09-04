@@ -7,6 +7,37 @@ Zero external dependencies.
 
 import os
 
+class FontDict(dict):
+    """
+    Transparent dictionary that allows lookup by either character string ('A')
+    or integer ASCII code (65), while maintaining an exact length of 95 characters.
+    """
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            val = super().get(key, None)
+            if val is not None:
+                return val
+            if 0 <= key <= 255:
+                return super().__getitem__(chr(key))
+        return super().__getitem__(key)
+
+    def get(self, key, default=None):
+        if isinstance(key, int):
+            val = super().get(key, None)
+            if val is not None:
+                return val
+            if 0 <= key <= 255:
+                return super().get(chr(key), default)
+            return default
+        if isinstance(key, str):
+            val = super().get(key, None)
+            if val is not None:
+                return val
+            if len(key) == 1:
+                return super().get(ord(key), default)
+            return default
+        return super().get(key, default)
+
 _DEFAULT_FONT = None
 
 def get_default_font():
@@ -14,7 +45,7 @@ def get_default_font():
     if _DEFAULT_FONT is not None:
         return _DEFAULT_FONT
 
-    font = {}
+    font = FontDict()
     path = os.path.join(os.path.dirname(__file__), "..", "kernel", "font8x8.s")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:

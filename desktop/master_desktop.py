@@ -72,7 +72,7 @@ class MasterDesktop:
         self.height = height
         self.font = get_default_font()
         self.wm = WindowManager(width=self.width, height=self.height)
-        self.engine3d = Engine3D(vm)
+        self.engine3d = Engine3D(vm, width=self.width, height=self.height)
         self.start_menu_open = False
         self.status_message = "AdiOS Sovereign Workstation (1024x768 XGA) Ready."
         self.active_input_target = "shell"
@@ -324,7 +324,7 @@ class MasterDesktop:
         for ch in text:
             if curr_x + 8 > max_x:
                 break
-            glyph = self.font.get(ord(ch), self.font.get(ord("?"), None))
+            glyph = self.font.get(ch, self.font.get(ord(ch), self.font.get("?", self.font.get(ord("?"), None))))
             if glyph:
                 for row in range(8):
                     py = y + row

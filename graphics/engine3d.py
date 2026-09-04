@@ -193,21 +193,31 @@ def create_starfighter(length=120.0):
 # ------------------------------------------------------------------------------
 
 class Engine3D:
-    def __init__(self, vm=None, enable_zbuf=False):
+    def __init__(self, vm=None, enable_zbuf=False, width: int = WIDTH, height: int = HEIGHT):
         self.vm = vm
         self.enable_zbuf = enable_zbuf
-        self.z_buffer = [1e9] * (WIDTH * HEIGHT)
+        if vm and hasattr(vm, "fb") and vm.fb and len(vm.fb) >= 1024 * 768 * 4:
+            self.width = 1024
+            self.height = 768
+        else:
+            self.width = width
+            self.height = height
+        self.half_w = self.width // 2
+        self.half_h = self.height // 2
+        self.z_buffer = [1e9] * (self.width * self.height)
         self.light_dir = Vector3(0.577, 0.577, -0.577).normalized()
 
     def clear_z_buffer(self):
-        self.z_buffer = [1e9] * (WIDTH * HEIGHT)
+        self.z_buffer = [1e9] * (self.width * self.height)
 
-    def project_vertex(self, v, center_x=HALFW, center_y=HALFH):
+    def project_vertex(self, v, center_x=None, center_y=None):
         """Perspective projection: v.z is distance into screen."""
         if v.z <= 5.0:
             return None
-        sx = int(center_x + (v.x * FOCAL) / v.z)
-        sy = int(center_y - (v.y * FOCAL) / v.z)
+        cx = self.half_w if center_x is None else center_x
+        cy = self.half_h if center_y is None else center_y
+        sx = int(cx + (v.x * FOCAL) / v.z)
+        sy = int(cy - (v.y * FOCAL) / v.z)
         return (sx, sy, v.z)
 
     def shade_color(self, base_color, normal):
@@ -220,10 +230,17 @@ class Engine3D:
         b = int((base_color & 0xFF) * factor)
         return (r << 16) | (g << 8) | b
 
-    def render_mesh(self, mesh, pos, rot, wireframe=False, center_x=HALFW, center_y=HALFH, clip_rect=None):
+    def render_mesh(self, mesh, pos=None, rot=None, wireframe=False, center_x=None, center_y=None, clip_rect=None, color=None, **kwargs):
         """Renders 3D mesh with Euler rotation, backface culling, depth sort, and flat shading."""
-        if not self.vm:
+        if not self.vm or not mesh:
             return
+
+        if pos is None:
+            pos = Vector3(0, 0, 100)
+        if rot is None:
+            rot = Vector3(0, 0, 0)
+        cx_val = self.half_w if center_x is None else center_x
+        cy_val = self.half_h if center_y is None else center_y
 
         fb = self.vm.fb
         # Precompute rotation trigonometry
@@ -274,32 +291,35 @@ class Engine3D:
                 continue # Faces away from camera
 
             # Project vertices to 2D screen coordinates
-            p0 = self.project_vertex(v0, center_x=center_x, center_y=center_y)
-            p1 = self.project_vertex(v1, center_x=center_x, center_y=center_y)
-            p2 = self.project_vertex(v2, center_x=center_x, center_y=center_y)
+            p0 = self.project_vertex(v0, center_x=cx_val, center_y=cy_val)
+            p1 = self.project_vertex(v1, center_x=cx_val, center_y=cy_val)
+            p2 = self.project_vertex(v2, center_x=cx_val, center_y=cy_val)
             if p0 is None or p1 is None or p2 is None:
                 continue
 
             avg_z = (v0.z + v1.z + v2.z) / 3.0
-            lit_color = self.shade_color(face.base_color, normal)
+            if color is not None:
+                lit_color = color if wireframe else self.shade_color(color, normal)
+            else:
+                lit_color = self.shade_color(face.base_color, normal)
             drawable_faces.append((avg_z, p0, p1, p2, lit_color))
 
         # 3. Sort faces by descending depth (Painter's Algorithm)
         drawable_faces.sort(key=lambda item: item[0], reverse=True)
 
         # 4. Rasterize faces
-        for _, p0, p1, p2, color in drawable_faces:
+        for _, p0, p1, p2, f_col in drawable_faces:
             if wireframe:
-                self.draw_line(p0[0], p0[1], p1[0], p1[1], color, clip_rect=clip_rect)
-                self.draw_line(p1[0], p1[1], p2[0], p2[1], color, clip_rect=clip_rect)
-                self.draw_line(p2[0], p2[1], p0[0], p0[1], color, clip_rect=clip_rect)
+                self.draw_line(p0[0], p0[1], p1[0], p1[1], f_col, clip_rect=clip_rect)
+                self.draw_line(p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect)
+                self.draw_line(p2[0], p2[1], p0[0], p0[1], f_col, clip_rect=clip_rect)
             else:
-                self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], color, clip_rect=clip_rect)
+                self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect)
 
     def draw_line(self, x0, y0, x1, y1, color, clip_rect=None):
         fb = self.vm.fb
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        min_x, min_y, max_x, max_y = (0, 0, WIDTH - 1, HEIGHT - 1) if clip_rect is None else clip_rect
+        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
         dx = abs(x1 - x0)
         dy = -abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
@@ -307,8 +327,8 @@ class Engine3D:
         err = dx + dy
 
         while True:
-            if min_x <= x0 <= max_x and min_y <= y0 <= max_y and 0 <= x0 < WIDTH and 0 <= y0 < HEIGHT:
-                off = (y0 * WIDTH + x0) * 4
+            if min_x <= x0 <= max_x and min_y <= y0 <= max_y and 0 <= x0 < self.width and 0 <= y0 < self.height:
+                off = (y0 * self.width + x0) * 4
                 fb[off:off+4] = c_bytes
             if x0 == x1 and y0 == y1:
                 break
@@ -324,7 +344,7 @@ class Engine3D:
         """Scanline triangle filler."""
         fb = self.vm.fb
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        min_x, min_y, max_x, max_y = (0, 0, WIDTH - 1, HEIGHT - 1) if clip_rect is None else clip_rect
+        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
 
         # Sort vertices by y: y0 <= y1 <= y2
         if y0 > y1: x0, x1 = x1, x0; y0, y1 = y1, y0
@@ -352,11 +372,11 @@ class Engine3D:
                 ax, bx = bx, ax
 
             curr_y = y0 + i
-            if min_y <= curr_y <= max_y and 0 <= curr_y < HEIGHT:
+            if min_y <= curr_y <= max_y and 0 <= curr_y < self.height:
                 start_x = max(min_x, max(0, ax))
-                end_x   = min(max_x, min(WIDTH - 1, bx))
+                end_x   = min(max_x, min(self.width - 1, bx))
                 if start_x <= end_x:
-                    off_start = (curr_y * WIDTH + start_x) * 4
+                    off_start = (curr_y * self.width + start_x) * 4
                     span_len = end_x - start_x + 1
                     fb[off_start : off_start + span_len * 4] = c_bytes * span_len
 
@@ -366,7 +386,7 @@ class Engine3D:
             return
         fb = self.vm.fb
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        min_x, min_y, max_x, max_y = (0, 0, WIDTH - 1, HEIGHT - 1) if clip_rect is None else clip_rect
+        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
 
         x0, y0, z0 = p0
         x1, y1, z1 = p1
@@ -403,9 +423,9 @@ class Engine3D:
                 az, bz = bz, az
 
             curr_y = y0 + i
-            if min_y <= curr_y <= max_y and 0 <= curr_y < HEIGHT:
+            if min_y <= curr_y <= max_y and 0 <= curr_y < self.height:
                 start_x = max(min_x, max(0, ax))
-                end_x   = min(max_x, min(WIDTH - 1, bx))
+                end_x   = min(max_x, min(self.width - 1, bx))
                 span = max(1, bx - ax)
 
                 for px in range(start_x, end_x + 1):
@@ -413,7 +433,7 @@ class Engine3D:
                     pz_inv = az + (bz - az) * t
                     pz = 1.0 / pz_inv if pz_inv > 1e-6 else 1e9
 
-                    buf_idx = curr_y * WIDTH + px
+                    buf_idx = curr_y * self.width + px
                     if pz < self.z_buffer[buf_idx]:
                         self.z_buffer[buf_idx] = pz
                         off = buf_idx * 4
