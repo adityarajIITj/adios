@@ -311,6 +311,49 @@ def run_desktop():
     disp = DisplayWindow(vm.fb, uart_callback=lambda c: None)
     vm.display = disp
 
+    # Direct event binding for instant interactive responsiveness
+    def on_mouse_down(event):
+        mx = max(0, min(639, event.x))
+        my = max(0, min(479, event.y))
+        desktop.handle_mouse_down(mx, my)
+
+    def on_mouse_up(event):
+        mx = max(0, min(639, event.x))
+        my = max(0, min(479, event.y))
+        desktop.handle_mouse_up(mx, my)
+
+    def on_mouse_move(event):
+        mx = max(0, min(639, event.x))
+        my = max(0, min(479, event.y))
+        desktop.handle_mouse_move(mx, my)
+
+    def on_mouse_drag(event):
+        mx = max(0, min(639, event.x))
+        my = max(0, min(479, event.y))
+        desktop.handle_mouse_move(mx, my)
+        # Fluid paint brush dragging in Paint Studio canvas
+        active_win = desktop.wm.get_window_at(mx, my) if hasattr(desktop, "wm") else None
+        if active_win and active_win.win_id == "paint" and not desktop.wm.dragging_win:
+            cx, cy, _, _ = active_win.client_rect
+            rel_x = mx - cx
+            rel_y = my - cy
+            if 24 <= rel_y <= 84 and 6 <= rel_x <= 190:
+                desktop.paint_strokes.append((mx, my, desktop.paint_color))
+
+    def on_key(event):
+        if event.char and len(event.char) == 1 and 32 <= ord(event.char) <= 126:
+            desktop.handle_key(event.char)
+        elif event.keysym == "BackSpace":
+            desktop.handle_key("\b")
+        elif event.keysym == "Return":
+            desktop.handle_key("\n")
+
+    disp.root.bind("<ButtonPress-1>", on_mouse_down, add="+")
+    disp.root.bind("<ButtonRelease-1>", on_mouse_up, add="+")
+    disp.root.bind("<Motion>", on_mouse_move, add="+")
+    disp.root.bind("<B1-Motion>", on_mouse_drag, add="+")
+    disp.root.bind("<Key>", on_key, add="+")
+
     print("[AdiOS Desktop] 640x480 Sovereign Master Desktop Running. Close window to exit.")
     last_frame = time.time()
     try:
