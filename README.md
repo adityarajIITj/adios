@@ -238,7 +238,7 @@ The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies a
 7. **Sovereign Terminal Shell**: Bare-metal POSIX command shell supporting multi-stage pipelines, I/O redirection, environment variables, and Unix core utilities (`cat`, `grep`, `wc`, `ls`).
 8. **Paint Studio & Calculator**: Interactive mouse canvas with color swatches, brush tool, and 32-bit hardware arithmetic calculator.
 
-### Core Kernel Subsystem Flow Charts
+### Core Architectural Subsystem Flow Charts
 
 #### 1. Process Lifecycle & Preemptive State Machine
 ```mermaid
@@ -272,28 +272,166 @@ flowchart LR
 #### 3. SovereignSQL Relational Storage & Volcano Query Engine
 ```mermaid
 flowchart TD
-    QUERY["SQL Query ('SELECT id, name FROM services WHERE id > 2')"] --> LEX["SQL Lexer & Recursive Parser"]
+    QUERY["SQL Query: SELECT id, name FROM services WHERE id > 2"] --> LEX["SQL Lexer & Recursive Parser"]
     LEX --> AST["Abstract Syntax Tree"]
     AST --> PLANNER["Volcano Logical Query Planner"]
     PLANNER --> OPT["Cost & Index Optimizer"]
-    OPT --> PHYS["Physical Operator Tree (FilterNode -> IndexScanNode)"]
+    OPT --> PHYS["Physical Operator Tree (FilterNode to IndexScanNode)"]
     PHYS --> BTREE["Order-M B+ Tree Key Lookup / Range Scan"]
     BTREE --> VFS["VFS Storage Layer (Ext2 / FAT32 / AdiFS)"]
     VFS --> DISK[("Virtual ATA Disk Controller (disk.img)")]
 ```
 
-### 3D Software Rasterization & Sovereign Simulation Showcase
+#### 4. In-OS C99 Compiler & AdiPython JIT Pipeline
+```mermaid
+flowchart TD
+    subgraph FRONTEND ["Language Frontend & Semantic Analysis"]
+        SRC["Source Code (C99 / AdiPython)"] --> PRE["C99 Macro Preprocessor (#define, #include, ##, #)"]
+        PRE --> LEX["Lexical Analyzer & Tokenizer"]
+        LEX --> PARSE["Recursive-Descent AST Parser"]
+        PARSE --> TYPE["Type Checker & Struct Alignment Calculator"]
+    end
+
+    subgraph IR_OPT ["Intermediate Representation & Optimization"]
+        TYPE --> TAC["Three-Address Code (TAC IR)"]
+        TAC --> CFG["Control Flow Graph & Basic Block Analysis"]
+        CFG --> DCE["Dead Code Elimination & Constant Folding"]
+        DCE --> REG["Linear Scan Register Allocator (RISC-V ABI)"]
+    end
+
+    subgraph BACKEND ["Code Generation & Binary Emission"]
+        REG --> CODEGEN["RV32IM Machine Code Generator"]
+        CODEGEN --> ELF["ELF32 Relocatable / Executable Builder"]
+        CODEGEN --> JIT["In-Memory JIT Executable Page"]
+        ELF --> DISK["VFS Storage (/bin Executable Binary)"]
+        JIT --> CPU["Cycle-Accurate RV32IM CPU Execution"]
+    end
+```
+
+#### 5. Virtual Memory Sv32 MMU & Copy-On-Write Paging Engine
+```mermaid
+flowchart LR
+    subgraph VA ["32-bit Virtual Address"]
+        VPN1["VPN[1] (Bits 31-22)"]
+        VPN0["VPN[0] (Bits 21-12)"]
+        OFF["Offset (Bits 11-0)"]
+    end
+
+    subgraph TLB_UNIT ["Hardware TLB Cache"]
+        TLB{"64-Entry TLB Lookup"}
+    end
+
+    subgraph PAGING_WALK ["Sv32 2-Level Page Walk"]
+        SATP["satp Base PPN"] --> L1["Root Page Table (4KB, 1024 PTEs)"]
+        L1 --> L2["Second-Level Page Table (4KB, 1024 PTEs)"]
+        L2 --> PTE{"PTE Valid & Permissions?"}
+        PTE -- Fault --> TRAP["Page Fault Trap (scause 12/13/15)"]
+        TRAP --> COW{"COW Bit Set?"}
+        COW -- Yes --> BUDDY["Buddy Allocator: Allocate Physical Frame"]
+        BUDDY --> COPY["Copy 4KB Page Data & Set W-Bit"]
+    end
+
+    subgraph PA ["32-bit Physical Address"]
+        PHYS["Physical Frame PPN + Offset"]
+        RAM["64MB Physical RAM"]
+    end
+
+    VPN1 & VPN0 --> TLB
+    TLB -- Hit --> PHYS
+    TLB -- Miss --> SATP
+    VPN1 --> L1
+    VPN0 --> L2
+    PTE -- Valid --> PHYS
+    COPY --> L2
+    OFF --> PHYS
+    PHYS --> RAM
+```
+
+#### 6. Software OpenGL 1.1 3D Graphics Pipeline
+```mermaid
+flowchart LR
+    VERT["3D Vertices (X, Y, Z, W)"] --> MV["ModelView Matrix Transform"]
+    MV --> PROJ["Perspective Projection Matrix"]
+    PROJ --> CLIP["Frustum Clipping (-W <= X,Y,Z <= W)"]
+    CLIP --> PERS["Perspective Division (NDC Space)"]
+    PERS --> VP["Viewport Transform (1024x768 Pixels)"]
+    VP --> RAST["Barycentric Rasterizer (Edge Equations)"]
+    RAST --> ZTEST{"Z-Buffer Depth Test"}
+    ZTEST -- Pass --> SHADE["Blinn-Phong Lighting & Bilinear Texture"]
+    SHADE --> BLIT["32-bit ARGB Linear Framebuffer"]
+    ZTEST -- Fail --> DISCARD["Discard Fragment"]
+```
+
+#### 7. TLS 1.3 Cryptographic Handshake & Key Derivation Schedule
+```mermaid
+flowchart TD
+    CH["Client Hello (Supported Cipher Suites, KeyShare)"] --> SH["Server Hello (Selected Cipher, KeyShare)"]
+    SH --> HKDF_ES["HKDF-Extract(0, 0) -> Early Secret"]
+    HKDF_ES --> HKDF_HS["HKDF-Extract(ECDHE Secret, Early Secret) -> Handshake Secret"]
+    HKDF_HS --> HS_KEYS["Derive Handshake Traffic Keys (Client/Server)"]
+    HS_KEYS --> EE_CERT["EncryptedExtensions & Certificate Chain (X.509 DER)"]
+    EE_CERT --> FIN["CertificateVerify & Finished HMAC Tag"]
+    FIN --> HKDF_MS["HKDF-Extract(0, Handshake Secret) -> Master Secret"]
+    HKDF_MS --> APP_KEYS["Derive Application Traffic Keys (ChaCha20-Poly1305 / AES-GCM)"]
+    APP_KEYS --> STREAM["Secure Full-Duplex Application Data Stream"]
+```
+
+#### 8. Unified Sovereign Desktop Windowing & Compositor Architecture
+```mermaid
+flowchart TD
+    subgraph CLIENT_WINDOWS ["Sovereign Application Windows"]
+        W_BR["Sovereign Browser (HTML/CSS Box Model)"]
+        W_SQL["SovereignSQL Terminal (ACID / WAL Engine)"]
+        W_3D["OpenGL 3D Viewport (Wireframe / Mesh Rasterizer)"]
+        W_SH["POSIX Sovereign Shell (sh / CoreUtils)"]
+    end
+
+    subgraph COMPOSITOR ["Z-Order Window Manager & Compositor"]
+        Z_SORT["Z-Order Window Priority Stacking"]
+        DAMAGE["Dirty Rectangle Damage Tracker"]
+        CLIP["Clip Rectangles & Occlusion Culler"]
+        BLIT["32-bit ARGB Direct Memory Blitter"]
+    end
+
+    subgraph OVERLAYS ["Composited Decorators & UI Overlays"]
+        TASKBAR["Top Taskbar (Hart Load, VRAM, Clock, Tabs)"]
+        FRAMES["Window Titlebars & Control Buttons"]
+        MOUSE["Hardware Mouse Cursor Sprite (12x18 Arrow)"]
+    end
+
+    CLIENT_WINDOWS --> Z_SORT
+    Z_SORT --> DAMAGE
+    DAMAGE --> CLIP
+    CLIP --> BLIT
+    TASKBAR --> BLIT
+    FRAMES --> BLIT
+    MOUSE --> BLIT
+    BLIT --> VRAM["Linear VRAM Framebuffer (0x20000000, 3.1MB ARGB)"]
+    VRAM --> DISPLAY["1024x768 XGA Physical Display"]
+```
+
+### Visual Interface & 3D Simulation Showcase
 
 <div align="center">
   <table style="width:100%; border:none;">
     <tr>
       <td align="center" width="50%">
+        <img src="docs/assets/workstation_1024x768.png" alt="AdiOS Sovereign Workstation (1024x768 XGA)" width="440"/>
+        <br/><em>Figure 1: AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, and POSIX Shell.</em>
+      </td>
+      <td align="center" width="50%">
+        <img src="docs/assets/baremetal_assembly_gui.png" alt="Bare-Metal RV32 Assembly GUI Kernel" width="440"/>
+        <br/><em>Figure 2: Bare-Metal RV32 Assembly GUI Kernel (kernel/gui_kernel.s) with rotating 3D pyramid and color palette.</em>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="50%">
         <img src="docs/assets/castle3d_dungeon.png" alt="CastleAdiOS 3D Dungeon Crawler" width="440"/>
-        <br/><em>Figure 2: CastleAdiOS 3D DDA Raycaster Dungeon Crawler with dynamic textured walls and sprite scaling.</em>
+        <br/><em>Figure 3: CastleAdiOS 3D DDA Raycaster Dungeon Crawler with dynamic textured walls and sprite scaling.</em>
       </td>
       <td align="center" width="50%">
         <img src="docs/assets/flight3d_simulator.png" alt="StarFlight 3D Wireframe Simulator" width="440"/>
-        <br/><em>Figure 3: StarFlight 3D Flight Simulator with ground terrain grid, navigation gates, and attitude HUD.</em>
+        <br/><em>Figure 4: StarFlight 3D Flight Simulator with ground terrain grid, navigation gates, and attitude HUD.</em>
       </td>
     </tr>
   </table>
