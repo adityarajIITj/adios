@@ -11,6 +11,11 @@ Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. D
 - **Workstation Display**: **Native 1024x768 XGA Workstation with Window Snapping & Compositor**
 - **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly.
 
+<div align="center">
+  <img src="docs/assets/workstation_1024x768.png" alt="AdiOS Sovereign Workstation 1024x768 XGA" width="920"/>
+  <p><em>Figure 1: Live AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, and POSIX Shell.</em></p>
+</div>
+
 ---
 
 ## 1. Executive Summary & Design Tenets
@@ -26,7 +31,57 @@ AdiOS is engineered without third-party libraries, bloated frameworks, or black-
 
 ---
 
-## 2. Full Architecture Blueprint
+## 2. Full Architecture Blueprint & System Stack
+
+```mermaid
+graph TD
+    subgraph HW ["Layer 0: Hardware Simulation Layer (RV32IM)"]
+        CPU["RV32IM CPU Core (32-bit, Pre-Decode Cache)"]
+        RAM["64MB Physical RAM (Identity Mapped)"]
+        MMIO["MMIO Bus (UART, Timer, Audio, ATA Disk)"]
+        FB["1024x768 32-bit ARGB Linear Framebuffer"]
+    end
+
+    subgraph KERNEL ["Layer 1: Bare-Metal Kernel & Memory Management"]
+        SCHED["Preemptive Scheduler (34-Register Context)"]
+        BUDDY["Buddy Allocator (Orders 0..10, 4KB..4MB)"]
+        MMU["Sv32 2-Level Paging & 64-Entry TLB"]
+        VFS["Virtual Filesystem (Ext2, FAT32, AdiFS WAL)"]
+        IPC["IPC & Concurrency (Unix Sockets, Pipes, Futex)"]
+    end
+
+    subgraph RUNTIMES ["Layer 2: Toolchains, Crypto & Network Transports"]
+        CC["In-OS C99 Compiler & ELF32 Builder"]
+        AP["AdiPython JIT Compiler & TAC Optimizer"]
+        CRYPTO["Crypto Engine (SHA-256, AES-GCM, ChaCha20, X.509)"]
+        NET["Network Stack (IPv4, TCP Reno, UDP, TLS 1.3)"]
+        SQL["SovereignSQL Engine (Volcano Planner, B+ Tree)"]
+    end
+
+    subgraph DESKTOP ["Layer 3: Sovereign Workstation Compositor (1024x768 XGA)"]
+        WM["Z-Order Window Manager & Edge-Snapping Compositor"]
+        APP1["Sovereign Web Browser (HTML/CSS DOM)"]
+        APP2["SovereignSQL Terminal (ACID / WAL)"]
+        APP3["OpenGL 3D Hardware Viewport (Z-Buffer)"]
+        APP4["POSIX Sovereign Shell (sh / CoreUtils)"]
+        APP5["Lisp Bytecode REPL (VM Stack)"]
+        APP6["Sovereign File Explorer (Ext2/FAT32)"]
+        APP7["Network & Crypto Telemetry Monitor"]
+        APP8["Paint Studio & Scientific Calculator"]
+    end
+
+    HW --> KERNEL
+    KERNEL --> RUNTIMES
+    RUNTIMES --> DESKTOP
+    WM --> APP1
+    WM --> APP2
+    WM --> APP3
+    WM --> APP4
+    WM --> APP5
+    WM --> APP6
+    WM --> APP7
+    WM --> APP8
+```
 
 ```text
 +=======================================================================================+
@@ -172,7 +227,7 @@ The entire operating system is protected by a unified, automated 45-subsystem re
 
 ## 4. Unified Sovereign Master Desktop (8 Integrated Applications)
 
-The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive 640x480 32-bit ARGB desktop environment featuring a composited taskbar, system clock, Start Menu, active window management, and 8 integrated applications:
+The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive, native 1024x768 XGA 32-bit ARGB desktop environment featuring a composited taskbar, multi-hart SMP telemetry, system clock, 260px floating Start Menu, active window management, and 8 integrated applications:
 
 1. **Sovereign Web Browser**: Live HTML/CSS layout renderer supporting heading hierarchy, paragraphs, bordered boxes, inline hyperlinks, and scrollable DOM viewports.
 2. **SovereignSQL Terminal**: Interactive relational database shell with live schema tables, query execution (`SELECT`, `INSERT`, `UPDATE`), ACID transactions, and Write-Ahead Logging status.
@@ -183,7 +238,66 @@ The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies a
 7. **Sovereign Terminal Shell**: Bare-metal POSIX command shell supporting multi-stage pipelines, I/O redirection, environment variables, and Unix core utilities (`cat`, `grep`, `wc`, `ls`).
 8. **Paint Studio & Calculator**: Interactive mouse canvas with color swatches, brush tool, and 32-bit hardware arithmetic calculator.
 
----
+### Core Kernel Subsystem Flow Charts
+
+#### 1. Process Lifecycle & Preemptive State Machine
+```mermaid
+stateDiagram-v2
+    [*] --> EMBRYO: Process Creation (fork/spawn)
+    EMBRYO --> READY: Memory & VMA Allocated
+    READY --> RUNNING: Scheduler Dispatch
+    RUNNING --> READY: Timer Interrupt / Preemption
+    RUNNING --> SLEEPING: I/O Wait / Futex Wait / Blocking Syscall
+    SLEEPING --> READY: Event / Signal / Wakeup
+    RUNNING --> ZOMBIE: exit() / Unhandled Fatal Signal
+    ZOMBIE --> [*]: Reaped by Parent (waitpid)
+```
+
+#### 2. Network Stack Packet Ingress & Transport Pipeline
+```mermaid
+flowchart LR
+    ETH["Raw Ethernet / SLIP Frame"] --> PARSE["Ethernet & ARP Header Parser"]
+    PARSE --> IP["IPv4 Header Verification"]
+    IP --> FRAG{"Is Fragmented?"}
+    FRAG -- Yes --> REASM["IPv4 Reassembler (Out-of-Order Queue)"]
+    FRAG -- No --> PROTO{"Protocol Type"}
+    REASM --> PROTO
+    PROTO -- TCP --> TCP_ENG["TCP Engine (RFC 793 FSM + Reno Congestion)"]
+    PROTO -- UDP --> UDP_ENG["UDP Engine (RFC 768 Pseudo-Header Chk)"]
+    TCP_ENG --> TLS["TLS 1.3 Record Layer (HKDF + ChaCha20/AES-GCM)"]
+    TLS --> HTTP["HTTP/1.1 & WebSocket Engine"]
+    UDP_ENG --> DNS_DHCP["DNS Resolver & DHCP DORA"]
+```
+
+#### 3. SovereignSQL Relational Storage & Volcano Query Engine
+```mermaid
+flowchart TD
+    QUERY["SQL Query ('SELECT id, name FROM services WHERE id > 2')"] --> LEX["SQL Lexer & Recursive Parser"]
+    LEX --> AST["Abstract Syntax Tree"]
+    AST --> PLANNER["Volcano Logical Query Planner"]
+    PLANNER --> OPT["Cost & Index Optimizer"]
+    OPT --> PHYS["Physical Operator Tree (FilterNode -> IndexScanNode)"]
+    PHYS --> BTREE["Order-M B+ Tree Key Lookup / Range Scan"]
+    BTREE --> VFS["VFS Storage Layer (Ext2 / FAT32 / AdiFS)"]
+    VFS --> DISK[("Virtual ATA Disk Controller (disk.img)")]
+```
+
+### 3D Software Rasterization & Sovereign Simulation Showcase
+
+<div align="center">
+  <table style="width:100%; border:none;">
+    <tr>
+      <td align="center" width="50%">
+        <img src="docs/assets/castle3d_dungeon.png" alt="CastleAdiOS 3D Dungeon Crawler" width="440"/>
+        <br/><em>Figure 2: CastleAdiOS 3D DDA Raycaster Dungeon Crawler with dynamic textured walls and sprite scaling.</em>
+      </td>
+      <td align="center" width="50%">
+        <img src="docs/assets/flight3d_simulator.png" alt="StarFlight 3D Wireframe Simulator" width="440"/>
+        <br/><em>Figure 3: StarFlight 3D Flight Simulator with ground terrain grid, navigation gates, and attitude HUD.</em>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## 5. Architectural Deepening Passes
 
