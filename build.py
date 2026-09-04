@@ -608,7 +608,7 @@ if __name__ == "__main__":
         print(f"  Bytes Transmitted: {bridge.tx_bytes} bytes")
         print(f"  Bytes Received:    {bridge.rx_bytes} bytes")
         print("=================================================================")
-    elif "--youtube" in sys.argv or "--yt" in sys.argv:
+    elif "--youtube" in sys.argv or "--yt" in sys.argv or "--yt-url" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
             idx = sys.argv.index("--scale")
