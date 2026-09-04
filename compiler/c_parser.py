@@ -311,6 +311,12 @@ class CParser:
         if self.match(TokenType.MINUS_ASSIGN):
             val = self.parse_assignment()
             return AssignExpr(expr, val, "-=")
+        if self.match(TokenType.MUL_ASSIGN):
+            val = self.parse_assignment()
+            return AssignExpr(expr, val, "*=")
+        if self.match(TokenType.DIV_ASSIGN):
+            val = self.parse_assignment()
+            return AssignExpr(expr, val, "/=")
         return expr
 
     def parse_logical_or(self) -> Expr:
@@ -364,9 +370,10 @@ class CParser:
         return expr
 
     def parse_unary(self) -> Expr:
-        if self.match(TokenType.BANG): return UnaryExpr("!", self.parse_unary())
         if self.match(TokenType.MINUS): return UnaryExpr("-", self.parse_unary())
-        if self.match(TokenType.STAR): return UnaryExpr("*", self.parse_unary()) # Dereference
+        if self.match(TokenType.BANG): return UnaryExpr("!", self.parse_unary())
+        if self.match(TokenType.TILDE): return UnaryExpr("~", self.parse_unary())
+        if self.match(TokenType.STAR): return UnaryExpr("*", self.parse_unary())  # Dereference
         if self.match(TokenType.AMP): return UnaryExpr("&", self.parse_unary())  # Address-of
         if self.match(TokenType.INC): return UnaryExpr("++", self.parse_unary(), prefix=True)
         if self.match(TokenType.DEC): return UnaryExpr("--", self.parse_unary(), prefix=True)
@@ -394,6 +401,10 @@ class CParser:
                 idx = self.parse_expression()
                 self.consume(TokenType.RBRACKET, "Expected ']'")
                 expr = IndexExpr(expr, idx)
+            elif self.match(TokenType.INC):
+                expr = UnaryExpr("++", expr, prefix=False)
+            elif self.match(TokenType.DEC):
+                expr = UnaryExpr("--", expr, prefix=False)
             else:
                 break
         return expr
