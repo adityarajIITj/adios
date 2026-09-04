@@ -185,6 +185,19 @@ class TestNetDriverYouTube(unittest.TestCase):
         app.select_catalog_video(5)
         self.assertIn("Big Buck Bunny", app.relay.channel_info["title"])
 
+        # Test Pasting Full URL via handle_key string
+        app.url_focused = True
+        app.handle_key("CLEAR")
+        self.assertEqual(app.url_text, "")
+        app.handle_key("https://www.youtube.com/watch?v=MYxamzOcVbs")
+        self.assertEqual(app.url_text, "https://www.youtube.com/watch?v=MYxamzOcVbs")
+        app.handle_key("\r")
+        self.assertIn("Codex", app.relay.channel_info["title"])
+
+        # Test [PASTE] button click
+        clicked = app.handle_click(app.rect_paste[0] + 5, app.rect_paste[1] + 5)
+        self.assertTrue(clicked)
+
     def test_07_youtube_player_render_and_vpu_step(self):
         """Verify window rendering and VPU deterministic 30 FPS pacing."""
         vpu = VPU(width=480, height=240, fps=30)

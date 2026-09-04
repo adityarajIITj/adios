@@ -220,6 +220,24 @@ class DisplayWindow:
         self.mouse_event = 1
 
     def _on_key(self, event):
+        # Check for Ctrl+V clipboard paste
+        is_ctrl_v = (event.char == "\x16") or (event.keysym.lower() == "v" and (event.state & 4))
+        if is_ctrl_v:
+            clip_text = None
+            try:
+                clip_text = self.root.clipboard_get()
+            except Exception:
+                pass
+            if not clip_text:
+                try:
+                    from desktop.youtube_player import get_system_clipboard_text
+                    clip_text = get_system_clipboard_text()
+                except Exception:
+                    pass
+            if clip_text and self.on_key_cb:
+                self.on_key_cb(clip_text)
+                return
+
         # 1. Forward to master desktop direct callback
         if self.on_key_cb:
             if event.char and len(event.char) == 1 and 32 <= ord(event.char) <= 126:

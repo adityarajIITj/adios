@@ -19,6 +19,46 @@ from vm.vpu import VPU, CMD_PLAY, CMD_PAUSE, CMD_STOP, CMD_SEEK, STATUS_PLAYING
 from net.yt_relay import YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id
 
 
+def get_system_clipboard_text() -> str:
+    """
+    Reads ASCII string from host operating system clipboard with zero external dependencies.
+    Supports Windows Win32 API via standard ctypes, with Tkinter fallback.
+    """
+    # 1. Direct Windows Win32 API via standard ctypes
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        if user32.OpenClipboard(None):
+            h_data = user32.GetClipboardData(13)  # CF_UNICODETEXT
+            if h_data:
+                kernel32.GlobalLock.restype = wintypes.LPCWSTR
+                ptr = kernel32.GlobalLock(h_data)
+                txt = str(ptr) if ptr else ""
+                kernel32.GlobalUnlock(h_data)
+                user32.CloseClipboard()
+                if txt:
+                    return txt
+            user32.CloseClipboard()
+    except Exception:
+        pass
+
+    # 2. Tkinter clipboard fallback
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        txt = root.clipboard_get()
+        root.destroy()
+        if txt:
+            return txt
+    except Exception:
+        pass
+
+    return ""
+
+
 class YouTubePlayerApp:
     """
     Sovereign YouTube 30 FPS Windowed Player Application.
@@ -56,10 +96,11 @@ class YouTubePlayerApp:
         self.video_h = 270
         
         # Top Header Rectangles
-        self.rect_brand = (12, 10, 110, 22)
-        self.rect_url   = (128, 10, 244, 22)
-        self.rect_load  = (378, 10, 50, 22)
-        self.rect_net   = (434, 10, 66, 22)
+        self.rect_brand = (6, 10, 114, 22)
+        self.rect_url   = (124, 10, 210, 22)
+        self.rect_paste = (338, 10, 48, 22)
+        self.rect_load  = (390, 10, 48, 22)
+        self.rect_net   = (442, 10, 70, 22)
         
         # Progress Scrub Bar Layout
         self.scrub_x = 20
@@ -144,13 +185,43 @@ class YouTubePlayerApp:
         self.volume = levels[(curr_idx + 1) % len(levels)]
         self.vpu.write32(0x30000028, self.volume)
 
+    def paste_clipboard_url(self) -> bool:
+        """Pastes URL directly from system clipboard into the URL bar."""
+        txt = get_system_clipboard_text().strip()
+        if txt:
+            clean = "".join(ch for ch in txt if 32 <= ord(ch) <= 126)
+            if clean:
+                self.url_text = clean
+                self.url_focused = True
+                self.status_message = "URL Pasted from clipboard."
+                return True
+        return False
+
     def handle_key(self, k: str) -> bool:
-        """Handles keyboard typing into the URL bar."""
+        """Handles keyboard typing into the URL bar with paste and clear support."""
         if not self.url_focused:
             if k == " ":
                 self.toggle_play()
                 return True
             return False
+
+        # Ctrl+V / Paste string
+        if k in ("\x16", "PASTE"):
+            self.paste_clipboard_url()
+            return True
+
+        # Ctrl+A / Escape / Clear
+        if k in ("\x01", "\x1b", "CLEAR"):
+            self.url_text = ""
+            return True
+
+        # Pasted string from event dispatcher
+        if len(k) > 1 and all(32 <= ord(c) <= 126 for c in k):
+            if k.startswith("http://") or k.startswith("https://") or "youtube" in k:
+                self.url_text = k
+            else:
+                self.url_text += k
+            return True
 
         if k in ("\r", "\n"):
             self.load_active_url()
@@ -160,7 +231,7 @@ class YouTubePlayerApp:
                 self.url_text = self.url_text[:-1]
             return True
         elif len(k) == 1 and 32 <= ord(k) <= 126:
-            if len(self.url_text) < 120:
+            if len(self.url_text) < 180:
                 self.url_text += k
             return True
         return False
@@ -173,6 +244,12 @@ class YouTubePlayerApp:
             return True
         else:
             self.url_focused = False
+
+        # 1.5 Paste Button Click
+        if self._in_rect(local_x, local_y, self.rect_paste):
+            if self.paste_clipboard_url():
+                self.load_active_url()
+            return True
 
         # 2. Load Button Click
         if self._in_rect(local_x, local_y, self.rect_load):
@@ -258,6 +335,9 @@ class YouTubePlayerApp:
         if self.url_focused:
             disp_url += "_"
         self._draw_text(surface_buffer, surf_w, rx + 6, ry + 7, disp_url, (200, 220, 240))
+
+        # Paste button
+        self._draw_button(surface_buffer, surf_w, self.rect_paste, "PASTE", (45, 75, 140, 255))
 
         # Load button
         self._draw_button(surface_buffer, surf_w, self.rect_load, "LOAD", (45, 50, 70, 255))
