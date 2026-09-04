@@ -104,26 +104,52 @@ class VPU:
             return
         try:
             import winsound
+            import tempfile
+            import os
         except ImportError:
             return
 
         if pcm_bytes is None and self.relay:
-            pcm_bytes = self.relay.generate_audio_pcm(duration_sec=3.0)
+            pcm_bytes = self.relay.generate_audio_pcm(duration_sec=4.0)
         if not pcm_bytes:
             return
 
         try:
             wav = self._pcm_to_wav(pcm_bytes, sample_rate=44100, volume_pct=self.volume)
-            winsound.PlaySound(wav, winsound.SND_MEMORY | winsound.SND_ASYNC | winsound.SND_LOOP)
+            tmp = tempfile.NamedTemporaryFile(prefix="adios_audio_", suffix=".wav", delete=False)
+            tmp.write(wav)
+            tmp.close()
+
+            # Clean up previously playing audio
+            old_path = getattr(self, "_audio_temp_path", None)
+            if old_path:
+                try:
+                    winsound.PlaySound(None, winsound.SND_PURGE)
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
+
+            self._audio_temp_path = tmp.name
+            winsound.PlaySound(self._audio_temp_path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
             self._host_audio_playing = True
         except Exception:
             pass
 
     def stop_host_audio(self):
-        """Silences host speaker audio playback."""
+        """Silences host speaker audio playback and cleans temporary audio files."""
         try:
             import winsound
+            import os
             winsound.PlaySound(None, winsound.SND_PURGE)
+            old_path = getattr(self, "_audio_temp_path", None)
+            if old_path:
+                try:
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
+                self._audio_temp_path = None
         except Exception:
             pass
         self._host_audio_playing = False

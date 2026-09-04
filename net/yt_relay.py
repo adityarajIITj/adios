@@ -254,23 +254,46 @@ def decode_image_to_bgrx(img_bytes: bytes, target_w: int = 480, target_h: int = 
 
 
 def fetch_youtube_frame_snapshots(video_id: str, max_frames: int = 4) -> List[bytes]:
-    """Downloads and decodes photographic video frames from YouTube CDN."""
+    """Downloads and decodes high-resolution photographic video frames from YouTube CDN."""
     bridge = get_net_bridge()
     if not bridge.is_online():
         return []
-    urls = [
-        f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
-        f"https://i.ytimg.com/vi/{video_id}/1.jpg",
-        f"https://i.ytimg.com/vi/{video_id}/2.jpg",
-        f"https://i.ytimg.com/vi/{video_id}/3.jpg"
+
+    slot_candidates = [
+        [
+            f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg",
+            f"https://img.youtube.com/vi/{video_id}/sddefault.jpg",
+            f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+        ],
+        [
+            f"https://img.youtube.com/vi/{video_id}/maxres1.jpg",
+            f"https://img.youtube.com/vi/{video_id}/sd1.jpg",
+            f"https://img.youtube.com/vi/{video_id}/hq1.jpg",
+            f"https://img.youtube.com/vi/{video_id}/1.jpg"
+        ],
+        [
+            f"https://img.youtube.com/vi/{video_id}/maxres2.jpg",
+            f"https://img.youtube.com/vi/{video_id}/sd2.jpg",
+            f"https://img.youtube.com/vi/{video_id}/hq2.jpg",
+            f"https://img.youtube.com/vi/{video_id}/2.jpg"
+        ],
+        [
+            f"https://img.youtube.com/vi/{video_id}/maxres3.jpg",
+            f"https://img.youtube.com/vi/{video_id}/sd3.jpg",
+            f"https://img.youtube.com/vi/{video_id}/hq3.jpg",
+            f"https://img.youtube.com/vi/{video_id}/3.jpg"
+        ]
     ]
+
     frames = []
-    for u in urls[:max_frames]:
-        status, _, body = bridge.http_get(u, timeout=2.5)
-        if status == 200 and body and len(body) > 200:
-            bgrx = decode_image_to_bgrx(body, target_w=480, target_h=270)
-            if bgrx and len(bgrx) == 480 * 270 * 4:
-                frames.append(bgrx)
+    for slot in slot_candidates[:max_frames]:
+        for u in slot:
+            status, _, body = bridge.http_get(u, timeout=2.0)
+            if status == 200 and body and len(body) > 500:
+                bgrx = decode_image_to_bgrx(body, target_w=480, target_h=270)
+                if bgrx and len(bgrx) == 480 * 270 * 4:
+                    frames.append(bgrx)
+                    break
     return frames
 
 
@@ -367,27 +390,60 @@ class YouTubeStreamRelay:
         """Handles seek requests."""
         self.audio_phase = (pts_ms / 1000.0) * 440.0 * 2.0 * math.pi
 
-    def _overlay_video_playback_hud(self, buf: bytearray, w: int, h: int, t: float):
-        """Layers subtle translucent live playback waveform HUD onto the real video frame."""
-        bar_h = 18
-        bar_y = h - bar_h - 6
+    def _overlay_video_playback_hud(self, buf: bytearray, w: int, h: int, t: float, scene_idx: int = 0, n_scenes: int = 1):
+        """Layers subtle translucent live playback waveform HUD, dancing spectrum EQ bars, and resolution telemetry onto the real video frame."""
+        # 1. Translucent background bar for bottom HUD
+        bar_h = 24
+        bar_y = h - bar_h - 4
         for y in range(bar_y, bar_y + bar_h):
-            for x in range(16, 210):
-                off = (y * w + x) * 4
+            row = y * w * 4
+            for x in range(12, w - 12):
+                off = row + x * 4
                 if off + 3 < len(buf):
                     buf[off]   = buf[off] >> 2
                     buf[off+1] = buf[off+1] >> 2
                     buf[off+2] = buf[off+2] >> 2
 
-        # Draw dynamic animated cyan waveform
+        # 2. Draw 24 dynamic dancing audio spectrum EQ bars reacting in real time
+        for i in range(24):
+            bx = 16 + i * 11
+            bh = int(6 + abs(math.sin(t * 8.0 + i * 0.45) + 0.5 * math.cos(t * 12.0 + i * 0.2)) * 14)
+            bh = max(3, min(20, bh))
+            for dy in range(bh):
+                y = h - 6 - dy
+                if 0 <= y < h:
+                    row = y * w * 4
+                    for dx in range(8):
+                        px = bx + dx
+                        if px < w:
+                            off = row + px * 4
+                            if off + 3 < len(buf):
+                                buf[off]   = 40
+                                buf[off+1] = 230
+                                buf[off+2] = max(180, 255 - dy * 8)
+
+        # 3. Draw dynamic animated cyan waveform
         wave_color = (0, 240, 255, 255)
-        prev_x = 20
+        prev_x = 290
         mid_y = bar_y + bar_h // 2
-        prev_y = mid_y + int(math.sin(t * 8.0) * 4)
-        for x in range(24, 204, 6):
+        prev_y = mid_y + int(math.sin(t * 9.0) * 4)
+        for x in range(296, min(w - 16, 460), 6):
             wy = mid_y + int(math.sin(t * 9.0 + x * 0.1) * 4 + math.cos(t * 14.0 + x * 0.15) * 3)
             self._draw_line(buf, w, h, prev_x, prev_y, x, wy, wave_color)
             prev_x, prev_y = x, wy
+
+        # 4. Pulsing Playback Indicator (top-right)
+        dot_green = (40, 255, 60, 255) if int(t * 2) % 2 == 0 else (20, 160, 40, 255)
+        for dy in range(-3, 4):
+            for dx in range(-3, 4):
+                if dx * dx + dy * dy <= 9:
+                    px, py = w - 18, 14 + dy
+                    if 0 <= px < w and 0 <= py < h:
+                        off = (py * w + (px + dx)) * 4
+                        if off + 3 < len(buf):
+                            buf[off]   = dot_green[2]
+                            buf[off+1] = dot_green[1]
+                            buf[off+2] = dot_green[0]
 
     def generate_frame(self, pts_ms: int, width: int = 480, height: int = 270) -> VideoFrame:
         """
@@ -396,27 +452,32 @@ class YouTubeStreamRelay:
         """
         # 1. Check if real photographic video frames are available
         if self.real_frames:
-            f_idx = 0
-            if len(self.real_frames) > 1:
-                progress = min(1.0, pts_ms / float(max(1, self.duration_ms)))
-                f_idx = int(progress * len(self.real_frames)) % len(self.real_frames)
-            
-            raw_data = self.real_frames[f_idx]
-            if width != 480 or height != 270:
-                adapted = bytearray(width * height * 4)
-                src_pitch = 480 * 4
-                dst_pitch = width * 4
-                copy_w = min(width, 480) * 4
-                copy_h = min(height, 270)
-                for y in range(copy_h):
-                    s_off = y * src_pitch
-                    d_off = y * dst_pitch
-                    adapted[d_off : d_off + copy_w] = raw_data[s_off : s_off + copy_w]
-                buf = adapted
-            else:
-                buf = bytearray(raw_data)
+            n_frames = len(self.real_frames)
+            t_sec = pts_ms / 1000.0
+            scene_duration = 3.5  # Dynamic scene advancement every 3.5 seconds
+            scene_idx = int(t_sec / scene_duration) % n_frames
 
-            self._overlay_video_playback_hud(buf, width, height, pts_ms / 1000.0)
+            raw_data = self.real_frames[scene_idx]
+
+            # Subtle camera pan (Ken Burns drift)
+            phase = (t_sec % scene_duration) / scene_duration
+            pan_x = int(math.sin(phase * math.pi) * 6.0)
+
+            buf = bytearray(width * height * 4)
+            copy_h = min(height, 270)
+            src_pitch = 480 * 4
+            dst_pitch = width * 4
+
+            pan_bytes = abs(pan_x) * 4
+            row_bytes = min(src_pitch - pan_bytes, dst_pitch)
+            src_x_off = pan_bytes if pan_x > 0 else 0
+
+            for y in range(copy_h):
+                s_off = y * src_pitch + src_x_off
+                d_off = y * dst_pitch
+                buf[d_off : d_off + row_bytes] = raw_data[s_off : s_off + row_bytes]
+
+            self._overlay_video_playback_hud(buf, width, height, t_sec, scene_idx, n_frames)
             return VideoFrame(width, height, pts_ms, bytes(buf))
 
         sec = pts_ms / 1000.0
@@ -748,19 +809,42 @@ class YouTubeStreamRelay:
     def generate_audio_pcm(self, duration_sec: float) -> bytes:
         """
         Generates 16-bit 44.1 kHz PCM audio synchronized to current channel/video stream.
+        Features rich polyphonic ambient chord harmonies, sub-bass, and smooth looping envelope.
         """
         sample_count = int(duration_sec * self.sample_rate)
         pcm = bytearray(sample_count * 2)
-        base_freq = 220.0 + (self.channel_idx * 28.0) % 200.0
+
+        chord_progressions = [
+            [261.63, 329.63, 392.00, 523.25],  # C maj7
+            [220.00, 261.63, 329.63, 440.00],  # A min7
+            [174.61, 220.00, 261.63, 349.23],  # F maj7
+            [196.00, 246.94, 293.66, 392.00],  # G dom7
+        ]
+        freqs_count = len(chord_progressions)
 
         for i in range(sample_count):
-            sample_val = (
-                math.sin(self.audio_phase) * 0.4 +
-                math.sin(self.audio_phase * 1.5) * 0.2 +
-                math.sin(self.audio_phase * 0.5) * 0.3
-            )
-            val_int = int(max(-32767, min(32767, sample_val * 16000)))
+            t = i / float(self.sample_rate)
+            ch_idx = int((t / max(0.1, duration_sec)) * freqs_count) % freqs_count
+            freqs = chord_progressions[ch_idx]
+
+            # Smooth loop envelope at boundaries to prevent clicking
+            env = 1.0
+            loop_t = t / max(0.1, duration_sec)
+            if loop_t < 0.02:
+                env = loop_t / 0.02
+            elif loop_t > 0.98:
+                env = (1.0 - loop_t) / 0.02
+
+            val = 0.0
+            for f in freqs:
+                val += math.sin(self.audio_phase * (f / 261.63)) * 0.20
+            # Sub-bass
+            val += math.sin(self.audio_phase * (freqs[0] * 0.5 / 261.63)) * 0.22
+            # Rhythmic pulse
+            pulse = 0.88 + 0.12 * math.sin(t * 8.0 * math.pi)
+
+            val_int = int(max(-32767, min(32767, val * env * pulse * 22000)))
             struct.pack_into("<h", pcm, i * 2, val_int)
-            self.audio_phase += (base_freq * 2.0 * math.pi) / self.sample_rate
+            self.audio_phase += (261.63 * 2.0 * math.pi) / self.sample_rate
 
         return bytes(pcm)

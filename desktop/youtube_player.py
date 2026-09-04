@@ -150,6 +150,8 @@ class YouTubePlayerApp:
         """Starts 30 FPS playback."""
         self.is_playing = True
         self.vpu.write32(0x30000000, CMD_PLAY)
+        if self.sound_enabled:
+            self.vpu.play_host_audio()
 
     def pause(self):
         """Pauses playback."""
