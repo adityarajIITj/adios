@@ -183,5 +183,41 @@ class TestMasterDesktop(unittest.TestCase):
         self.desktop.win_games.on_click_content(self.desktop.win_games, 50, 10)
         self.assertEqual(self.desktop.game_mode, "castle")
 
+    def test_13_desktop_wallpaper(self):
+        """Verify ASCII art wallpaper rendering, taskbar WALL toggle, and theme switching."""
+        # 1. Default state
+        self.assertEqual(self.desktop.wallpaper_style, "cyber")
+        self.assertFalse(self.desktop.desktop_clean_mode)
+        self.desktop.render(self.fb)
+
+        # 2. Click [WALL] on Taskbar at (180, 10) to toggle Show Desktop mode
+        res = self.desktop.handle_mouse_down(180, 10)
+        self.assertEqual(res, ("wallpaper_toggle", None))
+        self.assertTrue(self.desktop.desktop_clean_mode)
+        # All windows should now be minimized
+        for w in self.desktop.wm.windows:
+            self.assertFalse(w.visible)
+
+        # Render clean desktop wallpaper
+        self.desktop.render(self.fb)
+
+        # 3. Click [WALL] again to restore windows
+        res = self.desktop.handle_mouse_down(180, 10)
+        self.assertEqual(res, ("wallpaper_toggle", None))
+        self.assertFalse(self.desktop.desktop_clean_mode)
+        # Windows should be restored
+        self.assertTrue(self.desktop.win_browser.visible)
+
+        # 4. Cycle wallpaper themes
+        initial_theme = self.desktop.wallpaper_style
+        self.desktop.cycle_wallpaper_theme()
+        self.assertNotEqual(self.desktop.wallpaper_style, initial_theme)
+
+        # 5. Verify shell wallpaper command
+        from desktop.wallpaper import get_wallpaper_text
+        wall_txt = self.desktop.shell.eval("wallpaper")
+        self.assertIn("S O V E R E I G N", wall_txt)
+        self.assertIn("+=", wall_txt)
+
 if __name__ == "__main__":
     unittest.main()

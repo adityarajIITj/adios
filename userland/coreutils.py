@@ -269,6 +269,10 @@ class CoreUtils:
         compiler = AdiCompiler()
         return compiler.make(target)
 
+    def wallpaper(self, style: str = "cyber") -> str:
+        from desktop.wallpaper import get_wallpaper_text
+        return get_wallpaper_text(style)
+
 if __name__ == "__main__":
     import sys
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

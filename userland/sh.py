@@ -48,6 +48,7 @@ Process & System Monitoring:
   date                  Print system date and time
   kill [-9] <pid>       Send termination signal to process by PID
   clear                 Clear terminal display history
+  wallpaper [theme]     Display or change desktop ASCII art wallpaper (cyber, sovereign, slant, matrix)
 
 In-OS C99 Toolchain & Build System:
   cc [opts] <file.c>    AdiOS In-OS C99 compiler (flags: -S, -c, -o, --help)
@@ -60,6 +61,7 @@ Shell Features & Builtins:
   $VAR                  Environment variable expansion ($OS, $ARCH, $USER, $HOME)
   export VAR=VAL        Set environment variable
   help [cmd]            Display this utility manual or specific command help
+  wallpaper [theme]     Render ASCII art wallpaper in shell (themes: cyber, sovereign, slant, matrix)
   games / arcade        Launch 3D Sovereign Games Arcade (CastleAdiOS / StarFlight)
 ============================================================================="""
 
@@ -172,6 +174,20 @@ class SovereignShell:
                 output = "kill: usage: kill [-sig] <pid>"
         elif cmd == "clear":
             output = "\033[2J\033[H"
+        elif cmd == "wallpaper":
+            from desktop.wallpaper import get_wallpaper_text, THEME_KEYS
+            if args:
+                choice = args[0].lower()
+                if choice in ("--list", "-l", "list"):
+                    output = "Available wallpaper themes: " + ", ".join(THEME_KEYS)
+                elif choice in THEME_KEYS:
+                    self.env["WALLPAPER_THEME"] = choice
+                    output = get_wallpaper_text(choice)
+                else:
+                    output = f"wallpaper: unknown theme '{choice}'. Available: {', '.join(THEME_KEYS)}"
+            else:
+                current = self.env.get("WALLPAPER_THEME", "cyber")
+                output = get_wallpaper_text(current)
         elif cmd == "make":
             target = args[0] if args else "all"
             output = self.utils.make(target)

@@ -346,7 +346,7 @@ def run_castle3d():
     except KeyboardInterrupt:
         print("\n[CastleAdiOS 3D] Exited.")
 
-def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False):
+def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clean_wallpaper=False):
     print("=====================================================")
     print("     AdiOS Sovereign Workstation (1024x768 XGA)      ")
     print("=====================================================")
@@ -361,6 +361,9 @@ def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False):
     if auto_launch_games or "--games" in sys.argv or "--arcade" in sys.argv:
         desktop.launch_or_focus("games")
         print("[AdiOS Desktop] Sovereign 3D Games Arcade auto-launched.")
+    if clean_wallpaper or "--wallpaper" in sys.argv or "--clean" in sys.argv:
+        desktop.toggle_desktop_wallpaper()
+        print("[AdiOS Desktop] ASCII Art Wallpaper active (windows minimized, click [WALL] to restore).")
     disp = DisplayWindow(vm.fb, width=width, height=height, scale=scale, uart_callback=lambda c: None)
     vm.display = disp
 
@@ -546,6 +549,7 @@ if __name__ == "__main__":
         print("")
         print("Workstation & GUI Desktop:")
         print("  --desktop             Launch Unified Sovereign Workstation (1024x768 XGA)")
+        print("  --desktop --wallpaper Launch Workstation with ASCII Art Wallpaper in full view")
         print("  --desktop --games     Launch Workstation with Sovereign 3D Games Arcade open")
         print("  --res WxH             Specify custom workstation resolution (e.g. 1024x768)")
         print("  --scale S             Specify display scaling factor (e.g. 1.0 or 1.5)")

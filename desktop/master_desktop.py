@@ -48,6 +48,7 @@ from games.flight3d import (
     COLOR_RING_HIT as FLIGHT_COLOR_RING_HIT,
     COLOR_HUD as FLIGHT_COLOR_HUD
 )
+from .wallpaper import render_wallpaper_to_framebuffer, get_wallpaper_text, THEME_KEYS
 
 # Theme Palette (Tokyo Dark Sovereign)
 COLOR_DESKTOP_BG     = 0x001A1B26
@@ -90,6 +91,12 @@ class MasterDesktop:
         # Telemetry State
         self.hart_loads = [14, 18, 9, 22]
         self.ram_used_mb = 3.2
+
+        # Wallpaper & Desktop Background State
+        self.wallpaper_style = "cyber"
+        self.wallpaper_visible = True
+        self.desktop_clean_mode = False
+        self.saved_window_states: Dict[str, bool] = {}
 
         # Master Subsystem Instances
         self._init_sql_engine()
@@ -189,7 +196,8 @@ class MasterDesktop:
             "/bin/cat": b"\x7fELF-RV32-CAT\n",
             "/bin/grep": b"\x7fELF-RV32-GREP\n",
             "/bin/cc": b"\x7fELF-RV32-ADI-C99-COMPILER\n",
-            "/bin/make": b"\x7fELF-RV32-SOVEREIGN-MAKE\n"
+            "/bin/make": b"\x7fELF-RV32-SOVEREIGN-MAKE\n",
+            "/etc/wallpaper.txt": get_wallpaper_text("cyber").encode("utf-8")
         }
         self.coreutils = CoreUtils(vfs)
         self.shell = SovereignShell(self.coreutils)
@@ -246,6 +254,26 @@ class MasterDesktop:
         self.calc_op = None
         self.calc_arg1 = 0
         self.calc_reset_on_next = False
+
+    def toggle_desktop_wallpaper(self):
+        """Toggles Show Desktop / Wallpaper mode, minimizing or restoring all windows."""
+        if not self.desktop_clean_mode:
+            self.saved_window_states = {w.win_id: w.visible for w in self.wm.windows}
+            for w in self.wm.windows:
+                w.visible = False
+            self.desktop_clean_mode = True
+            self.status_message = f"Desktop Wallpaper: [{self.wallpaper_style.upper()}] active. Click [WALL] to restore windows."
+        else:
+            for w in self.wm.windows:
+                w.visible = self.saved_window_states.get(w.win_id, False)
+            self.desktop_clean_mode = False
+            self.status_message = "Workstation Windows restored."
+
+    def cycle_wallpaper_theme(self):
+        """Cycles through available ASCII art wallpaper themes."""
+        curr_idx = THEME_KEYS.index(self.wallpaper_style) if self.wallpaper_style in THEME_KEYS else 0
+        self.wallpaper_style = THEME_KEYS[(curr_idx + 1) % len(THEME_KEYS)]
+        self.status_message = f"Wallpaper Theme switched to [{self.wallpaper_style.upper()}]."
 
     # --------------------------------------------------------------------------
     # Workstation Windows Setup (1024x768 Canvas)
@@ -1346,6 +1374,10 @@ class MasterDesktop:
         bg_bytes = bytes([COLOR_DESKTOP_BG & 0xFF, (COLOR_DESKTOP_BG >> 8) & 0xFF, (COLOR_DESKTOP_BG >> 16) & 0xFF, 0])
         fb[0 : self.width * self.height * 4] = bg_bytes * (self.width * self.height)
 
+        # 1.5. Render Sovereign Desktop ASCII Art Wallpaper & Cyber Grid
+        if self.wallpaper_visible:
+            render_wallpaper_to_framebuffer(fb, self.width, self.height, self.font, style=self.wallpaper_style)
+
         # 2. Render Window Manager Layer (all visible windows in Z-order)
         self.wm.render_all(fb, self.font)
 
@@ -1367,8 +1399,13 @@ class MasterDesktop:
         # Dedicated Games Pill on Taskbar
         self._draw_button(fb, 88, 3, 68, 18, "GAMES", COLOR_ACCENT_PURPLE, COLOR_START_TXT)
 
+        # Dedicated Wallpaper / Show Desktop Pill on Taskbar
+        wall_bg = COLOR_ACCENT_CYAN if self.desktop_clean_mode else COLOR_BUTTON_BG
+        wall_txt = 0x00000000 if self.desktop_clean_mode else COLOR_ACCENT_CYAN
+        self._draw_button(fb, 160, 3, 56, 18, "WALL", wall_bg, wall_txt)
+
         # Window Switcher Pills on Taskbar
-        sw_x = 160
+        sw_x = 222
         for w in self.wm.windows:
             if w.visible and not w.minimized:
                 bg_col = COLOR_TITLE_ACT if w.active else COLOR_BUTTON_BG
@@ -1389,7 +1426,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 230
+        mh = 252
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1413,12 +1450,13 @@ class MasterDesktop:
             ("6. Network & Crypto Monitor", "netmon"),
             ("7. POSIX Sovereign Shell", "shell"),
             ("8. Paint Studio & Calculator", "paint"),
-            ("9. Sovereign 3D Games Arcade", "games")
+            ("9. Sovereign 3D Games Arcade", "games"),
+            ("10. Toggle Wallpaper Theme", "wallpaper")
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_ACCENT_YELLOW if wid == "games" else COLOR_TEXT_PRIMARY
+            color = COLOR_ACCENT_YELLOW if wid == "games" else (COLOR_ACCENT_CYAN if wid == "wallpaper" else COLOR_TEXT_PRIMARY)
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
@@ -1426,7 +1464,7 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def handle_mouse_down(self, mx: int, my: int) -> Optional[Tuple[str, Any]]:
-        # 1. Start Pill & Games Pill Clicks
+        # 1. Start Pill, Games Pill & Wallpaper Pill Clicks
         if my < TASKBAR_HEIGHT:
             if 4 <= mx <= 84:
                 self.toggle_start_menu()
@@ -1434,9 +1472,12 @@ class MasterDesktop:
             if 88 <= mx <= 156:
                 self.launch_or_focus("games")
                 return ("menu_select", "games")
+            if 160 <= mx <= 216:
+                self.toggle_desktop_wallpaper()
+                return ("wallpaper_toggle", None)
 
             # Window Switcher Pills click
-            sw_x = 160
+            sw_x = 222
             for w in self.wm.windows:
                 if w.visible and not w.minimized:
                     if sw_x <= mx <= sw_x + 72:
@@ -1447,14 +1488,18 @@ class MasterDesktop:
 
         # 2. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 230:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 252:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
-                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games"]
+                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper"]
                 # Check legacy item click (my = 160 was item 6 shell in 18px pitch)
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
                 if 0 <= rel_item < len(items_map):
+                    if items_map[rel_item] == "wallpaper":
+                        self.cycle_wallpaper_theme()
+                        self.start_menu_open = False
+                        return ("wallpaper_theme", self.wallpaper_style)
                     self.launch_or_focus(items_map[rel_item])
                     return ("menu_select", items_map[rel_item])
             self.start_menu_open = False
