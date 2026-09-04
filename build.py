@@ -211,10 +211,13 @@ def test():
     print("\n--- 45. Testing Pass 4 3D Graphics, Physics & Audio DSP ---")
     res_pass4 = subprocess.run([sys.executable, "-m", "unittest", "tests/test_deep_pass4.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk, res_pass1, res_pass2, res_pass3, res_pass4])
+    print("\n--- 46. Testing High-Resolution Workstation (1024x768 XGA, Snapping & Controls) ---")
+    res_res1024 = subprocess.run([sys.executable, "-m", "unittest", "tests/test_desktop_res1024.py"])
+
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk, res_pass1, res_pass2, res_pass3, res_pass4, res_res1024])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 45 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 46 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -260,6 +263,7 @@ def test():
         print("  - Pass 2 Security & Protocols (X.509, AES, Congestion, WebSocket): PASS")
         print("  - Pass 3 Storage & Database (Ext2 Deep, B+ Tree, Query Planner): PASS")
         print("  - Pass 4 3D Graphics, Physics & Audio DSP (Textures, Light, Physics, Synth): PASS")
+        print("  - Pass X High-Resolution Workstation (1024x768 XGA, Snapping & Controls): PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
@@ -297,64 +301,40 @@ def run_castle3d():
     except KeyboardInterrupt:
         print("\n[CastleAdiOS 3D] Exited.")
 
-def run_desktop():
+def run_desktop(scale=1.0, width=1024, height=768):
     print("=====================================================")
-    print("     AdiOS Unified Sovereign Master Desktop          ")
+    print("     AdiOS Sovereign Workstation (1024x768 XGA)      ")
     print("=====================================================")
-    print("[AdiOS Desktop] Initializing Master Compositor with 8 Integrated Applications...")
+    print(f"[AdiOS Desktop] Initializing Workstation Compositor ({width}x{height} @ {scale}x scale)...")
     from vm.vm import VM
     from vm.display import DisplayWindow
     from desktop import MasterDesktop
 
     vm = VM()
-    desktop = MasterDesktop(vm)
-    disp = DisplayWindow(vm.fb, uart_callback=lambda c: None)
+    vm.fb = bytearray(width * height * 4)
+    desktop = MasterDesktop(vm, width=width, height=height)
+    disp = DisplayWindow(vm.fb, width=width, height=height, scale=scale, uart_callback=lambda c: None)
     vm.display = disp
 
     # Direct event binding for instant interactive responsiveness
-    def on_mouse_down(event):
-        mx = max(0, min(639, event.x))
-        my = max(0, min(479, event.y))
-        desktop.handle_mouse_down(mx, my)
+    disp.on_mouse_down_cb = lambda mx, my: desktop.handle_mouse_down(mx, my)
+    disp.on_mouse_up_cb = lambda mx, my: desktop.handle_mouse_up(mx, my)
+    disp.on_mouse_move_cb = lambda mx, my: desktop.handle_mouse_move(mx, my)
 
-    def on_mouse_up(event):
-        mx = max(0, min(639, event.x))
-        my = max(0, min(479, event.y))
-        desktop.handle_mouse_up(mx, my)
-
-    def on_mouse_move(event):
-        mx = max(0, min(639, event.x))
-        my = max(0, min(479, event.y))
+    def on_mouse_drag(mx, my):
         desktop.handle_mouse_move(mx, my)
-
-    def on_mouse_drag(event):
-        mx = max(0, min(639, event.x))
-        my = max(0, min(479, event.y))
-        desktop.handle_mouse_move(mx, my)
-        # Fluid paint brush dragging in Paint Studio canvas
         active_win = desktop.wm.get_window_at(mx, my) if hasattr(desktop, "wm") else None
         if active_win and active_win.win_id == "paint" and not desktop.wm.dragging_win:
             cx, cy, _, _ = active_win.client_rect
             rel_x = mx - cx
             rel_y = my - cy
-            if 24 <= rel_y <= 84 and 6 <= rel_x <= 190:
+            if 24 <= rel_y <= 88 and 6 <= rel_x <= 280:
                 desktop.paint_strokes.append((mx, my, desktop.paint_color))
 
-    def on_key(event):
-        if event.char and len(event.char) == 1 and 32 <= ord(event.char) <= 126:
-            desktop.handle_key(event.char)
-        elif event.keysym == "BackSpace":
-            desktop.handle_key("\b")
-        elif event.keysym == "Return":
-            desktop.handle_key("\n")
+    disp.on_mouse_drag_cb = on_mouse_drag
+    disp.on_key_cb = lambda k: desktop.handle_key(k)
 
-    disp.root.bind("<ButtonPress-1>", on_mouse_down, add="+")
-    disp.root.bind("<ButtonRelease-1>", on_mouse_up, add="+")
-    disp.root.bind("<Motion>", on_mouse_move, add="+")
-    disp.root.bind("<B1-Motion>", on_mouse_drag, add="+")
-    disp.root.bind("<Key>", on_key, add="+")
-
-    print("[AdiOS Desktop] 640x480 Sovereign Master Desktop Running. Close window to exit.")
+    print(f"[AdiOS Desktop] {width}x{height} Sovereign Workstation Running. Close window to exit.")
     last_frame = time.time()
     try:
         while True:
@@ -395,7 +375,22 @@ if __name__ == "__main__":
     elif "--test" in sys.argv:
         test()
     elif "--desktop" in sys.argv:
-        run_desktop()
+        scale = 1.0
+        if "--scale" in sys.argv:
+            idx = sys.argv.index("--scale")
+            if idx + 1 < len(sys.argv):
+                try:
+                    scale = float(sys.argv[idx + 1])
+                except ValueError:
+                    scale = 1.0
+        width, height = 1024, 768
+        if "--res" in sys.argv:
+            idx = sys.argv.index("--res")
+            if idx + 1 < len(sys.argv):
+                parts = sys.argv[idx + 1].lower().split("x")
+                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                    width, height = int(parts[0]), int(parts[1])
+        run_desktop(scale=scale, width=width, height=height)
     elif "--shell" in sys.argv or "--cyber" in sys.argv:
         run_cyber_shell()
     elif "--castle" in sys.argv or "--fps" in sys.argv:
