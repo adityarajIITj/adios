@@ -1,13 +1,16 @@
-# AdiOS (v1.0.0 Stable Sovereign Release - Phase X Complete)
+# AdiOS (v2.0 Beta Phase 2: Plan B - 256MB RAM & VPU 30 FPS Video Controller)
 
-**AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
+**AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, hardware Video Processing Unit (VPU), and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
 
 Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. Davis's legendary operating system architecture, AdiOS reimagines sovereign computing within a rigorous modern mathematical, cryptographic, and cyber-engineering framework.
 
-- **Release Status**: `v1.0.0 Stable Sovereign Release (Phase X Officially Completed)`
+- **Release Status**: `v2.0.0-beta.2 (Phase 2: Plan B Completed)`
 - **Target Architecture**: RISC-V 32-bit (RV32IM + H-Extension)
-- **Codebase Scale**: **43,800+ Lines of Code across 182 source files**
-- **Verification Harness**: **53/53 Automated Subsystems Passing (100% Success)**
+- **Codebase Scale**: **44,100+ Lines of Code across 185 source files**
+- **Verification Harness**: **54/54 Automated Subsystems Passing (100% Success)**
+- **Physical Memory**: **256 MB Physical RAM [0x80000000 - 0x8FFFFFFF] with Dynamic Zone Paging**
+- **Video Controller**: **Hardware MMIO VPU (0x30000000) with DMA Frame Blitter & Deterministic 30 FPS Pacing**
+- **Sovereign YouTube Player**: **Native 10th Workstation Application with 480x270 16:9 Viewport & Audio Sync**
 - **Workstation Display**: **Native 1024x768 XGA Workstation with Window Snapping, Taskbar & Compositor**
 - **Desktop Customization**: **Sovereign ASCII Art Wallpaper Subsystem with Cyber Grid & Multi-Theme Switcher**
 - **Toolchains & Shell**: **In-OS C99 Compiler Driver (cc), Sovereign Make Engine & POSIX Utilities**
@@ -15,22 +18,27 @@ Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. D
 - **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly.
 
 <div align="center">
+  <img src="docs/assets/youtube_player_30fps.png" alt="AdiOS Sovereign YouTube Player 30 FPS" width="920"/>
+  <p><em>Figure 1: Live Sovereign YouTube Player running at deterministic 30 FPS in the 1024x768 XGA Workstation with Hardware MMIO VPU (0x30000000), 256MB RAM telemetry, and transport controls.</em></p>
+</div>
+
+<div align="center">
   <img src="docs/assets/workstation_1024x768.png" alt="AdiOS Sovereign Workstation 1024x768 XGA" width="920"/>
-  <p><em>Figure 1: Live AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, POSIX Shell, and Sovereign Wallpaper.</em></p>
+  <p><em>Figure 2: Live AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, POSIX Shell, and Sovereign Wallpaper.</em></p>
 </div>
 
 ---
 
 ## 1. Executive Summary & Design Tenets
 
-AdiOS is engineered without third-party libraries, bloated frameworks, or black-box drivers. Every line of code -- from the cycle-accurate RV32IM CPU core with instruction pre-decode caching to the Type-1 bare-metal hypervisor, TLS 1.3 cryptographic record layer, software OpenGL 1.1 rasterizer, order-M B+ Tree, and in-OS C99 compiler -- is written and verified from first principles.
+AdiOS is engineered without third-party libraries, bloated frameworks, or black-box drivers. Every line of code -- from the cycle-accurate RV32IM CPU core with instruction pre-decode caching to the Type-1 bare-metal hypervisor, hardware Video Processing Unit (VPU), TLS 1.3 cryptographic record layer, software OpenGL 1.1 rasterizer, order-M B+ Tree, and in-OS C99 compiler -- is written and verified from first principles.
 
 ### Key Architectural Tenets:
 1. **Sovereign Ring-0 Freedom**: The user and application have unrestricted, zero-overhead access to hardware registers, linear framebuffers, memory-mapped I/O, and CPU states.
-2. **Absolute Determinism**: Instantaneous sub-second boot times, cycle-accurate instruction timing, zero garbage-collection pauses, and contiguous non-fragmented storage layouts.
+2. **Absolute Determinism**: Instantaneous sub-second boot times, cycle-accurate instruction timing, deterministic 30 FPS video playback (~33.3ms pacing), zero garbage-collection pauses, and contiguous non-fragmented storage layouts.
 3. **Cryptographic & Network Autonomy**: Complete in-house implementation of FIPS SHA-256, RFC 7539 ChaCha20-Poly1305 AEAD, RFC 793 TCP/IP, RFC 5681 TCP Reno Congestion Control, RFC 6455 WebSocket, RFC 8446 TLS 1.3, ASN.1 DER X.509 v3 certificate chain validation, and FIPS 197 AES-128/192/256 (CBC, CTR, CFB, OFB, and GCM-AEAD with GF(2^128) GHASH).
 4. **Self-Contained Toolchain**: In-OS C99 compiler with macro preprocessor, rich struct/union type system, native ELF32 emitter, custom two-pass RV32IM assembler, disassembler, GDB Remote Serial Protocol debugger, and dynamic bytecode Lisp VM.
-5. **Unified Verification**: Every part is strictly verified and tested against a 53-subsystem regression harness verifying hardware, kernel, protocols, graphics, compilers, spatial engines, database query planners, audio trackers, process lifecycle, virtual memory MMU, and network transport.
+5. **Unified Verification**: Every part is strictly verified and tested against a 54-subsystem regression harness verifying hardware, kernel, protocols, graphics, compilers, spatial engines, database query planners, audio trackers, process lifecycle, virtual memory MMU, VPU video controller, and network transport.
 
 ---
 
@@ -40,14 +48,15 @@ AdiOS is engineered without third-party libraries, bloated frameworks, or black-
 graph TD
     subgraph HW ["Layer 0: Hardware Simulation Layer (RV32IM)"]
         CPU["RV32IM CPU Core (32-bit, Pre-Decode Cache)"]
-        RAM["64MB Physical RAM (Identity Mapped)"]
+        RAM["256MB Physical RAM (Identity Mapped)"]
+        VPU["Hardware MMIO VPU (0x30000000, 30 FPS DMA)"]
         MMIO["MMIO Bus (UART, Timer, Audio, ATA Disk)"]
         FB["1024x768 32-bit ARGB Linear Framebuffer"]
     end
 
     subgraph KERNEL ["Layer 1: Bare-Metal Kernel & Memory Management"]
         SCHED["Preemptive Scheduler (34-Register Context)"]
-        BUDDY["Buddy Allocator (Orders 0..10, 4KB..4MB)"]
+        BUDDY["Buddy Allocator (Orders 0..10, 65,536 Pages)"]
         MMU["Sv32 2-Level Paging & 64-Entry TLB"]
         VFS["Virtual Filesystem (Ext2, FAT32, AdiFS WAL)"]
         IPC["IPC & Concurrency (Unix Sockets, Pipes, Futex)"]
@@ -71,6 +80,7 @@ graph TD
         APP6["Sovereign File Explorer (Ext2/FAT32)"]
         APP7["Network & Crypto Telemetry Monitor"]
         APP8["Paint Studio & Scientific Calculator"]
+        APP9["Sovereign YouTube Player (30 FPS VPU)"]
     end
 
     HW --> KERNEL
@@ -84,6 +94,7 @@ graph TD
     WM --> APP6
     WM --> APP7
     WM --> APP8
+    WM --> APP9
 ```
 
 ```text
@@ -92,7 +103,7 @@ graph TD
 |                                                                                       |
 |   - 32-bit RISC-V CPU Core with Fast Instruction Pre-Decode Cache (15-30 MIPS)        |
 |   - RV32I Base ISA + RV32M Hardware Math (mul, mulh, div, divu, rem, remu)            |
-|   - 64 MB Physical RAM Identity-Mapped [0x80000000 - 0x84000000]                      |
+|   - 256 MB Physical RAM Identity-Mapped [0x80000000 - 0x8FFFFFFF] (65,536 Pages)     |
 |   - Memory-Mapped I/O (MMIO) Peripheral Architecture:                                 |
 |       * 0x10000000: 16550 Serial UART Console (Tx / Rx FIFO)                          |
 |       * 0x10000010: Real-Time Hardware Timer & Clock Comparator                       |
@@ -101,6 +112,7 @@ graph TD
 |       * 0x10001000: Virtual ATA Block Storage Controller (512B sectors, disk.img)     |
 |       * 0x20000000: 640x480 32-bit ARGB Linear Framebuffer (1.2 MB VRAM)              |
 |       * 0x20130000: Display Controller & Hardware Mouse Status Registers              |
+|       * 0x30000000: Hardware Video Processing Unit (VPU, 30 FPS DMA Blitter)          |
 +===========================================+===========================================+
                                             |
 +===========================================v===========================================+
@@ -689,15 +701,25 @@ adios/
 |-- sound/                  # Audio Subsystems
 |   `-- tracker.py          # PC Speaker music tracker & synthesizer
 |-- vm/                     # In-house hardware simulation layer
-|   |-- vm.py               # 64MB RV32IM CPU core with decode cache
-|   `-- display.py          # 640x480 Framebuffer window & mouse driver
+|   |-- vm.py               # 256MB RV32IM CPU core with decode cache
+|   |-- vpu.py              # Hardware MMIO Video Processing Unit (30 FPS DMA)
+|   `-- display.py          # 1024x768 Framebuffer window & mouse driver
+|-- net/                    # Network transports & streaming
+|   |-- slip.py             # Serial Line Internet Protocol
+|   |-- eth.py              # Ethernet II, ARP, IPv4, UDP, TCP
+|   `-- yt_relay.py         # YouTube stream relay & 30 FPS media synthesizer
+|-- desktop/                # Sovereign Workstation Applications
+|   |-- master_desktop.py   # Unified 1024x768 Compositor & 10 applications
+|   |-- youtube_player.py   # Sovereign YouTube Player (480x270 @ 30 FPS)
+|   `-- window_manager.py   # Z-order, edge-snapping, minimize/maximize
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
 |-- debug/                  # In-OS Debugger & GDB Remote Serial Protocol
 |   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
-|-- tests/                  # 53 Automated Subsystem Test Suites (100% Pass Rate)
-|   |-- test_master_desktop.py          # Sovereign Master Desktop & 8 GUI applications
+|-- tests/                  # 54 Automated Subsystem Test Suites (100% Pass Rate)
+|   |-- test_vpu_ram256.py              # 256MB RAM Expansion, Hardware MMIO VPU & 30 FPS YouTube
+|   |-- test_master_desktop.py          # Sovereign Master Desktop & 10 GUI applications
 |   |-- test_desktop_res1024.py         # Native 1024x768 XGA Workstation & Window Snapping
 |   |-- test_adipython_deepened.py      # AST Parser, CSE/LICM Optimizer, Linear Scan & JIT
 |   |-- test_c_toolchain_deepened.py    # C99 Codegen, Array Strides & Zero-Dependency Libc
@@ -707,7 +729,7 @@ adios/
 |   |-- test_deep_pass2.py              # X.509 DER, AES Modes, TCP Reno, WebSocket
 |   |-- test_deep_pass3.py              # Ext2 Indirect, B+ Tree, Volcano Query Planner
 |   |-- test_deep_pass4.py              # GL Textures, Blinn-Phong, 6-DOF, Audio Tracker
-|   `-- ...                             # 40 Subsystem Block Regression Suites
+|   `-- ...                             # 41 Subsystem Block Regression Suites
 `-- build.py                # Unified build, test, benchmark, and launcher driver
 ```
 

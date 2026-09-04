@@ -67,6 +67,7 @@ COLOR_ACCENT_GREEN   = 0x009ECE6A
 COLOR_ACCENT_CYAN    = 0x007DCFFF
 COLOR_ACCENT_ORANGE  = 0x00FF9E64
 COLOR_ACCENT_RED     = 0x00F7768E
+COLOR_YOUTUBE_RED    = 0x00E50914
 COLOR_ACCENT_PURPLE  = 0x00BB9AF7
 COLOR_ACCENT_YELLOW  = 0x00E0AF68
 COLOR_TEXT_PRIMARY   = 0x00C0CAF5
@@ -75,9 +76,9 @@ COLOR_TEXT_MUTED     = 0x00565F89
 class MasterDesktop:
     """
     Unified Sovereign Master Desktop Environment (1024x768 XGA Workstation).
-    Composites 9 applications into overlapping, interactive, resizable windows.
+    Composites 10 applications into overlapping, interactive, resizable windows.
     """
-    def __init__(self, vm=None, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT):
+    def __init__(self, vm=None, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT, ram_capacity_mb: int = 64):
         self.vm = vm
         self.width = width
         self.height = height
@@ -91,6 +92,18 @@ class MasterDesktop:
         # Telemetry State
         self.hart_loads = [14, 18, 9, 22]
         self.ram_used_mb = 3.2
+        self.ram_capacity_mb = ram_capacity_mb
+        if vm and hasattr(vm, 'ram_size'):
+            self.ram_capacity_mb = vm.ram_size // (1024 * 1024)
+
+        # Connect or initialize Hardware VPU Video Controller
+        if vm and hasattr(vm, 'vpu') and vm.vpu is not None:
+            self.vpu = vm.vpu
+        else:
+            from vm.vpu import VPU
+            self.vpu = VPU(vm=vm, width=480, height=270, fps=30)
+            if vm:
+                vm.vpu = self.vpu
 
         # Wallpaper & Desktop Background State
         self.wallpaper_style = "cyber"
@@ -108,6 +121,7 @@ class MasterDesktop:
         self._init_file_explorer()
         self._init_paint_calc()
         self._init_games_arcade()
+        self._init_youtube_player()
 
         # Create Workstation Windows (490x350 grid layout)
         self._setup_master_windows()
@@ -341,6 +355,13 @@ class MasterDesktop:
         self.win_games.on_draw_content = self._draw_games
         self.win_games.on_click_content = self._click_games
         self.wm.add_window(self.win_games)
+
+        # 10. Sovereign YouTube Player (30 FPS) (Centered: 250, 140)
+        self.win_youtube = Window("youtube", "Sovereign YouTube Player (30 FPS)", 250, 140, 520, 420)
+        self.win_youtube.visible = False
+        self.win_youtube.on_draw_content = self._draw_youtube
+        self.win_youtube.on_click_content = self._click_youtube
+        self.wm.add_window(self.win_youtube)
 
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
@@ -1369,6 +1390,29 @@ class MasterDesktop:
                     if s["z"] <= 20.0:
                         s["z"] = 900.0
 
+        # YouTube Player 30 FPS Frame Stepping
+        if hasattr(self, "youtube_app") and hasattr(self, "win_youtube") and self.win_youtube.visible and not self.win_youtube.minimized:
+            self.youtube_app.step()
+
+    def _init_youtube_player(self):
+        from desktop.youtube_player import YouTubePlayerApp
+        self.youtube_app = YouTubePlayerApp(vpu=self.vpu)
+
+    def _draw_youtube(self, win: Window, fb: bytearray, font_dict):
+        cx, cy, cw, ch = win.client_rect
+        surf = bytearray(cw * ch * 4)
+        self.youtube_app.render(surf, cw, ch)
+        for y in range(ch):
+            py = cy + y
+            if 0 <= py < self.height:
+                s_off = y * cw * 4
+                d_off = (py * self.width + cx) * 4
+                fb[d_off : d_off + cw * 4] = surf[s_off : s_off + cw * 4]
+
+    def _click_youtube(self, win: Window, rel_x: int, rel_y: int):
+        self.youtube_app.handle_click(rel_x, rel_y)
+        self.status_message = f"YouTube Player: {self.youtube_app.relay.channel_info['title']} ({'PLAYING' if self.youtube_app.is_playing else 'PAUSED'})"
+
     def render(self, fb: bytearray):
         # 1. Clear Desktop with deep dark background
         bg_bytes = bytes([COLOR_DESKTOP_BG & 0xFF, (COLOR_DESKTOP_BG >> 8) & 0xFF, (COLOR_DESKTOP_BG >> 16) & 0xFF, 0])
@@ -1397,26 +1441,29 @@ class MasterDesktop:
         self._draw_string(fb, 10, 7, "AdiOS [1.1]", COLOR_START_TXT)
 
         # Dedicated Games Pill on Taskbar
-        self._draw_button(fb, 88, 3, 68, 18, "GAMES", COLOR_ACCENT_PURPLE, COLOR_START_TXT)
+        self._draw_button(fb, 88, 3, 64, 18, "GAMES", COLOR_ACCENT_PURPLE, COLOR_START_TXT)
 
         # Dedicated Wallpaper / Show Desktop Pill on Taskbar
         wall_bg = COLOR_ACCENT_CYAN if self.desktop_clean_mode else COLOR_BUTTON_BG
         wall_txt = 0x00000000 if self.desktop_clean_mode else COLOR_ACCENT_CYAN
-        self._draw_button(fb, 160, 3, 56, 18, "WALL", wall_bg, wall_txt)
+        self._draw_button(fb, 156, 3, 52, 18, "WALL", wall_bg, wall_txt)
+
+        # Dedicated YouTube 30 FPS Pill on Taskbar
+        self._draw_button(fb, 212, 3, 44, 18, "YT", COLOR_YOUTUBE_RED, COLOR_START_TXT)
 
         # Window Switcher Pills on Taskbar
-        sw_x = 222
+        sw_x = 262
         for w in self.wm.windows:
             if w.visible and not w.minimized:
                 bg_col = COLOR_TITLE_ACT if w.active else COLOR_BUTTON_BG
                 txt_col = COLOR_START_TXT if w.active else COLOR_BUTTON_TXT
                 short_title = w.title[:8]
-                self._draw_button(fb, sw_x, 3, 72, 18, short_title, bg_col, txt_col)
-                sw_x += 76
+                self._draw_button(fb, sw_x, 3, 68, 18, short_title, bg_col, txt_col)
+                sw_x += 72
 
-        # Right status indicators: SMP Cores & System Clock
-        telemetry = f"SMP 4x Hart: {self.hart_loads[0]}% | VRAM: 3.1MB | {self.width}x{self.height}"
-        self._draw_string(fb, self.width - 320, 7, telemetry, COLOR_ACCENT_GREEN)
+        # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
+        telemetry = f"SMP: {self.hart_loads[0]}% | RAM: {self.ram_used_mb}MB/{self.ram_capacity_mb}MB | {self.width}x{self.height}"
+        self._draw_string(fb, self.width - 340, 7, telemetry, COLOR_ACCENT_GREEN)
 
         # 4. Render Dropdown Start Menu if open
         if self.start_menu_open:
@@ -1426,7 +1473,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 252
+        mh = 272
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1451,12 +1498,13 @@ class MasterDesktop:
             ("7. POSIX Sovereign Shell", "shell"),
             ("8. Paint Studio & Calculator", "paint"),
             ("9. Sovereign 3D Games Arcade", "games"),
-            ("10. Toggle Wallpaper Theme", "wallpaper")
+            ("10. Toggle Wallpaper Theme", "wallpaper"),
+            ("11. Sovereign YouTube (30 FPS)", "youtube")
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_ACCENT_YELLOW if wid == "games" else (COLOR_ACCENT_CYAN if wid == "wallpaper" else COLOR_TEXT_PRIMARY)
+            color = COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid == "games" else (COLOR_ACCENT_CYAN if wid == "wallpaper" else COLOR_TEXT_PRIMARY))
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
@@ -1464,33 +1512,36 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def handle_mouse_down(self, mx: int, my: int) -> Optional[Tuple[str, Any]]:
-        # 1. Start Pill, Games Pill & Wallpaper Pill Clicks
+        # 1. Start Pill, Games Pill, Wallpaper Pill & YouTube Pill Clicks
         if my < TASKBAR_HEIGHT:
             if 4 <= mx <= 84:
                 self.toggle_start_menu()
                 return ("start_toggle", None)
-            if 88 <= mx <= 156:
+            if 88 <= mx <= 152:
                 self.launch_or_focus("games")
                 return ("menu_select", "games")
-            if 160 <= mx <= 216:
+            if 156 <= mx <= 208:
                 self.toggle_desktop_wallpaper()
                 return ("wallpaper_toggle", None)
+            if 212 <= mx <= 256:
+                self.launch_or_focus("youtube")
+                return ("menu_select", "youtube")
 
             # Window Switcher Pills click
-            sw_x = 222
+            sw_x = 262
             for w in self.wm.windows:
                 if w.visible and not w.minimized:
-                    if sw_x <= mx <= sw_x + 72:
+                    if sw_x <= mx <= sw_x + 68:
                         self.wm.focus_window(w)
                         return ("switch_window", w)
-                    sw_x += 76
+                    sw_x += 72
             return None
 
         # 2. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 252:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 272:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
-                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper"]
+                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper", "youtube"]
                 # Check legacy item click (my = 160 was item 6 shell in 18px pitch)
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")

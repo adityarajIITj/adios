@@ -235,6 +235,9 @@ def test():
     print("\n--- 53. Testing Toolchain, Filesystem, GUI & 3D Graphics Deepening ---")
     res_tool_deep = subprocess.run([sys.executable, "-m", "unittest", "tests/test_toolchain_fs_graphics_deepened.py"])
 
+    print("\n--- 54. Testing 256MB RAM Expansion, Hardware MMIO VPU & 30 FPS YouTube Player ---")
+    res_vpu_ram = subprocess.run([sys.executable, "-m", "unittest", "tests/test_vpu_ram256.py"])
+
     all_tests = [
         ("VM", res_vm), ("AP", res_ap), ("JIT", res_jit), ("DIS", res_dis), ("STD", res_std),
         ("DOC", res_doc), ("3D", res_3d), ("TRK", res_trk), ("FS", res_fs), ("CLI", res_cli),
@@ -247,12 +250,12 @@ def test():
         ("MDESK", res_mdesk), ("PASS1", res_pass1), ("PASS2", res_pass2), ("PASS3", res_pass3),
         ("PASS4", res_pass4), ("RES1024", res_res1024), ("AP_DEEP", res_ap_deep), ("C_DEEP", res_c_deep),
         ("STORAGE_DEEP", res_storage_deep), ("SEC_DEEP", res_sec_deep), ("KCORE_DEEP", res_kcore_deep),
-        ("NET_DEEP", res_net_deep), ("TOOL_DEEP", res_tool_deep)
+        ("NET_DEEP", res_net_deep), ("TOOL_DEEP", res_tool_deep), ("VPU_RAM256", res_vpu_ram)
     ]
     all_pass = all(r.returncode == 0 for name, r in all_tests)
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 53 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 54 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -306,6 +309,7 @@ def test():
         print("  - Pass X Kernel Core, Process, Concurrency & Sv32 MMU Deepening: PASS")
         print("  - Pass X Network Protocols, Fragmentation & Transport Deepening: PASS")
         print("  - Pass X Toolchain, Filesystem, GUI & 3D Graphics Deepening: PASS")
+        print("  - VPU Video Controller & 256MB RAM Expansion (30 FPS YouTube): PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected:")
@@ -346,21 +350,26 @@ def run_castle3d():
     except KeyboardInterrupt:
         print("\n[CastleAdiOS 3D] Exited.")
 
-def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clean_wallpaper=False):
+def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clean_wallpaper=False, ram_mb=256, auto_launch_yt=False):
     print("=====================================================")
     print("     AdiOS Sovereign Workstation (1024x768 XGA)      ")
     print("=====================================================")
-    print(f"[AdiOS Desktop] Initializing Workstation Compositor ({width}x{height} @ {scale}x scale)...")
+    print(f"[AdiOS Desktop] Initializing Workstation Compositor ({width}x{height} @ {scale}x scale, {ram_mb}MB RAM)...")
     from vm.vm import VM
+    from vm.vpu import VideoProcessingUnit
     from vm.display import DisplayWindow
     from desktop import MasterDesktop
 
-    vm = VM()
+    vm = VM(ram_size=ram_mb * 1024 * 1024)
+    vm.vpu = VideoProcessingUnit(vm)
     vm.fb = bytearray(width * height * 4)
     desktop = MasterDesktop(vm, width=width, height=height)
     if auto_launch_games or "--games" in sys.argv or "--arcade" in sys.argv:
         desktop.launch_or_focus("games")
         print("[AdiOS Desktop] Sovereign 3D Games Arcade auto-launched.")
+    if auto_launch_yt or "--youtube" in sys.argv or "--yt" in sys.argv:
+        desktop.launch_or_focus("youtube")
+        print("[AdiOS Desktop] Sovereign YouTube Player (30 FPS) auto-launched.")
     if clean_wallpaper or "--wallpaper" in sys.argv or "--clean" in sys.argv:
         desktop.toggle_desktop_wallpaper()
         print("[AdiOS Desktop] ASCII Art Wallpaper active (windows minimized, click [WALL] to restore).")
@@ -543,7 +552,7 @@ def run_benchmarks():
 if __name__ == "__main__":
     if "--help" in sys.argv or "-h" in sys.argv:
         print("=================================================================")
-        print("  AdiOS (v1.0.0 Sovereign Master Workstation & Production)       ")
+        print("  AdiOS (v2.0 Beta Sovereign Master Workstation & Media Suite)   ")
         print("=================================================================")
         print("Usage: python build.py [OPTION]")
         print("")
@@ -551,6 +560,8 @@ if __name__ == "__main__":
         print("  --desktop             Launch Unified Sovereign Workstation (1024x768 XGA)")
         print("  --desktop --wallpaper Launch Workstation with ASCII Art Wallpaper in full view")
         print("  --desktop --games     Launch Workstation with Sovereign 3D Games Arcade open")
+        print("  --youtube, --yt       Launch Workstation with Sovereign 30 FPS YouTube Player focused")
+        print("  --ram <MB>            Specify physical memory size in MB (e.g. 64 or 256, default 256)")
         print("  --res WxH             Specify custom workstation resolution (e.g. 1024x768)")
         print("  --scale S             Specify display scaling factor (e.g. 1.0 or 1.5)")
         print("")
@@ -560,7 +571,7 @@ if __name__ == "__main__":
         print("  --3d, --flight, --game Direct standalone launch of StarFlight 3D Flight Simulator")
         print("")
         print("Systems, Toolchains & Tests:")
-        print("  --test                Run automated 53-subsystem regression test suite")
+        print("  --test                Run automated 54-subsystem regression test suite")
         print("  --bench               Run systems throughput benchmark suite")
         print("  --shell, --cyber      Launch interactive Sovereign Cyber Command Shell")
         print("  --hymn, --song        Play 4-channel synthesized Baroque Hymn of AdiOS")
@@ -574,6 +585,19 @@ if __name__ == "__main__":
         test()
     elif "--bench" in sys.argv:
         run_benchmarks()
+    elif "--youtube" in sys.argv or "--yt" in sys.argv:
+        scale = 1.0
+        if "--scale" in sys.argv:
+            idx = sys.argv.index("--scale")
+            if idx + 1 < len(sys.argv):
+                try: scale = float(sys.argv[idx + 1])
+                except ValueError: scale = 1.0
+        ram_mb = 256
+        if "--ram" in sys.argv:
+            idx = sys.argv.index("--ram")
+            if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
+                ram_mb = int(sys.argv[idx + 1])
+        run_desktop(scale=scale, width=1024, height=768, ram_mb=ram_mb, auto_launch_yt=True)
     elif "--games" in sys.argv or "--arcade" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -581,7 +605,12 @@ if __name__ == "__main__":
             if idx + 1 < len(sys.argv):
                 try: scale = float(sys.argv[idx + 1])
                 except ValueError: scale = 1.0
-        run_desktop(scale=scale, width=1024, height=768, auto_launch_games=True)
+        ram_mb = 256
+        if "--ram" in sys.argv:
+            idx = sys.argv.index("--ram")
+            if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
+                ram_mb = int(sys.argv[idx + 1])
+        run_desktop(scale=scale, width=1024, height=768, ram_mb=ram_mb, auto_launch_games=True)
     elif "--desktop" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -591,6 +620,14 @@ if __name__ == "__main__":
                     scale = float(sys.argv[idx + 1])
                 except ValueError:
                     scale = 1.0
+        ram_mb = 256
+        if "--ram" in sys.argv:
+            idx = sys.argv.index("--ram")
+            if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
+                ram_mb = int(sys.argv[idx + 1])
+        auto_launch_yt = ("--youtube" in sys.argv or "--yt" in sys.argv)
+        auto_launch_games = ("--games" in sys.argv or "--arcade" in sys.argv)
+        clean_wallpaper = ("--wallpaper" in sys.argv or "--clean" in sys.argv)
         width, height = 1024, 768
         if "--res" in sys.argv:
             idx = sys.argv.index("--res")
@@ -598,7 +635,7 @@ if __name__ == "__main__":
                 parts = sys.argv[idx + 1].lower().split("x")
                 if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                     width, height = int(parts[0]), int(parts[1])
-        run_desktop(scale=scale, width=width, height=height)
+        run_desktop(scale=scale, width=width, height=height, ram_mb=ram_mb, auto_launch_games=auto_launch_games, auto_launch_yt=auto_launch_yt, clean_wallpaper=clean_wallpaper)
     elif "--shell" in sys.argv or "--cyber" in sys.argv:
         run_cyber_shell()
     elif "--castle" in sys.argv or "--fps" in sys.argv:

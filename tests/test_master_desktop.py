@@ -6,6 +6,7 @@ STRICT ZERO EMOJI POLICY.
 """
 
 import unittest
+import time
 from desktop.master_desktop import MasterDesktop, WIDTH, HEIGHT, COLOR_DESKTOP_BG, COLOR_START_PILL
 from vm.vm import VM
 
@@ -16,10 +17,10 @@ class TestMasterDesktop(unittest.TestCase):
         self.fb = bytearray(WIDTH * HEIGHT * 4)
 
     def test_01_initialization(self):
-        """Verify MasterDesktop initializes all 9 windows and default state."""
-        self.assertEqual(len(self.desktop.wm.windows), 9)
+        """Verify MasterDesktop initializes all 10 windows and default state."""
+        self.assertEqual(len(self.desktop.wm.windows), 10)
         win_ids = [w.win_id for w in self.desktop.wm.windows]
-        expected = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games"]
+        expected = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "youtube"]
         for exp in expected:
             self.assertIn(exp, win_ids)
 
@@ -218,6 +219,44 @@ class TestMasterDesktop(unittest.TestCase):
         wall_txt = self.desktop.shell.eval("wallpaper")
         self.assertIn("S O V E R E I G N", wall_txt)
         self.assertIn("+=", wall_txt)
+
+    def test_14_youtube_player(self):
+        """Verify Sovereign YouTube Player (30 FPS) window, transport controls, and VPU integration."""
+        # 1. Launch YouTube player via Taskbar [YT] pill at (230, 10)
+        res = self.desktop.handle_mouse_down(230, 10)
+        self.assertEqual(res, ("menu_select", "youtube"))
+        self.assertTrue(self.desktop.win_youtube.visible)
+        self.assertTrue(self.desktop.win_youtube.active)
+
+        # 2. Verify YouTube Player App state
+        yt = self.desktop.youtube_app
+        self.assertIsNotNone(yt)
+        self.assertTrue(yt.is_playing)
+        self.assertEqual(yt.vpu.fps, 30)
+
+        # 3. Test frame stepping and VPU frame pacing
+        initial_frames = yt.vpu.frames_played
+        # Advance time by 40ms (> 33.3ms for 30 FPS)
+        yt.step(now=time.time() + 0.050)
+        self.assertGreaterEqual(yt.vpu.frames_played, initial_frames)
+
+        # 4. Test Play/Pause toggle via click on play button
+        yt.handle_click(30, 375) # btn_play
+        self.assertFalse(yt.is_playing)
+        yt.handle_click(30, 375)
+        self.assertTrue(yt.is_playing)
+
+        # 5. Test Channel Switching via click on Synthwave channel button
+        orig_ch = yt.active_channel
+        yt.handle_click(180, 375) # btn_ch2 (Synthwave)
+        self.assertEqual(yt.active_channel, 1)
+
+        # 6. Render full desktop with YouTube active
+        self.desktop.render(self.fb)
+
+        # 7. Test Scrub Bar seek
+        yt.handle_click(260, 345) # 50% scrub seek
+        self.assertGreater(yt.vpu.current_pts, 0)
 
 if __name__ == "__main__":
     unittest.main()

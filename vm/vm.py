@@ -18,9 +18,12 @@ import os
 import threading
 
 RAM_BASE = 0x80000000
-RAM_SIZE = 64 * 1024 * 1024  # 64 MB Physical RAM
+RAM_SIZE = 64 * 1024 * 1024  # 64 MB Physical RAM (Default)
+RAM_SIZE_256MB = 256 * 1024 * 1024  # 256 MB Physical RAM (Expanded)
 
 # MMIO Peripherals Map
+VPU_BASE        = 0x30000000  # Video Processing Unit (30 FPS YouTube / Video)
+VPU_SIZE        = 0x100       # 256 Bytes register window
 UART_BASE       = 0x10000000
 UART_DATA       = 0x10000000
 UART_STATUS     = 0x10000004
@@ -68,9 +71,11 @@ def sign_extend(val, bits):
 
 class VM:
     def __init__(self, ram_size=RAM_SIZE, disk_path="disk.img"):
+        self.ram_size = ram_size
         self.ram = bytearray(ram_size)
         self.fb = bytearray(FB_SIZE)
         self.display = None
+        self.vpu = None
         self.regs = [0] * 32
         self.pc = RAM_BASE
         self.running = True
@@ -264,10 +269,10 @@ class VM:
         if addr == 0x20130010: return self.display.mouse_x if self.display else 320
         if addr == 0x20130014: return self.display.mouse_y if self.display else 240
         if addr == 0x20130018: return self.display.mouse_buttons if self.display else 0
-        if addr == 0x2013001C:
-            val = self.display.mouse_event if self.display else 0
-            if self.display: self.display.mouse_event = 0
-            return val
+        # Video Processing Unit (VPU) Controller Registers (0x30000000 - 0x300000FF)
+        if VPU_BASE <= addr < VPU_BASE + VPU_SIZE and self.vpu is not None:
+            return self.vpu.read32(addr)
+
         return 0
 
     def write8(self, addr, val):
@@ -359,6 +364,10 @@ class VM:
         if addr == 0x2013000C: # FB_FLUSH
             if val == 1 and self.display:
                 self.display.render_frame()
+            return
+        # Video Processing Unit (VPU) Controller Registers (0x30000000 - 0x300000FF)
+        if VPU_BASE <= addr < VPU_BASE + VPU_SIZE and self.vpu is not None:
+            self.vpu.write32(addr, val)
             return
         if addr == POWER_BASE:
             self.write8(addr, val & 0xFF)

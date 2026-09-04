@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""
+AdiOS Hardware MMIO Video Processing Unit (VPU) Peripheral (vm/vpu.py)
+Provides hardware-accelerated 30 FPS video streaming and DMA blitting:
+- Memory-Mapped I/O Register Interface (0x30000000 - 0x300000FF)
+- Hardware Overlay Plane & Direct Framebuffer DMA Blitter
+- 30 FPS Cycle-Accurate Frame Pacer (33.3ms interval)
+- High-Capacity Video Frame Ring Buffer (supporting 256MB RAM scale)
+- Audio-Video PTS Synchronization & Transport Control FSM
+
+Zero external dependencies. Pure RV32IM hardware simulation architecture.
+STRICT ZERO EMOJI POLICY ENFORCED.
+"""
+
+import time
+import threading
+from typing import Optional, Tuple, List, Dict
+
+# MMIO Register Offsets (Base: 0x30000000)
+VPU_BASE            = 0x30000000
+VPU_CMD             = 0x30000000  # W: 0=IDLE, 1=PLAY, 2=PAUSE, 3=STOP, 4=SEEK
+VPU_STATUS          = 0x30000004  # R: 0=STOPPED, 1=PLAYING, 2=PAUSED, 3=BUFFERING, 4=ERROR
+VPU_TARGET_FB       = 0x30000008  # R/W: Physical address of target surface
+VPU_WIDTH           = 0x3000000C  # R/W: Video width (default 480)
+VPU_HEIGHT          = 0x30000010  # R/W: Video height (default 270 or 360)
+VPU_FPS             = 0x30000014  # R/W: Target FPS (default 30)
+VPU_FRAMES_PLAYED   = 0x30000018  # R: Total delivered frames counter
+VPU_CURRENT_PTS     = 0x3000001C  # R: Current presentation timestamp (ms)
+VPU_DURATION_MS     = 0x30000020  # R/W: Stream total duration (ms)
+VPU_SEEK_TARGET     = 0x30000024  # R/W: Target PTS for seek operation (ms)
+VPU_VOLUME          = 0x30000028  # R/W: Audio volume (0 - 100)
+VPU_BUFFER_CAPACITY = 0x3000002C  # R: Max frames in ring buffer (e.g. 120)
+VPU_BUFFER_OCCUPANCY= 0x30000030  # R: Current unconsumed frames count
+VPU_STREAM_TYPE     = 0x30000034  # R/W: 0=SYNTH_CYBER, 1=HTTP_STREAM, 2=RAW_DMA
+
+# VPU Commands
+CMD_IDLE  = 0
+CMD_PLAY  = 1
+CMD_PAUSE = 2
+CMD_STOP  = 3
+CMD_SEEK  = 4
+
+# VPU Status States
+STATUS_STOPPED   = 0
+STATUS_PLAYING   = 1
+STATUS_PAUSED    = 2
+STATUS_BUFFERING = 3
+STATUS_ERROR     = 4
+
+
+class VideoFrame:
+    """Represents an uncompressed 32-bit ARGB video frame."""
+    __slots__ = ('width', 'height', 'pts_ms', 'data')
+
+    def __init__(self, width: int, height: int, pts_ms: int, data: bytes):
+        self.width = width
+        self.height = height
+        self.pts_ms = pts_ms
+        self.data = data
+
+
+class VPU:
+    """
+    Hardware Video Processing Unit (VPU) Controller.
+    Decodes and DMA-blits video streams at deterministic 30 FPS.
+    """
+    def __init__(self, vm=None, width: int = 480, height: int = 270, fps: int = 30):
+        self.vm = vm
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.frame_interval = 1.0 / float(fps)  # ~0.0333s (33.3ms for 30 FPS)
+        
+        # State Registers
+        self.cmd = CMD_IDLE
+        self.status = STATUS_STOPPED
+        self.target_fb = 0x20000000  # Default to primary FB
+        self.frames_played = 0
+        self.current_pts = 0
+        self.duration_ms = 180000    # Default 3 minutes (180,000 ms)
+        self.seek_target = 0
+        self.volume = 80
+        self.stream_type = 0         # 0=Synthetic Cyber stream
+        self.buffer_capacity = 120   # 4 seconds pre-buffer at 30 FPS
+        
+        # Internal Frame Buffer Ring
+        self._frame_queue: List[VideoFrame] = []
+        self._current_frame: Optional[VideoFrame] = None
+        self._lock = threading.Lock()
+        
+        # Frame Pacing Timing
+        self._last_frame_time = 0.0
+        self._playback_start_pts = 0
+        self._playback_start_clock = 0.0
+        
+        # Connected Host Relay
+        self.relay = None
+
+    def read32(self, addr: int) -> int:
+        """MMIO register read handler."""
+        if addr == VPU_CMD:             return self.cmd
+        if addr == VPU_STATUS:          return self.status
+        if addr == VPU_TARGET_FB:       return self.target_fb
+        if addr == VPU_WIDTH:           return self.width
+        if addr == VPU_HEIGHT:          return self.height
+        if addr == VPU_FPS:             return self.fps
+        if addr == VPU_FRAMES_PLAYED:   return self.frames_played
+        if addr == VPU_CURRENT_PTS:     return self.current_pts
+        if addr == VPU_DURATION_MS:     return self.duration_ms
+        if addr == VPU_SEEK_TARGET:     return self.seek_target
+        if addr == VPU_VOLUME:          return self.volume
+        if addr == VPU_BUFFER_CAPACITY: return self.buffer_capacity
+        if addr == VPU_BUFFER_OCCUPANCY:
+            with self._lock:
+                return len(self._frame_queue)
+        if addr == VPU_STREAM_TYPE:     return self.stream_type
+        return 0
+
+    def write32(self, addr: int, val: int):
+        """MMIO register write handler."""
+        val &= 0xFFFFFFFF
+        if addr == VPU_CMD:
+            self._execute_cmd(val)
+        elif addr == VPU_STATUS:
+            self.status = val & 0x07
+        elif addr == VPU_TARGET_FB:
+            self.target_fb = val
+        elif addr == VPU_WIDTH:
+            self.width = max(16, min(1024, val))
+        elif addr == VPU_HEIGHT:
+            self.height = max(16, min(768, val))
+        elif addr == VPU_FPS:
+            self.fps = max(1, min(60, val))
+            self.frame_interval = 1.0 / float(self.fps)
+        elif addr == VPU_DURATION_MS:
+            self.duration_ms = val
+        elif addr == VPU_SEEK_TARGET:
+            self.seek_target = val
+        elif addr == VPU_VOLUME:
+            self.volume = max(0, min(100, val))
+        elif addr == VPU_STREAM_TYPE:
+            self.stream_type = val
+
+    def _execute_cmd(self, cmd: int):
+        """Processes VPU hardware command state transitions."""
+        self.cmd = cmd
+        now = time.time()
+        
+        if cmd == CMD_PLAY:
+            if self.status != STATUS_PLAYING:
+                self.status = STATUS_PLAYING
+                self._playback_start_clock = now
+                self._playback_start_pts = self.current_pts
+                self._last_frame_time = now
+        elif cmd == CMD_PAUSE:
+            if self.status == STATUS_PLAYING:
+                self.status = STATUS_PAUSED
+        elif cmd == CMD_STOP:
+            self.status = STATUS_STOPPED
+            self.current_pts = 0
+            with self._lock:
+                self._frame_queue.clear()
+                self._current_frame = None
+        elif cmd == CMD_SEEK:
+            self.current_pts = min(self.duration_ms, self.seek_target)
+            self._playback_start_clock = now
+            self._playback_start_pts = self.current_pts
+            if self.relay:
+                self.relay.seek(self.current_pts)
+
+    def push_frame(self, frame: VideoFrame) -> bool:
+        """Pushes an incoming decoded video frame into the VPU ring buffer."""
+        with self._lock:
+            if len(self._frame_queue) >= self.buffer_capacity:
+                # Buffer full: drop oldest frame to maintain realtime pacing
+                self._frame_queue.pop(0)
+            self._frame_queue.append(frame)
+            return True
+
+    def get_current_frame(self) -> Optional[VideoFrame]:
+        """Returns the active video frame for display."""
+        with self._lock:
+            return self._current_frame
+
+    def step(self, now: Optional[float] = None) -> bool:
+        """
+        Advances video playback by one 30 FPS frame interval (~33.3ms).
+        Returns True if a new frame was blitted/advanced.
+        """
+        if self.status != STATUS_PLAYING:
+            return False
+
+        if now is None:
+            now = time.time()
+
+        elapsed = now - self._last_frame_time
+        if elapsed < self.frame_interval:
+            return False  # Maintain exact 30 FPS pacing
+
+        # Advance presentation timestamp
+        self._last_frame_time = now
+        calculated_pts = int(self._playback_start_pts + (now - self._playback_start_clock) * 1000)
+        self.current_pts = min(self.duration_ms, calculated_pts)
+
+        # Loop playback when reaching end of stream
+        if self.current_pts >= self.duration_ms:
+            self.current_pts = 0
+            self._playback_start_clock = now
+            self._playback_start_pts = 0
+
+        # Retrieve next frame from ring buffer or request from relay
+        advanced = False
+        with self._lock:
+            if self._frame_queue:
+                self._current_frame = self._frame_queue.pop(0)
+                self.frames_played += 1
+                advanced = True
+            elif self.relay:
+                frame = self.relay.generate_frame(self.current_pts, self.width, self.height)
+                if frame:
+                    self._current_frame = frame
+                    self.frames_played += 1
+                    advanced = True
+
+        return advanced
+
+    def dma_blit_to_surface(self, surface_buffer: bytearray, surf_w: int, surf_h: int,
+                            dst_x: int, dst_y: int, clip_rect: Optional[Tuple[int, int, int, int]] = None):
+        """
+        High-performance DMA blit: transfers the active video frame directly
+        into target surface memory with coordinate clipping.
+        """
+        frame = self.get_current_frame()
+        if frame is None or not frame.data:
+            return
+
+        fw = frame.width
+        fh = frame.height
+        src_data = frame.data
+
+        # Determine clip boundary
+        cx0 = 0 if clip_rect is None else clip_rect[0]
+        cy0 = 0 if clip_rect is None else clip_rect[1]
+        cx1 = surf_w if clip_rect is None else clip_rect[0] + clip_rect[2]
+        cy1 = surf_h if clip_rect is None else clip_rect[1] + clip_rect[3]
+
+        # Intersect with surface bounds
+        x_start = max(dst_x, cx0, 0)
+        y_start = max(dst_y, cy0, 0)
+        x_end   = min(dst_x + fw, cx1, surf_w)
+        y_end   = min(dst_y + fh, cy1, surf_h)
+
+        if x_start >= x_end or y_start >= y_end:
+            return  # Completely culled
+
+        copy_w = x_end - x_start
+        copy_bytes = copy_w * 4
+
+        src_offset_x = x_start - dst_x
+        src_pitch = fw * 4
+        dst_pitch = surf_w * 4
+
+        for y in range(y_start, y_end):
+            src_y = y - dst_y
+            s_off = src_y * src_pitch + (src_offset_x * 4)
+            d_off = y * dst_pitch + (x_start * 4)
+            surface_buffer[d_off : d_off + copy_bytes] = src_data[s_off : s_off + copy_bytes]
+
+VideoProcessingUnit = VPU
+

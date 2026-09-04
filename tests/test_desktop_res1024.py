@@ -20,7 +20,7 @@ class TestDesktopRes1024(unittest.TestCase):
         """Verify 1024x768 workstation dimensions, window count, and font glyphs."""
         self.assertEqual(self.desktop.width, 1024)
         self.assertEqual(self.desktop.height, 768)
-        self.assertEqual(len(self.desktop.wm.windows), 9)
+        self.assertEqual(len(self.desktop.wm.windows), 10)
         self.assertFalse(self.desktop.start_menu_open)
         self.assertEqual(len(self.desktop.font), 95)
 

@@ -18,8 +18,10 @@ from typing import Dict, List, Tuple, Optional, Set
 
 PAGE_SIZE = 4096      # 4KB standard Sv32 page size
 RAM_BASE  = 0x80000000
-RAM_SIZE  = 64 * 1024 * 1024  # 64MB
+RAM_SIZE  = 64 * 1024 * 1024  # 64MB (Default)
+RAM_SIZE_256MB = 256 * 1024 * 1024  # 256MB (Expanded)
 TOTAL_PAGES = RAM_SIZE // PAGE_SIZE  # 16,384 pages
+TOTAL_PAGES_256MB = RAM_SIZE_256MB // PAGE_SIZE  # 65,536 pages
 
 # Maximum buddy order: 2^10 pages = 1024 pages = 4MB
 MAX_BUDDY_ORDER = 10
@@ -210,10 +212,15 @@ class PhysicalPageAllocator:
         self.frames: List[PageFrame] = [
             PageFrame(base_addr + i * PAGE_SIZE) for i in range(total_pages)
         ]
-        # Memory zones
-        self.zone_dma = MemoryZone("DMA", base_addr, 16 * 1024 * 1024)
-        self.zone_normal = MemoryZone("NORMAL", base_addr + 16 * 1024 * 1024, 40 * 1024 * 1024)
-        self.zone_highmem = MemoryZone("HIGHMEM", base_addr + 56 * 1024 * 1024, 8 * 1024 * 1024)
+        # Memory zones calculated dynamically based on total capacity
+        total_mem = total_pages * PAGE_SIZE
+        dma_size = min(16 * 1024 * 1024, total_mem)
+        normal_size = min(40 * 1024 * 1024, max(0, total_mem - dma_size))
+        highmem_size = max(0, total_mem - dma_size - normal_size)
+
+        self.zone_dma = MemoryZone("DMA", base_addr, dma_size)
+        self.zone_normal = MemoryZone("NORMAL", base_addr + dma_size, normal_size)
+        self.zone_highmem = MemoryZone("HIGHMEM", base_addr + dma_size + normal_size, highmem_size)
 
         # Reserve first 1024 pages (4MB) for kernel code & page tables
         for i in range(1024):
