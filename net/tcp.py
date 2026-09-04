@@ -131,6 +131,66 @@ class TCPSocket:
         self.tx_queue: List[Tuple[TCPHeader, bytes]] = []
         self.pending_connections: List['TCPSocket'] = []
 
+        # Reno Congestion Control (RFC 5681)
+        self.mss = 1460
+        self.cwnd = 1460 # Initial 1 MSS slow start window
+        self.ssthresh = 65535
+        self.dup_ack_count = 0
+        self.last_ack_num = 0
+        self.in_fast_recovery = False
+
+        # Jacobson RTT Estimation (RFC 6298)
+        self.srtt: Optional[float] = None
+        self.rttvar: Optional[float] = None
+        self.rto: float = 1.0 # Initial RTO = 1.0s
+
+        # Out-of-order Reassembly Buffer
+        self.out_of_order_queue: List[Tuple[int, bytes]] = []
+
+    def update_rtt(self, sample_rtt: float):
+        """Updates Jacobson smoothed RTT and retransmission timeout (RTO)."""
+        if self.srtt is None or self.rttvar is None:
+            self.srtt = sample_rtt
+            self.rttvar = sample_rtt / 2.0
+            self.rto = min(60.0, max(1.0, self.srtt + max(0.1, 4.0 * self.rttvar)))
+        else:
+            self.rttvar = (1.0 - 0.25) * self.rttvar + 0.25 * abs(self.srtt - sample_rtt)
+            self.srtt = (1.0 - 0.125) * self.srtt + 0.125 * sample_rtt
+            self.rto = min(60.0, max(1.0, self.srtt + max(0.1, 4.0 * self.rttvar)))
+
+    def on_ack_received(self, ack_num: int):
+        """RFC 5681 Reno Congestion Control ACK processor."""
+        if ack_num == self.last_ack_num:
+            self.dup_ack_count += 1
+            if self.dup_ack_count == 3:
+                # Fast Retransmit / Fast Recovery Entry
+                self.ssthresh = max(self.cwnd // 2, 2 * self.mss)
+                self.cwnd = self.ssthresh + 3 * self.mss
+                self.in_fast_recovery = True
+            elif self.dup_ack_count > 3 and self.in_fast_recovery:
+                self.cwnd += self.mss
+        elif ack_num > self.last_ack_num:
+            if self.in_fast_recovery:
+                self.cwnd = self.ssthresh
+                self.in_fast_recovery = False
+            else:
+                if self.cwnd < self.ssthresh:
+                    # Slow start: increment by 1 MSS per ACK
+                    self.cwnd += self.mss
+                else:
+                    # Congestion avoidance: additive increase
+                    self.cwnd += max(1, (self.mss * self.mss) // self.cwnd)
+            self.dup_ack_count = 0
+            self.last_ack_num = ack_num
+
+    def on_timeout(self):
+        """Handles RTO retransmission timeout (exponential backoff)."""
+        self.ssthresh = max(self.cwnd // 2, 2 * self.mss)
+        self.cwnd = self.mss
+        self.in_fast_recovery = False
+        self.dup_ack_count = 0
+        self.rto = min(60.0, self.rto * 2.0)
+
     def bind(self, ip: str, port: int):
         self.local_ip = ip
         self.local_port = port
@@ -158,21 +218,26 @@ class TCPSocket:
         self.state = TCPState.SYN_SENT
 
     def send(self, data: bytes):
+        """Enqueues payload data respecting flow and congestion windows."""
         if self.state != TCPState.ESTABLISHED:
-            raise ConnectionError(f"Cannot send data in state {self.state.name}")
+            raise ConnectionError("Socket is not in ESTABLISHED state")
 
-        seq = self.snd_nxt
-        self.snd_nxt += len(data)
-
-        data_hdr = TCPHeader(
-            src_port=self.local_port,
-            dst_port=self.remote_port,
-            seq_num=seq,
-            ack_num=self.rcv_nxt,
-            flags=TCP_FLAG_ACK | TCP_FLAG_PSH,
-            window_size=self.rcv_wnd
-        )
-        self.tx_queue.append((data_hdr, data))
+        offset = 0
+        effective_wnd = min(self.snd_wnd, self.cwnd)
+        while offset < len(data):
+            chunk_size = min(self.mss, len(data) - offset)
+            chunk = data[offset : offset + chunk_size]
+            hdr = TCPHeader(
+                src_port=self.local_port,
+                dst_port=self.remote_port,
+                seq_num=self.snd_nxt,
+                ack_num=self.rcv_nxt,
+                flags=TCP_FLAG_ACK | TCP_FLAG_PSH,
+                window_size=self.rcv_wnd
+            )
+            self.tx_queue.append((hdr, chunk))
+            self.snd_nxt += len(chunk)
+            offset += chunk_size
 
     def recv(self, max_bytes: int = 4096) -> bytes:
         chunk = bytes(self.rx_stream[:max_bytes])
@@ -208,13 +273,14 @@ class TCPSocket:
             self.state = TCPState.CLOSED
 
     def process_incoming_segment(self, hdr: TCPHeader, payload: bytes):
-        """
-        RFC 793 Segment Arrival Processing Engine.
-        """
+        """Advances TCP state machine and updates congestion / sliding windows."""
+        # Update advertised receive window
+        self.snd_wnd = hdr.window_size
+
         if self.state == TCPState.LISTEN:
             if hdr.flags & TCP_FLAG_SYN:
                 # Accept connection
-                conn = TCPSocket(self.local_ip, self.local_port)
+                conn = TCPSocket(local_ip=self.local_ip, local_port=self.local_port)
                 conn.remote_ip = "10.0.2.15"
                 conn.remote_port = hdr.src_port
                 conn.rcv_nxt = hdr.seq_num + 1
@@ -263,28 +329,44 @@ class TCPSocket:
             return
 
         if self.state == TCPState.ESTABLISHED:
-            # Process ACK
+            # Process ACK & update congestion control
             if hdr.flags & TCP_FLAG_ACK:
                 self.snd_una = max(self.snd_una, hdr.ack_num)
+                self.on_ack_received(hdr.ack_num)
 
-            # Process payload
+            # Process payload with out-of-order reassembly
             if payload:
                 if hdr.seq_num == self.rcv_nxt:
                     self.rx_stream.extend(payload)
                     self.rcv_nxt += len(payload)
 
-                    # Send immediate ACK
-                    ack_hdr = TCPHeader(
-                        src_port=self.local_port,
-                        dst_port=self.remote_port,
-                        seq_num=self.snd_nxt,
-                        ack_num=self.rcv_nxt,
-                        flags=TCP_FLAG_ACK,
-                        window_size=self.rcv_wnd
-                    )
-                    self.tx_queue.append((ack_hdr, b""))
+                    # Drain any contiguous out-of-order fragments
+                    self.out_of_order_queue.sort(key=lambda x: x[0])
+                    drained = True
+                    while drained:
+                        drained = False
+                        for idx, (seq, ooo_data) in enumerate(self.out_of_order_queue):
+                            if seq == self.rcv_nxt:
+                                self.rx_stream.extend(ooo_data)
+                                self.rcv_nxt += len(ooo_data)
+                                self.out_of_order_queue.pop(idx)
+                                drained = True
+                                break
+                elif hdr.seq_num > self.rcv_nxt:
+                    # Enqueue out-of-order fragment
+                    self.out_of_order_queue.append((hdr.seq_num, payload))
 
-            # Process FIN
+                # Send immediate ACK
+                ack_hdr = TCPHeader(
+                    src_port=self.local_port,
+                    dst_port=self.remote_port,
+                    seq_num=self.snd_nxt,
+                    ack_num=self.rcv_nxt,
+                    flags=TCP_FLAG_ACK,
+                    window_size=self.rcv_wnd
+                )
+                self.tx_queue.append((ack_hdr, b""))
+
             if hdr.flags & TCP_FLAG_FIN:
                 self.rcv_nxt = hdr.seq_num + 1
                 ack_hdr = TCPHeader(

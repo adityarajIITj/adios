@@ -138,6 +138,10 @@ class WebSocketFrame:
     def is_close(self) -> bool:
         return self.opcode == OPCODE_CLOSE
 
+    @property
+    def is_control(self) -> bool:
+        return self.opcode in (OPCODE_CLOSE, OPCODE_PING, OPCODE_PONG)
+
     def text(self) -> str:
         return self.payload.decode("utf-8", errors="replace")
 
@@ -238,3 +242,165 @@ class WebSocketEngine:
 
         frame = WebSocketFrame(opcode=opcode, payload=payload, fin=fin, masked=masked)
         return frame, offset + payload_len
+
+WebSocketFrame.pack_frame = staticmethod(lambda opcode, payload, fin=True, is_masked=False, mask_key=None: WebSocketEngine.pack_frame(payload, opcode=opcode, fin=fin, mask_key=mask_key if is_masked else None))
+WebSocketFrame.unpack_frame = staticmethod(WebSocketEngine.unpack_frame)
+
+# =============================================================================
+# Message Reassembly & Stateful Connection Engine
+# =============================================================================
+
+class WebSocketMessageReassembler:
+    """Reassembles fragmented multi-frame messages according to RFC 6455."""
+    def __init__(self):
+        self.active_opcode: Optional[int] = None
+        self.fragments: List[bytes] = []
+
+    def feed_frame(self, frame: WebSocketFrame) -> Optional[Tuple[int, bytes]]:
+        """Processes a frame, returning (opcode, complete_payload) when fully reassembled."""
+        # Control frames can be interleaved between message fragments
+        if frame.is_control:
+            return (frame.opcode, frame.payload)
+
+        if frame.opcode != OPCODE_CONTINUATION:
+            # Initial fragment
+            self.active_opcode = frame.opcode
+            self.fragments = [frame.payload]
+        else:
+            # Continuation fragment
+            if self.active_opcode is None:
+                raise ValueError("Received continuation frame without initial frame")
+            self.fragments.append(frame.payload)
+
+        if frame.fin:
+            complete_payload = b"".join(self.fragments)
+            opcode = self.active_opcode
+            self.active_opcode = None
+            self.fragments = []
+            return (opcode, complete_payload)
+
+        return None
+
+
+class WebSocketState:
+    CONNECTING = 0
+    OPEN = 1
+    CLOSING = 2
+    CLOSED = 3
+
+
+class WebSocketConnection:
+    """Stateful RFC 6455 WebSocket Connection endpoint with stream buffer."""
+    def __init__(self, is_client: bool = False):
+        self.is_client = is_client
+        self.state = WebSocketState.OPEN
+        self.rx_buffer = bytearray()
+        self.reassembler = WebSocketMessageReassembler()
+        self.close_code: Optional[int] = None
+        self.close_reason: str = ""
+
+    def feed_bytes(self, data: bytes) -> List[Tuple[int, Union[str, bytes]]]:
+        """Processes incoming byte stream and returns complete messages."""
+        self.rx_buffer.extend(data)
+        messages = []
+
+        while len(self.rx_buffer) >= 2:
+            try:
+                frame, consumed = WebSocketFrame.unpack_frame(bytes(self.rx_buffer))
+                del self.rx_buffer[:consumed]
+            except ValueError:
+                # Need more bytes
+                break
+
+            result = self.reassembler.feed_frame(frame)
+            if result is not None:
+                op, pld = result
+                if op == OPCODE_TEXT:
+                    messages.append((op, pld.decode("utf-8", errors="replace")))
+                elif op == OPCODE_BINARY:
+                    messages.append((op, pld))
+                elif op == OPCODE_CLOSE:
+                    self.state = WebSocketState.CLOSED
+                    if len(pld) >= 2:
+                        self.close_code = struct.unpack("!H", pld[:2])[0]
+                        self.close_reason = pld[2:].decode("utf-8", errors="replace")
+                    messages.append((op, pld))
+                elif op in (OPCODE_PING, OPCODE_PONG):
+                    messages.append((op, pld))
+
+        return messages
+
+    def send_text(self, text: str) -> bytes:
+        mask_key = b"\x12\x34\x56\x78" if self.is_client else None
+        return WebSocketFrame.pack_frame(
+            opcode=OPCODE_TEXT,
+            payload=text.encode("utf-8"),
+            fin=True,
+            is_masked=self.is_client,
+            mask_key=mask_key
+        )
+
+    def send_binary(self, data: bytes) -> bytes:
+        mask_key = b"\x12\x34\x56\x78" if self.is_client else None
+        return WebSocketFrame.pack_frame(
+            opcode=OPCODE_BINARY,
+            payload=data,
+            fin=True,
+            is_masked=self.is_client,
+            mask_key=mask_key
+        )
+
+    def send_ping(self, payload: bytes = b"") -> bytes:
+        return WebSocketFrame.pack_frame(
+            opcode=OPCODE_PING,
+            payload=payload,
+            fin=True,
+            is_masked=self.is_client,
+            mask_key=b"\x01\x02\x03\x04" if self.is_client else None
+        )
+
+    def send_pong(self, payload: bytes = b"") -> bytes:
+        return WebSocketFrame.pack_frame(
+            opcode=OPCODE_PONG,
+            payload=payload,
+            fin=True,
+            is_masked=self.is_client,
+            mask_key=b"\x01\x02\x03\x04" if self.is_client else None
+        )
+
+    def send_close(self, code: int = 1000, reason: str = "") -> bytes:
+        self.state = WebSocketState.CLOSING
+        pld = struct.pack("!H", code) + reason.encode("utf-8")
+        return WebSocketFrame.pack_frame(
+            opcode=OPCODE_CLOSE,
+            payload=pld,
+            fin=True,
+            is_masked=self.is_client,
+            mask_key=b"\x01\x02\x03\x04" if self.is_client else None
+        )
+
+
+generate_accept_token = WebSocketEngine.generate_accept_token
+
+if __name__ == "__main__":
+    # Test WebSocket handshake key generation
+    client_key = "dGhlIHNhbXBsZSBub25jZQ=="
+    accept = generate_accept_token(client_key)
+    assert accept == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
+
+    # Test Frame packing and unpacking
+    raw_frame = WebSocketFrame.pack_frame(OPCODE_TEXT, b"Hello Sovereign WebSocket", fin=True, is_masked=False)
+    frame, consumed = WebSocketFrame.unpack_frame(raw_frame)
+    assert frame.payload == b"Hello Sovereign WebSocket"
+    assert frame.opcode == OPCODE_TEXT
+    assert consumed == len(raw_frame)
+
+    # Test Fragmented reassembly
+    f1 = WebSocketFrame.pack_frame(OPCODE_TEXT, b"Part 1 - ", fin=False)
+    f2 = WebSocketFrame.pack_frame(OPCODE_CONTINUATION, b"Part 2", fin=True)
+    conn = WebSocketConnection(is_client=False)
+    msgs = conn.feed_bytes(f1 + f2)
+    assert len(msgs) == 1
+    assert msgs[0][1] == "Part 1 - Part 2"
+
+    print("WebSocket protocol engine & reassembler verified.")

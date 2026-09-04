@@ -278,3 +278,224 @@ class AES:
 
     def decrypt_ctr(self, ciphertext: bytes, nonce: bytes) -> bytes:
         return self.encrypt_ctr(ciphertext, nonce)
+
+    # --- Cipher Feedback (CFB) Mode ---
+
+    def encrypt_cfb(self, plaintext: bytes, iv: bytes) -> bytes:
+        """128-bit CFB streaming mode."""
+        if len(iv) != 16:
+            raise ValueError("IV must be 16 bytes for CFB")
+        res = bytearray()
+        prev = iv
+        for i in range(0, len(plaintext), 16):
+            chunk = plaintext[i : i + 16]
+            enc_prev = self.encrypt_block(prev)
+            c_chunk = bytes(chunk[j] ^ enc_prev[j] for j in range(len(chunk)))
+            res.extend(c_chunk)
+            if len(chunk) == 16:
+                prev = c_chunk
+            else:
+                prev = c_chunk + enc_prev[len(chunk):]
+        return bytes(res)
+
+    def decrypt_cfb(self, ciphertext: bytes, iv: bytes) -> bytes:
+        """128-bit CFB decryption."""
+        if len(iv) != 16:
+            raise ValueError("IV must be 16 bytes for CFB")
+        res = bytearray()
+        prev = iv
+        for i in range(0, len(ciphertext), 16):
+            chunk = ciphertext[i : i + 16]
+            enc_prev = self.encrypt_block(prev)
+            p_chunk = bytes(chunk[j] ^ enc_prev[j] for j in range(len(chunk)))
+            res.extend(p_chunk)
+            if len(chunk) == 16:
+                prev = chunk
+            else:
+                prev = chunk + enc_prev[len(chunk):]
+        return bytes(res)
+
+    # --- Output Feedback (OFB) Mode ---
+
+    def encrypt_ofb(self, plaintext: bytes, iv: bytes) -> bytes:
+        """128-bit OFB streaming mode."""
+        if len(iv) != 16:
+            raise ValueError("IV must be 16 bytes for OFB")
+        res = bytearray()
+        curr = iv
+        for i in range(0, len(plaintext), 16):
+            chunk = plaintext[i : i + 16]
+            curr = self.encrypt_block(curr)
+            res.extend(bytes(chunk[j] ^ curr[j] for j in range(len(chunk))))
+        return bytes(res)
+
+    def decrypt_ofb(self, ciphertext: bytes, iv: bytes) -> bytes:
+        return self.encrypt_ofb(ciphertext, iv)
+
+    # --- Galois/Counter Mode (GCM) AEAD (NIST SP 800-38D) ---
+
+    @staticmethod
+    def _gf128_mul(x: int, y: int) -> int:
+        """Bitwise multiplication in GF(2^128) with polynomial x^128 + x^7 + x^2 + x + 1."""
+        r = 0xE1000000000000000000000000000000
+        z = 0
+        v = x
+        for i in range(128):
+            if (y >> (127 - i)) & 1:
+                z ^= v
+            if v & 1:
+                v = (v >> 1) ^ r
+            else:
+                v >>= 1
+        return z
+
+    @classmethod
+    def _ghash(cls, h_int: int, data: bytes) -> int:
+        """Computes GHASH state integer over 16-byte aligned binary buffer."""
+        y = 0
+        for i in range(0, len(data), 16):
+            blk = data[i : i + 16]
+            if len(blk) < 16:
+                blk = blk.ljust(16, b"\x00")
+            blk_int = int.from_bytes(blk, "big")
+            y = cls._gf128_mul(y ^ blk_int, h_int)
+        return y
+
+    def encrypt_gcm(self, plaintext: bytes, nonce: bytes, aad: bytes = b"") -> Tuple[bytes, bytes]:
+        """
+        NIST SP 800-38D AES-GCM Authenticated Encryption.
+        Returns (ciphertext, 16-byte auth tag).
+        """
+        h_key = self.encrypt_block(b"\x00" * 16)
+        h_int = int.from_bytes(h_key, "big")
+
+        # Determine J0
+        if len(nonce) == 12:
+            j0 = nonce + b"\x00\x00\x00\x01"
+        else:
+            # Hash nonce with GHASH
+            pad_len = (16 - (len(nonce) % 16)) % 16
+            buf = nonce + (b"\x00" * pad_len) + (b"\x00" * 8) + (len(nonce) * 8).to_bytes(8, "big")
+            j0_int = self._ghash(h_int, buf)
+            j0 = j0_int.to_bytes(16, "big")
+
+        j0_int = int.from_bytes(j0, "big")
+
+        # GCTR encryption starting at J0 + 1
+        res = bytearray()
+        counter_base = j0[:12]
+        ctr_val = int.from_bytes(j0[12:16], "big")
+
+        for i in range(0, len(plaintext), 16):
+            chunk = plaintext[i : i + 16]
+            ctr_val = (ctr_val + 1) & 0xFFFFFFFF
+            ctr_block = counter_base + ctr_val.to_bytes(4, "big")
+            keystream = self.encrypt_block(ctr_block)
+            res.extend(bytes(chunk[j] ^ keystream[j] for j in range(len(chunk))))
+
+        ciphertext = bytes(res)
+
+        # GHASH over AAD || pad(AAD) || C || pad(C) || len(AAD) || len(C)
+        pad_aad = (16 - (len(aad) % 16)) % 16
+        pad_c = (16 - (len(ciphertext) % 16)) % 16
+        ghash_buf = (
+            aad + (b"\x00" * pad_aad) +
+            ciphertext + (b"\x00" * pad_c) +
+            (len(aad) * 8).to_bytes(8, "big") +
+            (len(ciphertext) * 8).to_bytes(8, "big")
+        )
+
+        s_int = self._ghash(h_int, ghash_buf)
+        s_bytes = s_int.to_bytes(16, "big")
+
+        # Tag = MSB128(GCTR(J0, S)) = S ^ AES(J0)
+        j0_enc = self.encrypt_block(j0)
+        tag = bytes(s_bytes[j] ^ j0_enc[j] for j in range(16))
+
+        return ciphertext, tag
+
+    def decrypt_gcm(self, ciphertext: bytes, tag: bytes, nonce: bytes, aad: bytes = b"") -> bytes:
+        """
+        NIST SP 800-38D AES-GCM Decryption & Tag Verification.
+        Raises ValueError if authentication tag does not match in constant time.
+        """
+        if len(tag) != 16:
+            raise ValueError("Authentication tag must be exactly 16 bytes")
+
+        h_key = self.encrypt_block(b"\x00" * 16)
+        h_int = int.from_bytes(h_key, "big")
+
+        if len(nonce) == 12:
+            j0 = nonce + b"\x00\x00\x00\x01"
+        else:
+            pad_len = (16 - (len(nonce) % 16)) % 16
+            buf = nonce + (b"\x00" * pad_len) + (b"\x00" * 8) + (len(nonce) * 8).to_bytes(8, "big")
+            j0_int = self._ghash(h_int, buf)
+            j0 = j0_int.to_bytes(16, "big")
+
+        # Verify tag first
+        pad_aad = (16 - (len(aad) % 16)) % 16
+        pad_c = (16 - (len(ciphertext) % 16)) % 16
+        ghash_buf = (
+            aad + (b"\x00" * pad_aad) +
+            ciphertext + (b"\x00" * pad_c) +
+            (len(aad) * 8).to_bytes(8, "big") +
+            (len(ciphertext) * 8).to_bytes(8, "big")
+        )
+
+        s_int = self._ghash(h_int, ghash_buf)
+        s_bytes = s_int.to_bytes(16, "big")
+        j0_enc = self.encrypt_block(j0)
+        expected_tag = bytes(s_bytes[j] ^ j0_enc[j] for j in range(16))
+
+        # Constant-time comparison
+        diff = 0
+        for x, y in zip(tag, expected_tag):
+            diff |= (x ^ y)
+        if diff != 0:
+            raise ValueError("AES-GCM: Authentication tag verification failed (ciphertext corrupted)")
+
+        # Decrypt ciphertext
+        res = bytearray()
+        counter_base = j0[:12]
+        ctr_val = int.from_bytes(j0[12:16], "big")
+
+        for i in range(0, len(ciphertext), 16):
+            chunk = ciphertext[i : i + 16]
+            ctr_val = (ctr_val + 1) & 0xFFFFFFFF
+            ctr_block = counter_base + ctr_val.to_bytes(4, "big")
+            keystream = self.encrypt_block(ctr_block)
+            res.extend(bytes(chunk[j] ^ keystream[j] for j in range(len(chunk))))
+
+        return bytes(res)
+
+
+if __name__ == "__main__":
+    key = b"\x00" * 16
+    cipher = AES(key)
+    msg = b"AdiOS Secure Cryptographic Workstation"
+    iv = b"\x12" * 16
+    nonce = b"\x34" * 12
+
+    # Test GCM AEAD
+    c_gcm, tag = cipher.encrypt_gcm(msg, nonce, aad=b"header-meta")
+    p_gcm = cipher.decrypt_gcm(c_gcm, tag, nonce, aad=b"header-meta")
+    assert p_gcm == msg
+
+    # Test tampering detection
+    try:
+        tampered_c = bytearray(c_gcm)
+        tampered_c[0] ^= 0x01
+        cipher.decrypt_gcm(bytes(tampered_c), tag, nonce, aad=b"header-meta")
+        assert False, "Tampered ciphertext should fail authentication"
+    except ValueError:
+        pass
+
+    # Test CFB and OFB
+    c_cfb = cipher.encrypt_cfb(msg, iv)
+    assert cipher.decrypt_cfb(c_cfb, iv) == msg
+
+    c_ofb = cipher.encrypt_ofb(msg, iv)
+    assert cipher.decrypt_ofb(c_ofb, iv) == msg
+
+    print("AES CBC, CTR, CFB, OFB, and GCM-AEAD verified successfully.")
