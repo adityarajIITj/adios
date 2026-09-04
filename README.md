@@ -1,19 +1,22 @@
-# AdiOS (v1.0.0 Sovereign Master Workstation & Production Milestone)
+# AdiOS (v1.0.0 Stable Sovereign Release - Phase X Complete)
 
 **AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
 
 Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. Davis's legendary operating system architecture, AdiOS reimagines sovereign computing within a rigorous modern mathematical, cryptographic, and cyber-engineering framework.
 
-- **Release Status**: `v1.0.0-PROD (High-Resolution Sovereign Workstation & Systems Deepening)`
+- **Release Status**: `v1.0.0 Stable Sovereign Release (Phase X Officially Completed)`
 - **Target Architecture**: RISC-V 32-bit (RV32IM + H-Extension)
-- **Codebase Scale**: **43,100+ Lines of Code (>0.43 Lakh LOC across 165 source files)**
+- **Codebase Scale**: **43,800+ Lines of Code across 182 source files**
 - **Verification Harness**: **53/53 Automated Subsystems Passing (100% Success)**
-- **Workstation Display**: **Native 1024x768 XGA Workstation with Window Snapping & Compositor**
+- **Workstation Display**: **Native 1024x768 XGA Workstation with Window Snapping, Taskbar & Compositor**
+- **Desktop Customization**: **Sovereign ASCII Art Wallpaper Subsystem with Cyber Grid & Multi-Theme Switcher**
+- **Toolchains & Shell**: **In-OS C99 Compiler Driver (cc), Sovereign Make Engine & POSIX Utilities**
+- **Games & Simulation**: **Sovereign 3D Games Arcade (CastleAdiOS DDA Raycaster & StarFlight Wireframe)**
 - **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly.
 
 <div align="center">
   <img src="docs/assets/workstation_1024x768.png" alt="AdiOS Sovereign Workstation 1024x768 XGA" width="920"/>
-  <p><em>Figure 1: Live AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, and POSIX Shell.</em></p>
+  <p><em>Figure 1: Live AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, POSIX Shell, and Sovereign Wallpaper.</em></p>
 </div>
 
 ---
@@ -163,9 +166,9 @@ graph TD
 
 ---
 
-## 3. Subsystem Verification Matrix (45/45 Subsystems Passed)
+## 3. Subsystem Verification Matrix (53/53 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 45-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 53-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -435,6 +438,12 @@ flowchart TD
         <br/><em>Figure 4: StarFlight 3D Flight Simulator with ground terrain grid, navigation gates, and attitude HUD.</em>
       </td>
     </tr>
+    <tr>
+      <td align="center" colspan="2">
+        <img src="docs/assets/desktop_wallpaper.png" alt="Sovereign ASCII Art Wallpaper Engine" width="600"/>
+        <br/><em>Figure 5: Sovereign ASCII Art Wallpaper Subsystem with 64px ambient cyber grid, multi-theme switcher, and taskbar Show-Desktop toggle.</em>
+      </td>
+    </tr>
   </table>
 </div>
 
@@ -468,6 +477,10 @@ flowchart TD
 - **Kernel Core, Concurrency & Sv32 MMU (`proc/`, `mmu/`)**: Process lifecycle state machine (`EMBRYO`, `RUNNING`, `SLEEPING`, `ZOMBIE`), POSIX `waitpid` with `WNOHANG`, Virtual Memory Areas (`VMA`), file descriptor cloning (`dup`/`dup2`), file control (`fcntl`), binary Buddy Allocator (Orders 0..10, 4KB to 4MB), Sv32 2-level paging with 64-entry ASID-tagged TLB, and writer-preferred RWLock.
 - **Network Stack & Protocols Deepening (`net/`)**: IPv4 fragmentation & reassembly with out-of-order tracking, Longest Prefix Match (LPM) routing table, RFC 768 UDP pseudo-header checksumming, `NetPoll` event multiplexer, RFC 7230 chunked transfer encoding, and DHCP state machine server.
 - **Toolchain, Filesystem & Graphics Deepening (`compiler/`, `fs/`, `ui/`, `graphics/`)**: ELF32 symbol table and section parser, C99 integer promotions and RISC-V ABI register allocator, AdiFS CRC32 checksums, Write-Ahead Logging (WAL) and compaction defragmenter, Xiaolin Wu anti-aliased vector rendering, and 3D homogeneous Matrix4 mathematics.
+- **In-OS C99 Compiler Driver & Sovereign Make (`compiler/driver.py`)**: End-to-end C toolchain pipeline (Lexer, Parser, RV32 Codegen, Assembler, ELF32) with flags `-S`, `-c`, `-o`, `--help`, and zero-dependency `make` rules engine (`all`, `kernel`, `clean`, `test`, `help`).
+- **POSIX Shell & Core Utilities Suite (`userland/coreutils.py`, `userland/sh.py`)**: Interactive shell `help` reference and generic POSIX commands (`ps`, `top`, `free`, `uptime`, `whoami`, `pwd`, `cd`, `mkdir`, `date`, `kill`, `clear`, `make`, `cc`, `wallpaper`).
+- **Sovereign ASCII Art Wallpaper Subsystem (`desktop/wallpaper.py`, `desktop/master_desktop.py`)**: 64px ambient cyber grid, multi-theme ASCII art backdrop (`cyber`, `sovereign`, `slant`, `matrix`), taskbar `[WALL]` Show-Desktop toggle (minimizing/restoring all windows), Start Menu theme option 10, and in-shell `wallpaper` command.
+- **Sovereign 3D Games Arcade Integration (`games/castle3d.py`, `games/flight3d.py`)**: Dedicated taskbar `[GAMES]` launcher, Start Menu item 9, and `--games` / `--arcade` CLI flags.
 
 ---
 
@@ -476,11 +489,18 @@ flowchart TD
 ### Running the Full 53-Subsystem Regression Test Suite
 ```bash
 python build.py --test
+# or
+python build.py --test-all
 ```
 
 ### Launching the Unified Sovereign Master Desktop (All 9 Integrated Apps)
 ```bash
 python build.py --desktop
+```
+
+### Launching the Sovereign Workstation with ASCII Art Wallpaper
+```bash
+python build.py --desktop --wallpaper
 ```
 
 ### Launching the Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)
@@ -548,11 +568,13 @@ Verified on standard RV32IM simulated runtime (zero external C-extensions):
 adios/
 |-- desktop/                # Unified Sovereign Master Desktop & Windowing
 |   |-- master_desktop.py   # Unified Master Desktop Compositor & 8 Integrated Apps
+|   |-- wallpaper.py        # Sovereign ASCII art wallpaper engine with cyber grid
 |   |-- font.py             # 95-glyph 8x8 ASCII font bitmap loader
 |   |-- window_manager.py   # Z-order window compositor
 |   |-- desktop.py          # Framebuffer desktop driver
 |   `-- editor.py           # AdiIDE in-OS code editor with syntax highlighting
 |-- compiler/               # In-OS C99 / AdiC Toolchain & Preprocessor
+|   |-- driver.py           # In-OS C compiler driver (cc) & Sovereign make engine
 |   |-- preprocessor.py     # C99 macro expansion, token pasting, stringification
 |   |-- c_types.py          # Struct layout, natural alignment, unions, typedefs
 |   |-- c_lexer.py          # Stream tokenizer for C keywords, literals, ops
@@ -674,7 +696,7 @@ adios/
 |   `-- disasm.py           # RV32IM disassembler
 |-- debug/                  # In-OS Debugger & GDB Remote Serial Protocol
 |   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
-|-- tests/                  # 50 Automated Subsystem Test Suites (100% Pass Rate)
+|-- tests/                  # 53 Automated Subsystem Test Suites (100% Pass Rate)
 |   |-- test_master_desktop.py          # Sovereign Master Desktop & 8 GUI applications
 |   |-- test_desktop_res1024.py         # Native 1024x768 XGA Workstation & Window Snapping
 |   |-- test_adipython_deepened.py      # AST Parser, CSE/LICM Optimizer, Linear Scan & JIT

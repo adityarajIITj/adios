@@ -570,7 +570,7 @@ if __name__ == "__main__":
         print("=================================================================")
     elif "--build" in sys.argv:
         assemble("kernel/gui_kernel.s", "adios.bin")
-    elif "--test" in sys.argv:
+    elif "--test" in sys.argv or "--test-all" in sys.argv:
         test()
     elif "--bench" in sys.argv:
         run_benchmarks()
