@@ -38,6 +38,16 @@ from userland.sh import SovereignShell
 from crypto.sha256 import sha256_hash
 from crypto.tls13 import TLS13KeySchedule, TLSRecordLayer
 from vfs.fat32 import BPB, FAT32Entry
+from games.castle3d import DUNGEON_MAP, WALL_COLORS
+from games.flight3d import (
+    COLOR_BG as FLIGHT_COLOR_BG,
+    COLOR_GRID as FLIGHT_COLOR_GRID,
+    COLOR_HORIZON as FLIGHT_COLOR_HORIZON,
+    COLOR_SHIP as FLIGHT_COLOR_SHIP,
+    COLOR_RING as FLIGHT_COLOR_RING,
+    COLOR_RING_HIT as FLIGHT_COLOR_RING_HIT,
+    COLOR_HUD as FLIGHT_COLOR_HUD
+)
 
 # Theme Palette (Tokyo Dark Sovereign)
 COLOR_DESKTOP_BG     = 0x001A1B26
@@ -64,7 +74,7 @@ COLOR_TEXT_MUTED     = 0x00565F89
 class MasterDesktop:
     """
     Unified Sovereign Master Desktop Environment (1024x768 XGA Workstation).
-    Composites 8 applications into overlapping, interactive, resizable windows.
+    Composites 9 applications into overlapping, interactive, resizable windows.
     """
     def __init__(self, vm=None, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT):
         self.vm = vm
@@ -90,6 +100,7 @@ class MasterDesktop:
         self._init_net_crypto()
         self._init_file_explorer()
         self._init_paint_calc()
+        self._init_games_arcade()
 
         # Create Workstation Windows (490x350 grid layout)
         self._setup_master_windows()
@@ -292,6 +303,13 @@ class MasterDesktop:
         self.win_paint.on_click_content = self._click_paint
         self.wm.add_window(self.win_paint)
 
+        # 9. Sovereign 3D Games Arcade (CastleAdiOS & StarFlight) (Centered: 240, 160)
+        self.win_games = Window("games", "Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)", 240, 160, 520, 380)
+        self.win_games.visible = False
+        self.win_games.on_draw_content = self._draw_games
+        self.win_games.on_click_content = self._click_games
+        self.wm.add_window(self.win_games)
+
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
 
@@ -350,6 +368,32 @@ class MasterDesktop:
         ty = y + max(2, (h - 8) // 2)
         self._draw_string(fb, tx, ty, text, txt_col, clip_rect)
 
+    def _draw_line(self, fb: bytearray, x0: int, y0: int, x1: int, y1: int, color: int, clip_rect=None):
+        if x0 is None or y0 is None or x1 is None or y1 is None:
+            return
+        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+
+        c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
+        cx, cy = x0, y0
+        while True:
+            if min_x <= cx <= max_x and min_y <= cy <= max_y:
+                off = (cy * self.width + cx) * 4
+                fb[off : off + 4] = c_bytes
+            if cx == x1 and cy == y1:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                cx += sx
+            if e2 < dx:
+                err += dx
+                cy += sy
+
     # --------------------------------------------------------------------------
     # Deepened Application Renderers & Click Handlers
     # --------------------------------------------------------------------------
@@ -379,6 +423,7 @@ class MasterDesktop:
             self._draw_string(fb, cx + 10, vy + 68, "Subsystem Links:", COLOR_TEXT_MUTED, clip)
             self._draw_button(fb, cx + 10, vy + 86, 120, 20, "[1] SYSTEM SPECS", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
             self._draw_button(fb, cx + 140, vy + 86, 120, 20, "[2] STORAGE VFS", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 270, vy + 86, 130, 20, "[3] 3D GAMES", COLOR_BUTTON_BG, COLOR_ACCENT_ORANGE, clip)
         elif self.browser_url == "about:system":
             self._draw_string(fb, cx + 10, vy + 32, "Sovereign Workstation System Profile", COLOR_ACCENT_GREEN, clip)
             self._draw_string(fb, cx + 10, vy + 50, "Architecture: RISC-V 32-bit (RV32IM + H-Extension)", COLOR_TEXT_PRIMARY, clip)
@@ -410,6 +455,8 @@ class MasterDesktop:
                     self._load_browser_page("about:system")
                 elif 140 <= rel_x <= 260:
                     self._load_browser_page("about:storage")
+                elif 270 <= rel_x <= 400:
+                    self.launch_or_focus("games")
         elif self.browser_url in ("about:system", "about:storage"):
             if 146 <= rel_y <= 166 and 10 <= rel_x <= 110:
                 self._load_browser_page("about:adios")
@@ -832,6 +879,385 @@ class MasterDesktop:
                 self.calc_reset_on_next = True
 
     # --------------------------------------------------------------------------
+    # Subsystem 9: Sovereign 3D Games Arcade (CastleAdiOS 3D & StarFlight 3D)
+    # --------------------------------------------------------------------------
+
+    def _init_games_arcade(self):
+        self.game_mode = "castle" # "castle" or "flight"
+
+        # CastleAdiOS 3D State
+        self.castle_pos_x = 1.5
+        self.castle_pos_y = 1.5
+        self.castle_dir_x = 1.0
+        self.castle_dir_y = 0.0
+        self.castle_plane_x = 0.0
+        self.castle_plane_y = 0.66
+        self.castle_health = 100
+        self.castle_score = 750
+        self.castle_status = "Explore dungeon. WASD or On-Screen Controls."
+
+        # StarFlight 3D State
+        self.flight_x = 0.0
+        self.flight_y = 40.0
+        self.flight_z = 0.0
+        self.flight_pitch = 0.0
+        self.flight_bank = 0.0
+        self.flight_speed = 14.0
+        self.flight_score = 300
+        self.flight_rings = 3
+        self.flight_terrain_offset = 0.0
+        self.flight_status = "StarFlight 3D. WASD/Boost to Pilot Starfighter."
+
+        self.flight_gates = []
+        for i in range(8):
+            self.flight_gates.append({
+                "x": float(((i * 47) % 240) - 120),
+                "y": float(30.0 + ((i * 31) % 80)),
+                "z": float(300.0 + i * 220.0),
+                "radius": 36.0,
+                "hit": False
+            })
+
+        self.flight_stars = []
+        for i in range(40):
+            self.flight_stars.append({
+                "x": float(((i * 61) % 600) - 300),
+                "y": float(((i * 43) % 300) - 50),
+                "z": float(100.0 + (i * 25.0) % 800.0),
+                "speed": float(1.5 + (i % 3) * 0.5)
+            })
+
+    def _move_castle_player(self, dist: float):
+        nx = self.castle_pos_x + self.castle_dir_x * dist
+        ny = self.castle_pos_y + self.castle_dir_y * dist
+        if 0 <= int(ny) < 16 and 0 <= int(nx) < 16:
+            if DUNGEON_MAP[int(ny)][int(nx)] == 0:
+                self.castle_pos_x = nx
+                self.castle_pos_y = ny
+
+    def _rotate_castle_player(self, angle_rad: float):
+        old_dir_x = self.castle_dir_x
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        self.castle_dir_x = self.castle_dir_x * cos_a - self.castle_dir_y * sin_a
+        self.castle_dir_y = old_dir_x * sin_a + self.castle_dir_y * cos_a
+
+        old_plane_x = self.castle_plane_x
+        self.castle_plane_x = self.castle_plane_x * cos_a - self.castle_plane_y * sin_a
+        self.castle_plane_y = old_plane_x * sin_a + self.castle_plane_y * cos_a
+
+    def _draw_games(self, win: Window, fb: bytearray, font_dict):
+        cx, cy, cw, ch = win.client_rect
+        clip = (cx, cy, cx + cw, cy + ch)
+
+        # Toolbar
+        self._fill_rect(fb, cx, cy, cw, 26, COLOR_TASKBAR_BG, clip)
+        c_btn_col = COLOR_ACCENT_PURPLE if self.game_mode == "castle" else COLOR_BUTTON_BG
+        f_btn_col = COLOR_ACCENT_PURPLE if self.game_mode == "flight" else COLOR_BUTTON_BG
+        self._draw_button(fb, cx + 4, cy + 4, 94, 18, "CASTLE 3D", c_btn_col, COLOR_START_TXT, clip)
+        self._draw_button(fb, cx + 102, cy + 4, 116, 18, "STARFLIGHT 3D", f_btn_col, COLOR_START_TXT, clip)
+        self._draw_button(fb, cx + 222, cy + 4, 68, 18, "RESTART", COLOR_BUTTON_BG, COLOR_ACCENT_RED, clip)
+
+        mode_text = "DDA RAYCASTER (FPS: 40)" if self.game_mode == "castle" else "3D SIMULATOR (FPS: 40)"
+        self._draw_string(fb, cx + 296, cy + 8, mode_text, COLOR_ACCENT_GREEN, clip)
+
+        # Viewport
+        if self.game_mode == "castle":
+            self._draw_games_castle(win, fb, clip)
+        else:
+            self._draw_games_flight(win, fb, clip)
+
+        # Bottom Control Bar
+        by = cy + ch - 32
+        self._fill_rect(fb, cx, by, cw, 32, COLOR_TASKBAR_BG, clip)
+
+        if self.game_mode == "castle":
+            self._draw_button(fb, cx + 4, by + 5, 46, 22, "^ W", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 54, by + 5, 46, 22, "v S", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 104, by + 5, 46, 22, "< A", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 154, by + 5, 46, 22, "> D", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            stat = f"HP:{self.castle_health}% | SCORE:{self.castle_score} | POS:({self.castle_pos_x:.1f},{self.castle_pos_y:.1f})"
+            self._draw_string(fb, cx + 210, by + 11, stat, COLOR_TEXT_PRIMARY, clip)
+        else:
+            self._draw_button(fb, cx + 4, by + 5, 46, 22, "UP", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 54, by + 5, 46, 22, "DOWN", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 104, by + 5, 52, 22, "BANK L", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 160, by + 5, 52, 22, "BANK R", COLOR_BUTTON_BG, COLOR_ACCENT_CYAN, clip)
+            self._draw_button(fb, cx + 216, by + 5, 50, 22, "BOOST", COLOR_BUTTON_BG, COLOR_ACCENT_ORANGE, clip)
+            stat = f"ALT:{int(self.flight_y)}m | SPD:{int(self.flight_speed)} | RINGS:{self.flight_rings} | PTS:{self.flight_score}"
+            self._draw_string(fb, cx + 274, by + 11, stat, COLOR_TEXT_PRIMARY, clip)
+
+    def _draw_games_castle(self, win: Window, fb: bytearray, clip):
+        cx, cy, cw, ch = win.client_rect
+        vx = cx + 4
+        vy = cy + 28
+        vw = cw - 8
+        vh = ch - 64
+        if vw <= 10 or vh <= 10:
+            return
+
+        half_vh = vh // 2
+        vclip = (vx, vy, vx + vw - 1, vy + vh - 1)
+
+        # 1. Ceiling & Floor
+        self._fill_rect(fb, vx, vy, vw, half_vh, 0x001F2335, vclip)
+        self._fill_rect(fb, vx, vy + half_vh, vw, vh - half_vh, 0x0016161E, vclip)
+
+        # 2. DDA Raycaster
+        col_w = 2
+        num_rays = max(10, vw // col_w)
+
+        for r in range(num_rays):
+            camera_x = 2.0 * r / float(num_rays) - 1.0
+            ray_dir_x = self.castle_dir_x + self.castle_plane_x * camera_x
+            ray_dir_y = self.castle_dir_y + self.castle_plane_y * camera_x
+
+            map_x = int(self.castle_pos_x)
+            map_y = int(self.castle_pos_y)
+
+            delta_dist_x = abs(1.0 / ray_dir_x) if abs(ray_dir_x) > 1e-6 else 1e30
+            delta_dist_y = abs(1.0 / ray_dir_y) if abs(ray_dir_y) > 1e-6 else 1e30
+
+            if ray_dir_x < 0:
+                step_x = -1
+                side_dist_x = (self.castle_pos_x - map_x) * delta_dist_x
+            else:
+                step_x = 1
+                side_dist_x = (map_x + 1.0 - self.castle_pos_x) * delta_dist_x
+
+            if ray_dir_y < 0:
+                step_y = -1
+                side_dist_y = (self.castle_pos_y - map_y) * delta_dist_y
+            else:
+                step_y = 1
+                side_dist_y = (map_y + 1.0 - self.castle_pos_y) * delta_dist_y
+
+            hit = 0
+            side = 0
+            tile = 1
+            steps = 0
+            while hit == 0 and steps < 24:
+                if side_dist_x < side_dist_y:
+                    side_dist_x += delta_dist_x
+                    map_x += step_x
+                    side = 0
+                else:
+                    side_dist_y += delta_dist_y
+                    map_y += step_y
+                    side = 1
+
+                if 0 <= map_y < 16 and 0 <= map_x < 16:
+                    if DUNGEON_MAP[map_y][map_x] > 0:
+                        hit = 1
+                        tile = DUNGEON_MAP[map_y][map_x]
+                steps += 1
+
+            if side == 0:
+                perp_wall_dist = (map_x - self.castle_pos_x + (1 - step_x) / 2.0) / ray_dir_x
+            else:
+                perp_wall_dist = (map_y - self.castle_pos_y + (1 - step_y) / 2.0) / ray_dir_y
+
+            perp_wall_dist = max(0.15, perp_wall_dist)
+            line_height = int(vh / perp_wall_dist)
+            draw_start = max(vy, vy + half_vh - line_height // 2)
+            draw_end = min(vy + vh - 1, vy + half_vh + line_height // 2)
+
+            base_col = WALL_COLORS.get(tile, 0x007AA2F7)
+            shade = max(0.2, min(1.0, 1.0 - (perp_wall_dist / 12.0)))
+            if side == 1:
+                shade *= 0.75
+
+            r_val = int(((base_col >> 16) & 0xFF) * shade)
+            g_val = int(((base_col >> 8) & 0xFF) * shade)
+            b_val = int((base_col & 0xFF) * shade)
+            shaded_col = (r_val << 16) | (g_val << 8) | b_val
+
+            strip_x = vx + r * col_w
+            self._fill_rect(fb, strip_x, draw_start, col_w, max(1, draw_end - draw_start + 1), shaded_col, vclip)
+
+        # 3. Crosshair in center
+        cx_mid = vx + vw // 2
+        cy_mid = vy + half_vh
+        self._draw_line(fb, cx_mid - 6, cy_mid, cx_mid + 6, cy_mid, COLOR_ACCENT_CYAN, vclip)
+        self._draw_line(fb, cx_mid, cy_mid - 6, cx_mid, cy_mid + 6, COLOR_ACCENT_CYAN, vclip)
+
+        # 4. Minimap in top-right corner (48x48)
+        mm_x = vx + vw - 52
+        mm_y = vy + 4
+        mm_w = 48
+        mm_h = 48
+        mm_clip = (mm_x, mm_y, mm_x + mm_w, mm_y + mm_h)
+        self._fill_rect(fb, mm_x, mm_y, mm_w, mm_h, 0x0010121C, mm_clip)
+        self._draw_button(fb, mm_x, mm_y, mm_w, mm_h, "", 0x0010121C, 0, mm_clip)
+
+        tile_size = 3
+        for my_idx in range(16):
+            for mx_idx in range(16):
+                t = DUNGEON_MAP[my_idx][mx_idx]
+                if t > 0:
+                    self._fill_rect(fb, mm_x + mx_idx * tile_size, mm_y + my_idx * tile_size, tile_size, tile_size, WALL_COLORS.get(t, 0x007AA2F7), mm_clip)
+
+        px_m = int(mm_x + self.castle_pos_x * tile_size)
+        py_m = int(mm_y + self.castle_pos_y * tile_size)
+        self._fill_rect(fb, px_m - 1, py_m - 1, 3, 3, COLOR_ACCENT_GREEN, mm_clip)
+        dir_px = int(px_m + self.castle_dir_x * 5)
+        dir_py = int(py_m + self.castle_dir_y * 5)
+        self._draw_line(fb, px_m, py_m, dir_px, dir_py, COLOR_ACCENT_GREEN, mm_clip)
+
+    def _draw_games_flight(self, win: Window, fb: bytearray, clip):
+        cx, cy, cw, ch = win.client_rect
+        vx = cx + 4
+        vy = cy + 28
+        vw = cw - 8
+        vh = ch - 64
+        if vw <= 10 or vh <= 10:
+            return
+
+        half_vw = vw // 2
+        half_vh = vh // 2
+        vclip = (vx, vy, vx + vw - 1, vy + vh - 1)
+
+        # 1. Background Space Navy
+        self._fill_rect(fb, vx, vy, vw, vh, FLIGHT_COLOR_BG, vclip)
+
+        focal = 220.0
+        def proj3d(lx, ly, lz):
+            if lz <= 10.0:
+                return None, None
+            sx = int(vx + half_vw + (lx * focal) / lz)
+            sy = int(vy + half_vh - (ly * focal) / lz)
+            return sx, sy
+
+        # 2. Starfield particles
+        for s in self.flight_stars:
+            sx, sy = proj3d(s["x"] - self.flight_x, s["y"] - self.flight_y, s["z"])
+            if sx is not None and vx <= sx < vx + vw and vy <= sy < vy + vh:
+                off = (sy * self.width + sx) * 4
+                fb[off : off + 4] = b"\xFF\xFF\xFF\x00"
+
+        # 3. Ground Perspective Grid
+        spacing_z = 70.0
+        for i in range(1, 12):
+            z = (i * spacing_z) - self.flight_terrain_offset
+            if z <= 20.0:
+                continue
+            sx0, sy0 = proj3d(-400.0 - self.flight_x, -self.flight_y, z)
+            sx1, sy1 = proj3d( 400.0 - self.flight_x, -self.flight_y, z)
+            if sx0 is not None and sx1 is not None:
+                self._draw_line(fb, sx0, sy0, sx1, sy1, FLIGHT_COLOR_GRID, vclip)
+
+        for x_val in range(-400, 401, 100):
+            sx0, sy0 = proj3d(float(x_val) - self.flight_x, -self.flight_y, 30.0)
+            sx1, sy1 = proj3d(float(x_val) - self.flight_x, -self.flight_y, 900.0)
+            if sx0 is not None and sx1 is not None:
+                self._draw_line(fb, sx0, sy0, sx1, sy1, FLIGHT_COLOR_GRID, vclip)
+
+        # Horizon Line
+        hy = int(vy + half_vh + (self.flight_y * focal) / 1200.0)
+        self._draw_line(fb, vx, hy, vx + vw - 1, hy, FLIGHT_COLOR_HORIZON, vclip)
+
+        # 4. Navigation Rings (Octagons)
+        for gate in self.flight_gates:
+            rel_x = gate["x"] - self.flight_x
+            rel_y = gate["y"] - self.flight_y
+            rel_z = gate["z"]
+            if rel_z <= 20.0:
+                continue
+            num_sides = 8
+            pts = []
+            for s_idx in range(num_sides):
+                angle = (s_idx * 2 * math.pi) / num_sides
+                px = rel_x + gate["radius"] * math.cos(angle)
+                py = rel_y + gate["radius"] * math.sin(angle)
+                sx, sy = proj3d(px, py, rel_z)
+                pts.append((sx, sy))
+            color = FLIGHT_COLOR_RING_HIT if gate["hit"] else FLIGHT_COLOR_RING
+            for s_idx in range(num_sides):
+                p1 = pts[s_idx]
+                p2 = pts[(s_idx + 1) % num_sides]
+                if p1[0] is not None and p2[0] is not None:
+                    self._draw_line(fb, p1[0], p1[1], p2[0], p2[1], color, vclip)
+
+        # 5. Wireframe Starfighter (centered at bottom)
+        scx, scy = vx + half_vw, vy + vh - 44
+        cos_b = math.cos(self.flight_bank)
+        sin_b = math.sin(self.flight_bank)
+
+        def rot_ship(lx, ly):
+            rx = lx * cos_b - ly * sin_b
+            ry = lx * sin_b + ly * cos_b
+            return int(scx + rx), int(scy + ry)
+
+        nose = rot_ship(0, -26)
+        cockpit = rot_ship(0, -8)
+        tail = rot_ship(0, 16)
+        wing_l = rot_ship(-42, 8)
+        wing_r = rot_ship(42, 8)
+        fin_l = rot_ship(-16, 18)
+        fin_r = rot_ship(16, 18)
+
+        self._draw_line(fb, nose[0], nose[1], wing_l[0], wing_l[1], FLIGHT_COLOR_SHIP, vclip)
+        self._draw_line(fb, nose[0], nose[1], wing_r[0], wing_r[1], FLIGHT_COLOR_SHIP, vclip)
+        self._draw_line(fb, wing_l[0], wing_l[1], cockpit[0], cockpit[1], FLIGHT_COLOR_SHIP, vclip)
+        self._draw_line(fb, wing_r[0], wing_r[1], cockpit[0], cockpit[1], FLIGHT_COLOR_SHIP, vclip)
+        self._draw_line(fb, cockpit[0], cockpit[1], tail[0], tail[1], COLOR_ACCENT_CYAN, vclip)
+        self._draw_line(fb, fin_l[0], fin_l[1], fin_r[0], fin_r[1], FLIGHT_COLOR_SHIP, vclip)
+
+        # 6. Artificial Horizon Attitude Ladder (Cyan HUD)
+        hud_y = vy + half_vh
+        self._draw_line(fb, vx + half_vw - 30, hud_y - 20, vx + half_vw - 12, hud_y - 20, FLIGHT_COLOR_HUD, vclip)
+        self._draw_line(fb, vx + half_vw + 12, hud_y - 20, vx + half_vw + 30, hud_y - 20, FLIGHT_COLOR_HUD, vclip)
+        self._draw_line(fb, vx + half_vw - 30, hud_y + 20, vx + half_vw - 12, hud_y + 20, FLIGHT_COLOR_HUD, vclip)
+        self._draw_line(fb, vx + half_vw + 12, hud_y + 20, vx + half_vw + 30, hud_y + 20, FLIGHT_COLOR_HUD, vclip)
+
+    def _click_games(self, win: Window, rel_x: int, rel_y: int):
+        # Toolbar clicks
+        if rel_y <= 26:
+            if 4 <= rel_x <= 98:
+                self.game_mode = "castle"
+                self.status_message = "Active Game: CastleAdiOS 3D Raycaster."
+                return
+            elif 102 <= rel_x <= 218:
+                self.game_mode = "flight"
+                self.status_message = "Active Game: StarFlight 3D Simulator."
+                return
+            elif 222 <= rel_x <= 290:
+                if self.game_mode == "castle":
+                    self.castle_pos_x, self.castle_pos_y = 1.5, 1.5
+                    self.castle_dir_x, self.castle_dir_y = 1.0, 0.0
+                    self.castle_plane_x, self.castle_plane_y = 0.0, 0.66
+                    self.castle_health = 100
+                    self.castle_score = 750
+                else:
+                    self.flight_x, self.flight_y = 0.0, 40.0
+                    self.flight_pitch, self.flight_bank = 0.0, 0.0
+                    self.flight_score, self.flight_rings = 0, 0
+                    for g in self.flight_gates:
+                        g["hit"] = False
+                self.status_message = "Game reset."
+                return
+
+        # Bottom controls clicks
+        by = win.h - 54
+        if rel_y >= by:
+            if self.game_mode == "castle":
+                if 4 <= rel_x <= 50: self._move_castle_player(0.2)
+                elif 54 <= rel_x <= 100: self._move_castle_player(-0.2)
+                elif 104 <= rel_x <= 150: self._rotate_castle_player(-0.1)
+                elif 154 <= rel_x <= 200: self._rotate_castle_player(0.1)
+            else:
+                if 4 <= rel_x <= 50: self.flight_y = min(150.0, self.flight_y + 8.0)
+                elif 54 <= rel_x <= 100: self.flight_y = max(15.0, self.flight_y - 8.0)
+                elif 104 <= rel_x <= 156:
+                    self.flight_bank = max(-0.6, self.flight_bank - 0.15)
+                    self.flight_x -= 12.0
+                elif 160 <= rel_x <= 212:
+                    self.flight_bank = min(0.6, self.flight_bank + 0.15)
+                    self.flight_x += 12.0
+                elif 216 <= rel_x <= 266:
+                    self.flight_speed = min(30.0, self.flight_speed + 4.0)
+
+    # --------------------------------------------------------------------------
     # Start Menu & Window Switcher
     # --------------------------------------------------------------------------
 
@@ -854,6 +1280,37 @@ class MasterDesktop:
 
     def step_frame(self, mouse_x: int, mouse_y: int):
         self.rot_3d.y = (self.rot_3d.y + 2.0) % 360.0
+
+        # Games Arcade continuous animation
+        if hasattr(self, "win_games") and self.win_games.visible and not self.win_games.minimized:
+            if self.game_mode == "flight":
+                self.flight_terrain_offset = (self.flight_terrain_offset + self.flight_speed * 0.5) % 70.0
+                for gate in self.flight_gates:
+                    gate["z"] -= self.flight_speed * 0.8
+                    rel_x = gate["x"] - self.flight_x
+                    rel_y = gate["y"] - self.flight_y
+                    rel_z = gate["z"]
+                    if -self.flight_speed <= rel_z <= self.flight_speed and not gate["hit"]:
+                        if math.hypot(rel_x, rel_y) <= gate["radius"]:
+                            gate["hit"] = True
+                            self.flight_score += 100
+                            self.flight_rings += 1
+                            if self.vm:
+                                try:
+                                    self.vm.write32(0x10000050, 880)
+                                    self.vm.write32(0x10000054, 40)
+                                except Exception:
+                                    pass
+                    if gate["z"] <= 20.0:
+                        gate["z"] = 1800.0
+                        gate["x"] = self.flight_x + float(((len(self.flight_gates) * 37) % 240) - 120)
+                        gate["y"] = float(30.0 + ((len(self.flight_gates) * 23) % 80))
+                        gate["hit"] = False
+
+                for s in self.flight_stars:
+                    s["z"] -= self.flight_speed * s["speed"] * 0.5
+                    if s["z"] <= 20.0:
+                        s["z"] = 900.0
 
     def render(self, fb: bytearray):
         # 1. Clear Desktop with deep dark background
@@ -878,8 +1335,11 @@ class MasterDesktop:
             fb[(py * self.width + 4) * 4 : (py * self.width + 84) * 4] = pill_bytes * 80
         self._draw_string(fb, 10, 7, "AdiOS [1.1]", COLOR_START_TXT)
 
+        # Dedicated Games Pill on Taskbar
+        self._draw_button(fb, 88, 3, 68, 18, "GAMES", COLOR_ACCENT_PURPLE, COLOR_START_TXT)
+
         # Window Switcher Pills on Taskbar
-        sw_x = 92
+        sw_x = 160
         for w in self.wm.windows:
             if w.visible and not w.minimized:
                 bg_col = COLOR_TITLE_ACT if w.active else COLOR_BUTTON_BG
@@ -900,7 +1360,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 200
+        mh = 230
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -923,26 +1383,31 @@ class MasterDesktop:
             ("5. Sovereign File Explorer", "explorer"),
             ("6. Network & Crypto Monitor", "netmon"),
             ("7. POSIX Sovereign Shell", "shell"),
-            ("8. Paint Studio & Calculator", "paint")
+            ("8. Paint Studio & Calculator", "paint"),
+            ("9. Sovereign 3D Games Arcade", "games")
         ]
 
-        for idx, (label, _) in enumerate(items):
+        for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            self._draw_string(fb, mx + 14, iy, label, COLOR_TEXT_PRIMARY, clip)
+            color = COLOR_ACCENT_YELLOW if wid == "games" else COLOR_TEXT_PRIMARY
+            self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
     # Event Handlers
     # --------------------------------------------------------------------------
 
     def handle_mouse_down(self, mx: int, my: int) -> Optional[Tuple[str, Any]]:
-        # 1. Start Pill Click
+        # 1. Start Pill & Games Pill Clicks
         if my < TASKBAR_HEIGHT:
             if 4 <= mx <= 84:
                 self.toggle_start_menu()
                 return ("start_toggle", None)
+            if 88 <= mx <= 156:
+                self.launch_or_focus("games")
+                return ("menu_select", "games")
 
             # Window Switcher Pills click
-            sw_x = 92
+            sw_x = 160
             for w in self.wm.windows:
                 if w.visible and not w.minimized:
                     if sw_x <= mx <= sw_x + 72:
@@ -953,9 +1418,9 @@ class MasterDesktop:
 
         # 2. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 200:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 230:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
-                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint"]
+                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games"]
                 # Check legacy item click (my = 160 was item 6 shell in 18px pitch)
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
@@ -988,13 +1453,17 @@ class MasterDesktop:
                 cmd = self.shell_input.strip()
                 self.shell_history.append("root@adios:~# " + cmd)
                 if cmd:
-                    try:
-                        out = self.shell.eval(cmd)
-                        for line in out.split("\n"):
-                            if line.strip():
-                                self.shell_history.append(line)
-                    except Exception as e:
-                        self.shell_history.append(f"sh: {str(e)}")
+                    if cmd.lower() in ("games", "game", "castle", "flight", "arcade", "play"):
+                        self.launch_or_focus("games")
+                        self.shell_history.append("[AdiOS Games Arcade] Launching Sovereign 3D Games...")
+                    else:
+                        try:
+                            out = self.shell.eval(cmd)
+                            for line in out.split("\n"):
+                                if line.strip():
+                                    self.shell_history.append(line)
+                        except Exception as e:
+                            self.shell_history.append(f"sh: {str(e)}")
                 self.shell_input = ""
             elif key_char == "\b":
                 self.shell_input = self.shell_input[:-1]
@@ -1024,6 +1493,42 @@ class MasterDesktop:
         elif active_win.win_id == "paint":
             if key_char.isdigit() or key_char in ("+", "-", "*", "/", "=", "C", "c"):
                 self._handle_calc_key(key_char.upper())
+
+        elif active_win.win_id == "games":
+            k = key_char.upper()
+            if k in ("W", "K"):
+                if self.game_mode == "castle":
+                    self._move_castle_player(0.15)
+                else:
+                    self.flight_y = min(150.0, self.flight_y + 6.0)
+            elif k in ("S", "J"):
+                if self.game_mode == "castle":
+                    self._move_castle_player(-0.15)
+                else:
+                    self.flight_y = max(15.0, self.flight_y - 6.0)
+            elif k in ("A", "H"):
+                if self.game_mode == "castle":
+                    self._rotate_castle_player(-0.08)
+                else:
+                    self.flight_bank = max(-0.6, self.flight_bank - 0.12)
+                    self.flight_x -= 8.0
+            elif k in ("D", "L"):
+                if self.game_mode == "castle":
+                    self._rotate_castle_player(0.08)
+                else:
+                    self.flight_bank = min(0.6, self.flight_bank + 0.12)
+                    self.flight_x += 8.0
+            elif k == "1":
+                self.game_mode = "castle"
+                self.status_message = "Active Game: CastleAdiOS 3D"
+            elif k == "2":
+                self.game_mode = "flight"
+                self.status_message = "Active Game: StarFlight 3D"
+            elif k == "R":
+                self._click_games(active_win, 230, 10)
+            elif key_char == " ":
+                if self.game_mode == "flight":
+                    self.flight_speed = 26.0
 
 if __name__ == "__main__":
     desktop = MasterDesktop()

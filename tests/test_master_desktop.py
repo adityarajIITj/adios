@@ -16,10 +16,10 @@ class TestMasterDesktop(unittest.TestCase):
         self.fb = bytearray(WIDTH * HEIGHT * 4)
 
     def test_01_initialization(self):
-        """Verify MasterDesktop initializes all 8 windows and default state."""
-        self.assertEqual(len(self.desktop.wm.windows), 8)
+        """Verify MasterDesktop initializes all 9 windows and default state."""
+        self.assertEqual(len(self.desktop.wm.windows), 9)
         win_ids = [w.win_id for w in self.desktop.wm.windows]
-        expected = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint"]
+        expected = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games"]
         for exp in expected:
             self.assertIn(exp, win_ids)
 
@@ -143,6 +143,45 @@ class TestMasterDesktop(unittest.TestCase):
         self.desktop._handle_calc_key("5")
         self.desktop._handle_calc_key("=")
         self.assertEqual(self.desktop.calc_display, "12")
+
+    def test_12_games_arcade(self):
+        """Verify Sovereign 3D Games Arcade window, game switching, and controls."""
+        # 1. Launch via top taskbar pill at (100, 10)
+        res = self.desktop.handle_mouse_down(100, 10)
+        self.assertEqual(res, ("menu_select", "games"))
+        self.assertTrue(self.desktop.win_games.visible)
+        self.assertTrue(self.desktop.win_games.active)
+
+        # 2. Render in Castle 3D mode
+        self.assertEqual(self.desktop.game_mode, "castle")
+        self.desktop.render(self.fb)
+
+        # 3. Test Castle controls (W to move, D to turn)
+        orig_x, orig_y = self.desktop.castle_pos_x, self.desktop.castle_pos_y
+        self.desktop.handle_key("w")
+        self.assertNotEqual((self.desktop.castle_pos_x, self.desktop.castle_pos_y), (orig_x, orig_y))
+        orig_dir_x = self.desktop.castle_dir_x
+        self.desktop.handle_key("d")
+        self.assertNotEqual(self.desktop.castle_dir_x, orig_dir_x)
+
+        # 4. Switch to StarFlight 3D mode via key '2'
+        self.desktop.handle_key("2")
+        self.assertEqual(self.desktop.game_mode, "flight")
+        self.desktop.render(self.fb)
+
+        # 5. Test StarFlight controls (W to pitch, A to bank)
+        orig_bank = self.desktop.flight_bank
+        self.desktop.handle_key("a")
+        self.assertLess(self.desktop.flight_bank, orig_bank)
+
+        # 6. Test frame step
+        orig_score = self.desktop.flight_score
+        self.desktop.step_frame(0, 0)
+        self.assertGreaterEqual(self.desktop.flight_score, orig_score)
+
+        # 7. Test switch back to Castle via toolbar click
+        self.desktop.win_games.on_click_content(self.desktop.win_games, 50, 10)
+        self.assertEqual(self.desktop.game_mode, "castle")
 
 if __name__ == "__main__":
     unittest.main()

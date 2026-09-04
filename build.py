@@ -346,7 +346,7 @@ def run_castle3d():
     except KeyboardInterrupt:
         print("\n[CastleAdiOS 3D] Exited.")
 
-def run_desktop(scale=1.0, width=1024, height=768):
+def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False):
     print("=====================================================")
     print("     AdiOS Sovereign Workstation (1024x768 XGA)      ")
     print("=====================================================")
@@ -358,6 +358,9 @@ def run_desktop(scale=1.0, width=1024, height=768):
     vm = VM()
     vm.fb = bytearray(width * height * 4)
     desktop = MasterDesktop(vm, width=width, height=height)
+    if auto_launch_games or "--games" in sys.argv or "--arcade" in sys.argv:
+        desktop.launch_or_focus("games")
+        print("[AdiOS Desktop] Sovereign 3D Games Arcade auto-launched.")
     disp = DisplayWindow(vm.fb, width=width, height=height, scale=scale, uart_callback=lambda c: None)
     vm.display = disp
 
@@ -535,12 +538,46 @@ def run_benchmarks():
     print("===========================================================")
 
 if __name__ == "__main__":
-    if "--build" in sys.argv:
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("=================================================================")
+        print("  AdiOS (v1.0.0 Sovereign Master Workstation & Production)       ")
+        print("=================================================================")
+        print("Usage: python build.py [OPTION]")
+        print("")
+        print("Workstation & GUI Desktop:")
+        print("  --desktop             Launch Unified Sovereign Workstation (1024x768 XGA)")
+        print("  --desktop --games     Launch Workstation with Sovereign 3D Games Arcade open")
+        print("  --res WxH             Specify custom workstation resolution (e.g. 1024x768)")
+        print("  --scale S             Specify display scaling factor (e.g. 1.0 or 1.5)")
+        print("")
+        print("Sovereign Games & Simulations:")
+        print("  --games, --arcade     Launch Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)")
+        print("  --castle, --fps       Direct standalone launch of CastleAdiOS 3D Dungeon Crawler")
+        print("  --3d, --flight, --game Direct standalone launch of StarFlight 3D Flight Simulator")
+        print("")
+        print("Systems, Toolchains & Tests:")
+        print("  --test                Run automated 53-subsystem regression test suite")
+        print("  --bench               Run systems throughput benchmark suite")
+        print("  --shell, --cyber      Launch interactive Sovereign Cyber Command Shell")
+        print("  --hymn, --song        Play 4-channel synthesized Baroque Hymn of AdiOS")
+        print("  --run <file.py>       Execute an AdiPython script with native RV32IM runtime")
+        print("  --build               Assemble bare-metal RV32 assembly kernel (adios.bin)")
+        print("  --cli                 Boot bare-metal RV32 assembly CLI without GUI")
+        print("=================================================================")
+    elif "--build" in sys.argv:
         assemble("kernel/gui_kernel.s", "adios.bin")
     elif "--test" in sys.argv:
         test()
     elif "--bench" in sys.argv:
         run_benchmarks()
+    elif "--games" in sys.argv or "--arcade" in sys.argv:
+        scale = 1.0
+        if "--scale" in sys.argv:
+            idx = sys.argv.index("--scale")
+            if idx + 1 < len(sys.argv):
+                try: scale = float(sys.argv[idx + 1])
+                except ValueError: scale = 1.0
+        run_desktop(scale=scale, width=1024, height=768, auto_launch_games=True)
     elif "--desktop" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -564,7 +601,7 @@ if __name__ == "__main__":
         run_castle3d()
     elif "--hymn" in sys.argv or "--song" in sys.argv:
         play_hymn()
-    elif "--3d" in sys.argv or "--game" in sys.argv:
+    elif "--3d" in sys.argv or "--game" in sys.argv or "--flight" in sys.argv:
         run_game_3d()
     elif "--run" in sys.argv:
         idx = sys.argv.index("--run")

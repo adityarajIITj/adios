@@ -225,9 +225,9 @@ The entire operating system is protected by a unified, automated 45-subsystem re
 
 ---
 
-## 4. Unified Sovereign Master Desktop (8 Integrated Applications)
+### 4. Unified Sovereign Master Desktop (9 Integrated Applications)
 
-The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive, native 1024x768 XGA 32-bit ARGB desktop environment featuring a composited taskbar, multi-hart SMP telemetry, system clock, 260px floating Start Menu, active window management, and 8 integrated applications:
+The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive, native 1024x768 XGA 32-bit ARGB desktop environment featuring a composited taskbar, dedicated **`[GAMES]`** launcher pill, multi-hart SMP telemetry, system clock, 260px floating Start Menu, active window management, and 9 integrated applications:
 
 1. **Sovereign Web Browser**: Live HTML/CSS layout renderer supporting heading hierarchy, paragraphs, bordered boxes, inline hyperlinks, and scrollable DOM viewports.
 2. **SovereignSQL Terminal**: Interactive relational database shell with live schema tables, query execution (`SELECT`, `INSERT`, `UPDATE`), ACID transactions, and Write-Ahead Logging status.
@@ -235,8 +235,9 @@ The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies a
 4. **OpenGL 3D Interactive Viewer**: Real-time rotating 3D software pipeline with wireframe and solid rendering modes, Z-buffering, perspective projection, and interactive pause/resume.
 5. **Sovereign File Explorer**: Dual-filesystem storage inspector capable of mounting and browsing Linux Ext2 and Microsoft FAT32 disk images with direct file inspection.
 6. **Network & Cryptography Monitor**: Live telemetry dashboard tracking active TCP socket states (SYN, ESTABLISHED, FIN), TLS 1.3 handshake cryptographic keys, and SHA-256 integrity verification.
-7. **Sovereign Terminal Shell**: Bare-metal POSIX command shell supporting multi-stage pipelines, I/O redirection, environment variables, and Unix core utilities (`cat`, `grep`, `wc`, `ls`).
+7. **POSIX Terminal Shell**: Bare-metal POSIX command shell supporting multi-stage pipelines, I/O redirection, environment variables, and Unix core utilities (`cat`, `grep`, `wc`, `ls`).
 8. **Paint Studio & Calculator**: Interactive mouse canvas with color swatches, brush tool, and 32-bit hardware arithmetic calculator.
+9. **Sovereign 3D Games Arcade**: Real-time 3D gaming hub hosting CastleAdiOS 3D (DDA raycaster dungeon crawler with textured walls and minimap) and StarFlight 3D (wireframe flight simulator with attitude HUD and navigation rings) with full WASD keyboard and mouse controls.
 
 ### Core Architectural Subsystem Flow Charts
 
@@ -477,9 +478,19 @@ flowchart TD
 python build.py --test
 ```
 
-### Launching the Unified Sovereign Master Desktop (All 8 Integrated Apps)
+### Launching the Unified Sovereign Master Desktop (All 9 Integrated Apps)
 ```bash
 python build.py --desktop
+```
+
+### Launching the Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)
+```bash
+python build.py --games
+```
+
+### Launching the Workstation with Games Arcade Focused
+```bash
+python build.py --desktop --games
 ```
 
 ### Launching the Bare-Metal Assembly Desktop (Interactive GUI)
