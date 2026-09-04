@@ -220,6 +220,9 @@ def test():
     print("\n--- 48. Testing C Compiler Toolchain & Zero-Dependency Libc Deepening (Pass X Block 3) ---")
     res_c_deep = subprocess.run([sys.executable, "tests/test_c_toolchain_deepened.py"])
 
+    print("\n--- 49. Testing Storage, B+ Tree & Relational Query Planner Deepening (Pass X Block 4) ---")
+    res_storage_deep = subprocess.run([sys.executable, "-m", "unittest", "tests/test_storage_db_deepened.py"])
+
     all_pass = all(r.returncode == 0 for r in [
         res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk,
         res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc,
@@ -227,11 +230,11 @@ def test():
         res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs,
         res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui,
         res_mdesk, res_pass1, res_pass2, res_pass3, res_pass4, res_res1024, res_ap_deep,
-        res_c_deep
+        res_c_deep, res_storage_deep
     ])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 48 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 49 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -280,6 +283,7 @@ def test():
         print("  - Pass X High-Resolution Workstation (1024x768 XGA, Snapping & Controls): PASS")
         print("  - Pass X Language Runtime & Native JIT Deepening (AST, CSE, LICM, JIT): PASS")
         print("  - Pass X C Compiler Toolchain & Zero-Dependency Libc Deepening: PASS")
+        print("  - Pass X Storage, B+ Tree & Relational Query Planner Deepening: PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
