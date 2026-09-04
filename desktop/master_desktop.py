@@ -183,15 +183,19 @@ class MasterDesktop:
             "/etc/os-release": b"NAME=\"AdiOS Sovereign\"\nVERSION=\"1.1.0-RV32IM\"\nID=adios\n",
             "/etc/hostname": b"adios-workstation\n",
             "/root/welcome.txt": b"Welcome to AdiOS Ring-0 Sovereign Workstation!\n",
+            "/root/hello.c": b"/* AdiOS Sovereign In-OS C99 Program */\nint main() {\n    int a = 40;\n    int b = 2;\n    return a + b;\n}\n",
+            "/root/Makefile": b"all: hello.elf\n\nhello.elf: hello.c\n\tcc -o hello.elf hello.c\n\nclean:\n\trm hello.elf\n",
             "/bin/sh": b"\x7fELF-RV32-POSIX-SHELL\n",
             "/bin/cat": b"\x7fELF-RV32-CAT\n",
-            "/bin/grep": b"\x7fELF-RV32-GREP\n"
+            "/bin/grep": b"\x7fELF-RV32-GREP\n",
+            "/bin/cc": b"\x7fELF-RV32-ADI-C99-COMPILER\n",
+            "/bin/make": b"\x7fELF-RV32-SOVEREIGN-MAKE\n"
         }
         self.coreutils = CoreUtils(vfs)
         self.shell = SovereignShell(self.coreutils)
         self.shell_history = [
             "root@adios:~# uname -a",
-            "AdiOS 1.1.0-sovereign riscv32 GNU/Sovereign",
+            "AdiOS 1.0.0-sovereign riscv32 GNU/Sovereign (v1.1.0 Workstation)",
             "root@adios:~# cat /etc/os-release | grep VERSION",
             "VERSION=\"1.1.0-RV32IM\"",
             "root@adios:~# "
@@ -701,10 +705,13 @@ class MasterDesktop:
 
         # Quick action button bar
         self._fill_rect(fb, cx, cy, cw, 24, COLOR_TASKBAR_BG, clip)
-        self._draw_button(fb, cx + 4, cy + 3, 60, 18, "ls -la", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
-        self._draw_button(fb, cx + 68, cy + 3, 76, 18, "uname -a", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
-        self._draw_button(fb, cx + 148, cy + 3, 110, 18, "cat os-release", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
-        self._draw_button(fb, cx + 262, cy + 3, 54, 18, "clear", COLOR_BUTTON_BG, COLOR_ACCENT_RED, clip)
+        self._draw_button(fb, cx + 4, cy + 3, 50, 18, "ls -la", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
+        self._draw_button(fb, cx + 58, cy + 3, 36, 18, "ps", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
+        self._draw_button(fb, cx + 98, cy + 3, 42, 18, "free", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
+        self._draw_button(fb, cx + 144, cy + 3, 46, 18, "make", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
+        self._draw_button(fb, cx + 194, cy + 3, 44, 18, "help", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
+        self._draw_button(fb, cx + 242, cy + 3, 68, 18, "uname -a", COLOR_BUTTON_BG, COLOR_BUTTON_TXT, clip)
+        self._draw_button(fb, cx + 314, cy + 3, 48, 18, "clear", COLOR_BUTTON_BG, COLOR_ACCENT_RED, clip)
 
         # History output
         for idx, line in enumerate(self.shell_history[-14:]):
@@ -716,22 +723,44 @@ class MasterDesktop:
 
     def _click_shell(self, win: Window, rel_x: int, rel_y: int):
         ch = win.h - 22
-        if rel_y <= 24 or (ch - 42 <= rel_y <= ch - 22):
-            if 4 <= rel_x <= 64 or (ch - 42 <= rel_y and 6 <= rel_x <= 60):
-                self.shell_history.append("root@adios:~# ls -la")
-                self.shell_history.append("drwxr-xr-x  4 root root 4096 /etc")
-                self.shell_history.append("-rwxr-xr-x  1 root root 8420 /bin/sh")
-                self.shell_history.append("-rwxr-xr-x  1 root root 8420 /bin/cat")
-            elif 68 <= rel_x <= 144 or (ch - 42 <= rel_y and 64 <= rel_x <= 128):
-                self.shell_history.append("root@adios:~# uname -a")
-                self.shell_history.append("AdiOS 1.0.0-sovereign riscv32 GNU/Sovereign (v1.1.0 Workstation)")
-            elif 148 <= rel_x <= 258:
-                self.shell_history.append("root@adios:~# cat /etc/os-release")
-                self.shell_history.append("NAME=\"AdiOS Sovereign\"")
-                self.shell_history.append("VERSION=\"1.1.0-RV32IM\"")
-            elif 262 <= rel_x <= 316 or (ch - 42 <= rel_y and 132 <= rel_x <= 186):
+        cmd = None
+        if rel_y <= 24:
+            if 4 <= rel_x <= 54:
+                cmd = "ls -la"
+            elif 58 <= rel_x <= 94:
+                cmd = "ps"
+            elif 98 <= rel_x <= 140:
+                cmd = "free -h"
+            elif 144 <= rel_x <= 190:
+                cmd = "make"
+            elif 194 <= rel_x <= 238:
+                cmd = "help"
+            elif 242 <= rel_x <= 310:
+                cmd = "uname -a"
+            elif 314 <= rel_x <= 362:
                 self.shell_history = ["root@adios:~# "]
-            self.status_message = "POSIX Command Executed."
+                self.status_message = "Terminal screen cleared."
+                return
+        elif ch - 42 <= rel_y <= ch - 22:
+            if 6 <= rel_x <= 60:
+                cmd = "ls -la"
+            elif 64 <= rel_x <= 128:
+                cmd = "uname -a"
+            elif 132 <= rel_x <= 186:
+                self.shell_history = ["root@adios:~# "]
+                self.status_message = "Terminal screen cleared."
+                return
+
+        if cmd:
+            self.shell_history.append("root@adios:~# " + cmd)
+            if cmd == "uname -a":
+                self.shell_history.append("AdiOS 1.0.0-sovereign riscv32 GNU/Sovereign (v1.1.0 Workstation)")
+            else:
+                out = self.shell.eval(cmd)
+                for line in out.split("\n"):
+                    if line.strip():
+                        self.shell_history.append(line)
+            self.status_message = f"POSIX Command Executed: {cmd}"
 
     # App 8: Paint Studio & Calculator
     def _draw_paint(self, win: Window, fb: bytearray, font_dict):
@@ -1451,6 +1480,11 @@ class MasterDesktop:
         if active_win.win_id == "shell":
             if key_char in ("\n", "\r"):
                 cmd = self.shell_input.strip()
+                if cmd.lower() == "clear":
+                    self.shell_history = ["root@adios:~# "]
+                    self.shell_input = ""
+                    self.status_message = "Terminal screen cleared."
+                    return
                 self.shell_history.append("root@adios:~# " + cmd)
                 if cmd:
                     if cmd.lower() in ("games", "game", "castle", "flight", "arcade", "play"):

@@ -155,9 +155,23 @@ class Assembler:
                             expanded.append(sub + "\n")
         return expanded
 
-    def assemble_file(self, filename, output_bin):
-        lines = self.load_lines(filename)
+    def assemble_text(self, text: str) -> bytes:
+        lines = []
+        for line in text.splitlines():
+            code = line.split('#')[0].strip()
+            if not code:
+                continue
+            if '"' in code:
+                lines.append(code + "\n")
+            else:
+                for sub in code.split(';'):
+                    sub = sub.strip()
+                    if sub:
+                        lines.append(sub + "\n")
+        return bytes(self._assemble_lines(lines))
 
+    def _assemble_lines(self, lines):
+        self.labels = {}
         # Pass 1: Collect labels and calculate addresses
         addr = BASE_ADDR
         for raw in lines:
@@ -260,6 +274,12 @@ class Assembler:
             inst_bytes = self.assemble_instruction(op, tokens[1:], addr)
             byte_stream.extend(inst_bytes)
             addr += len(inst_bytes)
+
+        return byte_stream
+
+    def assemble_file(self, filename, output_bin):
+        lines = self.load_lines(filename)
+        byte_stream = self._assemble_lines(lines)
 
         with open(output_bin, "wb") as f:
             f.write(byte_stream)

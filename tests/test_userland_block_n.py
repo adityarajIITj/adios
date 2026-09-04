@@ -85,6 +85,80 @@ def test_userland_block_n_suite():
     assert "1" in pipe_out
     print("  -> [PASS] Shell variables, redirections & pipelines verified.")
 
+    # 4. Test Generic POSIX Commands (ps, top, free, uptime, whoami, pwd, cd, mkdir, kill)
+    print("  -> Testing POSIX Generic System Commands (ps, top, free, uptime, whoami, pwd, cd, mkdir, kill)...")
+    ps_out = sh.eval("ps")
+    assert "PID" in ps_out and "init" in ps_out and "desktop_wm" in ps_out
+
+    top_out = sh.eval("top")
+    assert "Tasks:" in top_out and "%Cpu(s):" in top_out and "load average" in top_out
+
+    free_out = sh.eval("free -h")
+    assert "512M" in free_out and "Mem:" in free_out and "Swap:" in free_out
+
+    uptime_out = sh.eval("uptime")
+    assert "load average" in uptime_out and "up" in uptime_out
+
+    assert sh.eval("whoami") == "root"
+    assert sh.eval("pwd") == "/root"
+
+    sh.eval("mkdir /root/workspace")
+    assert "/root/workspace/" in utils.vfs or any(k.startswith("/root/workspace") for k in utils.vfs)
+    sh.eval("cd /root/workspace")
+    assert sh.eval("pwd") == "/root/workspace"
+    sh.eval("cd ..")
+    assert sh.eval("pwd") == "/root"
+
+    # Test kill protection of init (pid 1) and killing worker
+    assert "cannot kill init" in sh.eval("kill 1")
+    kill_out = sh.eval("kill 10")
+    assert "terminated" in kill_out and "10" in kill_out
+    print("  -> [PASS] Generic POSIX commands verified.")
+
+    # 5. Test In-OS Sovereign Make
+    print("  -> Testing In-OS Sovereign Make Engine...")
+    make_all = sh.eval("make all")
+    assert "[MAKE]" in make_all and "kernel" in make_all
+    make_kernel = sh.eval("make kernel")
+    assert "adios.bin" in make_kernel
+    make_clean = sh.eval("make clean")
+    assert "Clean complete" in make_clean
+    make_test = sh.eval("make test")
+    assert "53 SUBSYSTEMS PASSED" in make_test
+    print("  -> [PASS] Sovereign Make rules verified.")
+
+    # 6. Test In-OS C99 Compiler Driver (cc)
+    print("  -> Testing In-OS C99 Compiler Driver (cc)...")
+    c_prog = b"int main() { int x = 30; int y = 12; return x + y; }\n"
+    utils.write_file("/root/calc.c", c_prog)
+    
+    # Compile to ELF32
+    cc_elf_out = sh.eval("cc /root/calc.c -o /root/calc.elf")
+    assert "[cc] Compiled" in cc_elf_out and "calc.elf" in cc_elf_out
+    assert "/root/calc.elf" in utils.vfs
+    assert len(utils.vfs["/root/calc.elf"]) > 100
+    assert utils.vfs["/root/calc.elf"][:4] == b"\x7fELF"
+
+    # Compile to Assembly text (-S)
+    cc_asm_out = sh.eval("cc -S /root/calc.c -o /root/calc.s")
+    assert "[cc] Compiled" in cc_asm_out and "Assembly text" in cc_asm_out
+    assert "/root/calc.s" in utils.vfs
+    assert b"main:" in utils.vfs["/root/calc.s"]
+    print("  -> [PASS] In-OS C99 compiler (cc) verified.")
+
+    # 7. Test Shell Help Command
+    print("  -> Testing Sovereign Shell Help Documentation...")
+    help_full = sh.eval("help")
+    assert "AdiOS Sovereign POSIX Shell" in help_full
+    assert "ps [aux]" in help_full
+    assert "free [-h]" in help_full
+    assert "make [target]" in help_full
+    assert "cc [opts]" in help_full
+
+    help_ps = sh.eval("help ps")
+    assert "ps [aux]" in help_ps
+    print("  -> [PASS] Shell help documentation verified.")
+
     print("\n[Test Userland Block N] ALL BLOCK N USERLAND TESTS PASSED (100%)!")
     return True
 
