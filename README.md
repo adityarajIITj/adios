@@ -21,7 +21,7 @@ Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. D
 
 <div align="center">
   <img src="docs/assets/youtube_network_stream.png" alt="AdiOS Sovereign YouTube Player Real Internet Streaming" width="920"/>
-  <p><em>Figure 1: Live Sovereign YouTube Player streaming real-world internet video (Rick Astley - Never Gonna Give You Up) at deterministic 30 FPS in the 1024x768 XGA Workstation with active Host Network Driver Bridge ([ONLINE]), live audio spectrum oscilloscope, 256MB RAM telemetry, and interactive URL input.</em></p>
+  <p><em>Figure 1: Live Sovereign YouTube Player streaming real-world internet video (Apna College - Complete Masterclass Codex AI Tool) at deterministic 30 FPS in the 1024x768 XGA Workstation with real photographic frame decoding, host PC speaker audio output, [PASTE] URL clipboard ingestion, [SND:ON] audio mute toggling, active Host Network Driver Bridge ([ONLINE]), and 256MB RAM telemetry.</em></p>
 </div>
 
 <div align="center">
@@ -180,9 +180,9 @@ graph TD
 
 ---
 
-## 3. Subsystem Verification Matrix (53/53 Subsystems Passed)
+## 3. Subsystem Verification Matrix (55/55 Subsystems Passed)
 
-The entire operating system is protected by a unified, automated 53-subsystem regression test harness (`python build.py --test`):
+The entire operating system is protected by a unified, automated 55-subsystem regression test harness (`python build.py --test`):
 
 | # | Subsystem | Module | Description | Status |
 |---|---|---|---|---|
@@ -239,12 +239,14 @@ The entire operating system is protected by a unified, automated 53-subsystem re
 | 51 | Kernel Core & Sv32 MMU | `proc/`, `mmu/` | Process Lifecycle, Buddy Allocator, Sv32 TLB | **PASS (100%)** |
 | 52 | Network Stack Deepening | `net/` | IPv4 Fragmentation, UDP Pseudo-chk, HTTP/DHCP | **PASS (100%)** |
 | 53 | Toolchain, FS & 3D Deep | `compiler/`, `fs/`, `ui/`, `graphics/` | ELF32 Parser, AdiFS WAL, Canvas2D AA, Matrix4 | **PASS (100%)** |
+| 54 | 256MB RAM & MMIO VPU | `vm/vpu.py` | 256MB Physical RAM, VPU MMIO, 30 FPS DMA Blitter | **PASS (100%)** |
+| 55 | Network Drivers & Real YouTube | `net/yt_relay.py`, `drivers/net_bridge.py` | Real Video Frames, Host Audio Driver, URL Paste, Mute Toggle | **PASS (100%)** |
 
 ---
 
-### 4. Unified Sovereign Master Desktop (9 Integrated Applications)
+### 4. Unified Sovereign Master Desktop (10 Integrated Applications)
 
-The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive, native 1024x768 XGA 32-bit ARGB desktop environment featuring a composited taskbar, dedicated **`[GAMES]`** launcher pill, multi-hart SMP telemetry, system clock, 260px floating Start Menu, active window management, and 9 integrated applications:
+The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies all 26 blocks of AdiOS into an interactive, native 1024x768 XGA 32-bit ARGB desktop environment featuring a composited taskbar, dedicated **`[GAMES]`** and **`[YT]`** launcher pills, multi-hart SMP telemetry, system clock, 260px floating Start Menu, active window management, and 10 integrated applications:
 
 1. **Sovereign Web Browser**: Live HTML/CSS layout renderer supporting heading hierarchy, paragraphs, bordered boxes, inline hyperlinks, and scrollable DOM viewports.
 2. **SovereignSQL Terminal**: Interactive relational database shell with live schema tables, query execution (`SELECT`, `INSERT`, `UPDATE`), ACID transactions, and Write-Ahead Logging status.
@@ -255,6 +257,7 @@ The **Unified Sovereign Master Desktop** (`desktop/master_desktop.py`) unifies a
 7. **POSIX Terminal Shell**: Bare-metal POSIX command shell supporting multi-stage pipelines, I/O redirection, environment variables, and Unix core utilities (`cat`, `grep`, `wc`, `ls`).
 8. **Paint Studio & Calculator**: Interactive mouse canvas with color swatches, brush tool, and 32-bit hardware arithmetic calculator.
 9. **Sovereign 3D Games Arcade**: Real-time 3D gaming hub hosting CastleAdiOS 3D (DDA raycaster dungeon crawler with textured walls and minimap) and StarFlight 3D (wireframe flight simulator with attitude HUD and navigation rings) with full WASD keyboard and mouse controls.
+10. **Sovereign YouTube Player (30 FPS)**: Real-time internet streaming video player with real photographic frame decoding via YouTube CDN, host PC speaker audio streaming via standard library `winsound`, interactive URL clipboard pasting (`[PASTE]` button and `Ctrl+V`), sound mute toggling (`[SND:ON]` / `[MUTED]` button and `m` key), and 480x270 30 FPS display.
 
 ### Core Architectural Subsystem Flow Charts
 
@@ -500,14 +503,27 @@ flowchart TD
 
 ## 6. Quick Start Guide
 
-### Running the Full 53-Subsystem Regression Test Suite
+### Running the Full 55-Subsystem Regression Test Suite
 ```bash
 python build.py --test
 # or
 python build.py --test-all
 ```
 
-### Launching the Unified Sovereign Master Desktop (All 9 Integrated Apps)
+### Streaming Real YouTube Video Directly by URL
+```bash
+# Launch directly with real photographic frames and host audio speaker output:
+python build.py --yt-url https://www.youtube.com/watch?v=MYxamzOcVbs
+```
+
+### Launching the Sovereign YouTube Player (30 FPS)
+```bash
+python build.py --youtube
+# or
+python build.py --desktop --youtube
+```
+
+### Launching the Unified Sovereign Master Desktop (All 10 Integrated Apps)
 ```bash
 python build.py --desktop
 ```

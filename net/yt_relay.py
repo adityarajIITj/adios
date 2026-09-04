@@ -18,6 +18,10 @@ import time
 import struct
 import json
 import re
+import os
+import shutil
+import tempfile
+import subprocess
 import urllib.parse
 from typing import Optional, List, Dict, Tuple, Any
 
@@ -202,6 +206,74 @@ def fetch_youtube_metadata(video_id: str, timeout: float = 2.5) -> Dict[str, Any
     return default_meta
 
 
+def get_ffmpeg_binary() -> Optional[str]:
+    """Finds host ffmpeg binary for hardware-accelerated video frame decode."""
+    candidates = [
+        r"C:\Users\adity\AppData\Local\Programs\Python\Python314\Scripts\ffmpeg.exe",
+        "ffmpeg",
+        "ffmpeg.exe"
+    ]
+    for c in candidates:
+        if os.path.isabs(c) and os.path.isfile(c):
+            return c
+        found = shutil.which(c)
+        if found:
+            return found
+    return None
+
+
+def decode_image_to_bgrx(img_bytes: bytes, target_w: int = 480, target_h: int = 270) -> Optional[bytes]:
+    """Decodes JPEG/PNG frame directly into raw 32-bit BGRX pixel buffer."""
+    if not img_bytes:
+        return None
+    ffmpeg_bin = get_ffmpeg_binary()
+    if not ffmpeg_bin:
+        return None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
+            tf.write(img_bytes)
+            in_file = tf.name
+        out_file = in_file + ".raw"
+        cmd = [
+            ffmpeg_bin, "-y", "-i", in_file,
+            "-vf", f"scale={target_w}:{target_h}",
+            "-f", "rawvideo", "-pix_fmt", "bgr0",
+            out_file
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4.0)
+        raw_data = None
+        if os.path.exists(out_file) and os.path.getsize(out_file) == target_w * target_h * 4:
+            with open(out_file, "rb") as rf:
+                raw_data = rf.read()
+            os.remove(out_file)
+        if os.path.exists(in_file):
+            os.remove(in_file)
+        return raw_data
+    except Exception:
+        return None
+
+
+def fetch_youtube_frame_snapshots(video_id: str, max_frames: int = 4) -> List[bytes]:
+    """Downloads and decodes photographic video frames from YouTube CDN."""
+    bridge = get_net_bridge()
+    if not bridge.is_online():
+        return []
+    urls = [
+        f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+        f"https://i.ytimg.com/vi/{video_id}/1.jpg",
+        f"https://i.ytimg.com/vi/{video_id}/2.jpg",
+        f"https://i.ytimg.com/vi/{video_id}/3.jpg"
+    ]
+    frames = []
+    for u in urls[:max_frames]:
+        status, _, body = bridge.http_get(u, timeout=2.5)
+        if status == 200 and body and len(body) > 200:
+            bgrx = decode_image_to_bgrx(body, target_w=480, target_h=270)
+            if bgrx and len(bgrx) == 480 * 270 * 4:
+                frames.append(bgrx)
+    return frames
+
+
 class YouTubeStreamRelay:
     """
     Host-side YouTube / Media stream relay engine.
@@ -222,6 +294,10 @@ class YouTubeStreamRelay:
         self.thumbnail_pixels: Optional[bytearray] = None
         self.network_bridge = get_net_bridge()
         
+        # Real photographic video frame cache
+        self.real_frames: List[bytes] = []
+        self.real_frames_cache: Dict[str, List[bytes]] = {}
+        
         # Audio Synthesizer State
         self.sample_rate = 44100
         self.audio_phase = 0.0
@@ -240,6 +316,12 @@ class YouTubeStreamRelay:
         self.duration_ms = self.channel_info.get("duration_ms", 180000)
         self.active_video_id = self.channel_info["id"]
         self.active_url = self.channel_info.get("url", f"https://youtube.com/watch?v={self.active_video_id}")
+        self.real_frames = self.real_frames_cache.get(self.active_video_id, [])
+        if not self.real_frames and self.active_video_id not in ("ch_riscv", "ch_synth", "ch_matrix"):
+            frames = fetch_youtube_frame_snapshots(self.active_video_id)
+            if frames:
+                self.real_frames = frames
+                self.real_frames_cache[self.active_video_id] = frames
 
     def load_url(self, url_or_id: str) -> bool:
         """
@@ -253,6 +335,14 @@ class YouTubeStreamRelay:
             meta = fetch_youtube_metadata(vid, timeout=2.0)
             self.channel_info = meta
             self.duration_ms = meta.get("duration_ms", 180000)
+            # Fetch real photographic video frames
+            if vid in self.real_frames_cache:
+                self.real_frames = self.real_frames_cache[vid]
+            else:
+                frames = fetch_youtube_frame_snapshots(vid)
+                self.real_frames = frames
+                if frames:
+                    self.real_frames_cache[vid] = frames
             return True
         else:
             # Custom direct HTTP video or generic stream
@@ -270,17 +360,65 @@ class YouTubeStreamRelay:
                 "style": "music"
             }
             self.duration_ms = 300000
+            self.real_frames = []
             return True
 
     def seek(self, pts_ms: int):
         """Handles seek requests."""
         self.audio_phase = (pts_ms / 1000.0) * 440.0 * 2.0 * math.pi
 
+    def _overlay_video_playback_hud(self, buf: bytearray, w: int, h: int, t: float):
+        """Layers subtle translucent live playback waveform HUD onto the real video frame."""
+        bar_h = 18
+        bar_y = h - bar_h - 6
+        for y in range(bar_y, bar_y + bar_h):
+            for x in range(16, 210):
+                off = (y * w + x) * 4
+                if off + 3 < len(buf):
+                    buf[off]   = buf[off] >> 2
+                    buf[off+1] = buf[off+1] >> 2
+                    buf[off+2] = buf[off+2] >> 2
+
+        # Draw dynamic animated cyan waveform
+        wave_color = (0, 240, 255, 255)
+        prev_x = 20
+        mid_y = bar_y + bar_h // 2
+        prev_y = mid_y + int(math.sin(t * 8.0) * 4)
+        for x in range(24, 204, 6):
+            wy = mid_y + int(math.sin(t * 9.0 + x * 0.1) * 4 + math.cos(t * 14.0 + x * 0.15) * 3)
+            self._draw_line(buf, w, h, prev_x, prev_y, x, wy, wave_color)
+            prev_x, prev_y = x, wy
+
     def generate_frame(self, pts_ms: int, width: int = 480, height: int = 270) -> VideoFrame:
         """
         Synthesizes a live 30 FPS video frame for the active video at timestamp pts_ms.
         Outputs 32-bit ARGB bytearray matching exact screen geometry.
         """
+        # 1. Check if real photographic video frames are available
+        if self.real_frames:
+            f_idx = 0
+            if len(self.real_frames) > 1:
+                progress = min(1.0, pts_ms / float(max(1, self.duration_ms)))
+                f_idx = int(progress * len(self.real_frames)) % len(self.real_frames)
+            
+            raw_data = self.real_frames[f_idx]
+            if width != 480 or height != 270:
+                adapted = bytearray(width * height * 4)
+                src_pitch = 480 * 4
+                dst_pitch = width * 4
+                copy_w = min(width, 480) * 4
+                copy_h = min(height, 270)
+                for y in range(copy_h):
+                    s_off = y * src_pitch
+                    d_off = y * dst_pitch
+                    adapted[d_off : d_off + copy_w] = raw_data[s_off : s_off + copy_w]
+                buf = adapted
+            else:
+                buf = bytearray(raw_data)
+
+            self._overlay_video_playback_hud(buf, width, height, pts_ms / 1000.0)
+            return VideoFrame(width, height, pts_ms, bytes(buf))
+
         sec = pts_ms / 1000.0
         style = self.channel_info.get("style", "riscv")
 

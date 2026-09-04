@@ -21,26 +21,41 @@ from net.yt_relay import YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id
 
 def get_system_clipboard_text() -> str:
     """
-    Reads ASCII string from host operating system clipboard with zero external dependencies.
-    Supports Windows Win32 API via standard ctypes, with Tkinter fallback.
+    Reads text from host operating system clipboard with zero external dependencies.
+    Uses Windows Win32 API via standard ctypes with 64-bit pointer safety, with Tkinter fallback.
     """
-    # 1. Direct Windows Win32 API via standard ctypes
+    # 1. Direct Windows Win32 API via standard ctypes with 64-bit pointer types
     try:
         import ctypes
-        from ctypes import wintypes
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
+
+        user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+        user32.OpenClipboard.restype = ctypes.c_bool
+        user32.GetClipboardData.argtypes = [ctypes.c_uint]
+        user32.GetClipboardData.restype = ctypes.c_void_p
+        kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalUnlock.restype = ctypes.c_bool
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = ctypes.c_bool
+
         if user32.OpenClipboard(None):
-            h_data = user32.GetClipboardData(13)  # CF_UNICODETEXT
-            if h_data:
-                kernel32.GlobalLock.restype = wintypes.LPCWSTR
-                ptr = kernel32.GlobalLock(h_data)
-                txt = str(ptr) if ptr else ""
-                kernel32.GlobalUnlock(h_data)
+            try:
+                # 13 = CF_UNICODETEXT
+                h_data = user32.GetClipboardData(13)
+                if h_data:
+                    ptr = kernel32.GlobalLock(h_data)
+                    if ptr:
+                        try:
+                            txt = ctypes.c_wchar_p(ptr).value
+                            if txt:
+                                return str(txt)
+                        finally:
+                            kernel32.GlobalUnlock(h_data)
+            finally:
                 user32.CloseClipboard()
-                if txt:
-                    return txt
-            user32.CloseClipboard()
     except Exception:
         pass
 
@@ -52,7 +67,7 @@ def get_system_clipboard_text() -> str:
         txt = root.clipboard_get()
         root.destroy()
         if txt:
-            return txt
+            return str(txt)
     except Exception:
         pass
 
@@ -108,13 +123,17 @@ class YouTubePlayerApp:
         self.scrub_w = 480
         self.scrub_h = 8
         
+        # Host Sound Output State
+        self.sound_enabled = True
+
         # Transport Buttons Layout (Row at y = 356, h = 24)
-        self.btn_play = (20, 356, 56, 24)
-        self.btn_ch1  = (85, 356, 80, 24)   # RISC-V 3D
-        self.btn_ch2  = (170, 356, 86, 24)  # Synthwave
-        self.btn_ch3  = (261, 356, 75, 24)  # Matrix
-        self.btn_vol  = (345, 356, 78, 24)  # Volume
-        self.btn_qual = (430, 356, 70, 24)  # Next Catalog Video
+        self.btn_play  = (16, 356, 56, 24)   # Play / Pause
+        self.btn_ch1   = (78, 356, 76, 24)   # Channel 0: RISC-V 3D
+        self.btn_ch2   = (160, 356, 76, 24)  # Channel 1: Synthwave
+        self.btn_ch3   = (242, 356, 76, 24)  # Channel 2: Matrix
+        self.btn_vol   = (324, 356, 76, 24)  # Volume cycle
+        self.btn_sound = (406, 356, 54, 24)  # Sound toggle: [SND:ON] / [MUTED]
+        self.btn_qual  = (466, 356, 46, 24)  # Next catalog video
         
         # Auto-start playback on launch
         self.play()
@@ -197,11 +216,21 @@ class YouTubePlayerApp:
                 return True
         return False
 
+    def toggle_sound(self):
+        """Toggles audible speaker output through physical host audio device."""
+        self.sound_enabled = not self.sound_enabled
+        if hasattr(self.vpu, "set_sound_enabled"):
+            self.vpu.set_sound_enabled(self.sound_enabled)
+        self.status_message = f"Speaker Audio: {'ON (Audible)' if self.sound_enabled else 'MUTED'}"
+
     def handle_key(self, k: str) -> bool:
-        """Handles keyboard typing into the URL bar with paste and clear support."""
+        """Handles keyboard typing into the URL bar with paste, clear, and audio mute support."""
         if not self.url_focused:
             if k == " ":
                 self.toggle_play()
+                return True
+            elif k in ("m", "M"):
+                self.toggle_sound()
                 return True
             return False
 
@@ -266,6 +295,11 @@ class YouTubePlayerApp:
         # 4. Check Play / Pause
         if self._in_rect(local_x, local_y, self.btn_play):
             self.toggle_play()
+            return True
+
+        # 4.5 Check Sound Mute / Unmute
+        if self._in_rect(local_x, local_y, self.btn_sound):
+            self.toggle_sound()
             return True
 
         # 5. Check Channel Selectors
@@ -380,17 +414,22 @@ class YouTubePlayerApp:
         knob_x = min(self.scrub_x + self.scrub_w - 4, self.scrub_x + play_w)
         self._fill_rect(surface_buffer, surf_w, knob_x - 3, self.scrub_y - 2, 7, self.scrub_h + 4, (255, 255, 255, 255))
 
-        # 5. Transport Controls Bar (y = 365)
+        # 5. Transport Controls Bar (y = 356)
         play_lbl = "PAUSE" if self.is_playing else "PLAY"
         btn_col = (200, 30, 30, 255) if self.is_playing else (40, 160, 80, 255)
         self._draw_button(surface_buffer, surf_w, self.btn_play, play_lbl, btn_col)
+
+        # Host Speaker Sound Toggle Button
+        snd_lbl = "SND:ON" if self.sound_enabled else "MUTED"
+        snd_col = (20, 140, 60, 255) if self.sound_enabled else (180, 30, 30, 255)
+        self._draw_button(surface_buffer, surf_w, self.btn_sound, snd_lbl, snd_col)
 
         # Channel & World Video Selectors
         c1_col = (0, 120, 180, 255) if self.active_catalog_idx == 0 else (45, 50, 65, 255)
         c2_col = (180, 30, 120, 255) if self.active_catalog_idx == 1 else (45, 50, 65, 255)
         c3_col = (30, 140, 50, 255) if self.active_catalog_idx == 2 else (45, 50, 65, 255)
-        self._draw_button(surface_buffer, surf_w, self.btn_ch1, "RISC-V 3D", c1_col)
-        self._draw_button(surface_buffer, surf_w, self.btn_ch2, "SYNTHWAVE", c2_col)
+        self._draw_button(surface_buffer, surf_w, self.btn_ch1, "RISC-V", c1_col)
+        self._draw_button(surface_buffer, surf_w, self.btn_ch2, "SYNTH", c2_col)
         self._draw_button(surface_buffer, surf_w, self.btn_ch3, "MATRIX", c3_col)
 
         # Volume control
@@ -398,8 +437,8 @@ class YouTubePlayerApp:
         self._draw_button(surface_buffer, surf_w, self.btn_vol, vol_str, (45, 50, 65, 255))
 
         # World Video Quick Selector button
-        cat_title = self.relay.channel_info.get("title", "WORLD")
-        qual_lbl = "WORLD" if self.active_catalog_idx < 3 else cat_title[:7].upper()
+        cat_title = self.relay.channel_info.get("title", "MORE")
+        qual_lbl = "MORE" if self.active_catalog_idx < 3 else cat_title[:5].upper()
         self._draw_button(surface_buffer, surf_w, self.btn_qual, qual_lbl, (140, 40, 100, 255))
 
         # 6. Time & Telemetry Line (y = 385)

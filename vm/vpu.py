@@ -91,10 +91,79 @@ class VPU:
         # Frame Pacing Timing
         self._last_frame_time = 0.0
         self._playback_start_pts = 0
-        self._playback_start_clock = 0.0
+        # Host Audio Speaker Output State
+        self.sound_enabled = True
+        self._host_audio_playing = False
         
         # Connected Host Relay
         self.relay = None
+
+    def play_host_audio(self, pcm_bytes: Optional[bytes] = None):
+        """Starts asynchronous looping audio playback on host speakers."""
+        if not self.sound_enabled:
+            return
+        try:
+            import winsound
+        except ImportError:
+            return
+
+        if pcm_bytes is None and self.relay:
+            pcm_bytes = self.relay.generate_audio_pcm(duration_sec=3.0)
+        if not pcm_bytes:
+            return
+
+        try:
+            wav = self._pcm_to_wav(pcm_bytes, sample_rate=44100, volume_pct=self.volume)
+            winsound.PlaySound(wav, winsound.SND_MEMORY | winsound.SND_ASYNC | winsound.SND_LOOP)
+            self._host_audio_playing = True
+        except Exception:
+            pass
+
+    def stop_host_audio(self):
+        """Silences host speaker audio playback."""
+        try:
+            import winsound
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
+        self._host_audio_playing = False
+
+    def set_sound_enabled(self, enabled: bool):
+        """Toggles audio speaker output on or off."""
+        self.sound_enabled = bool(enabled)
+        if not self.sound_enabled:
+            self.stop_host_audio()
+        elif self.status == STATUS_PLAYING:
+            self.play_host_audio()
+
+    def _pcm_to_wav(self, pcm_data: bytes, sample_rate: int = 44100, volume_pct: int = 100) -> bytes:
+        """Formats 16-bit mono PCM into standard RIFF WAVE bytes with volume attenuation."""
+        import struct
+        vol_factor = max(0.0, min(1.0, volume_pct / 100.0))
+        scaled_pcm = bytearray(len(pcm_data))
+        for i in range(0, len(pcm_data), 2):
+            sample = struct.unpack_from("<h", pcm_data, i)[0]
+            scaled = int(sample * vol_factor)
+            struct.pack_into("<h", scaled_pcm, i, max(-32768, min(32767, scaled)))
+        data_bytes = bytes(scaled_pcm)
+        data_size = len(data_bytes)
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF",
+            36 + data_size,
+            b"WAVE",
+            b"fmt ",
+            16,
+            1,
+            1,
+            sample_rate,
+            sample_rate * 2,
+            2,
+            16,
+            b"data",
+            data_size
+        )
+        return header + data_bytes
 
     def read32(self, addr: int) -> int:
         """MMIO register read handler."""
@@ -138,6 +207,8 @@ class VPU:
             self.seek_target = val
         elif addr == VPU_VOLUME:
             self.volume = max(0, min(100, val))
+            if self._host_audio_playing:
+                self.play_host_audio()
         elif addr == VPU_STREAM_TYPE:
             self.stream_type = val
 
@@ -152,12 +223,15 @@ class VPU:
                 self._playback_start_clock = now
                 self._playback_start_pts = self.current_pts
                 self._last_frame_time = now
+                self.play_host_audio()
         elif cmd == CMD_PAUSE:
             if self.status == STATUS_PLAYING:
                 self.status = STATUS_PAUSED
+                self.stop_host_audio()
         elif cmd == CMD_STOP:
             self.status = STATUS_STOPPED
             self.current_pts = 0
+            self.stop_host_audio()
             with self._lock:
                 self._frame_queue.clear()
                 self._current_frame = None
@@ -167,6 +241,8 @@ class VPU:
             self._playback_start_pts = self.current_pts
             if self.relay:
                 self.relay.seek(self.current_pts)
+            if self.status == STATUS_PLAYING:
+                self.play_host_audio()
 
     def push_frame(self, frame: VideoFrame) -> bool:
         """Pushes an incoming decoded video frame into the VPU ring buffer."""
