@@ -226,18 +226,33 @@ def test():
     print("\n--- 50. Testing Security, Protocols, 3D Graphics & DSP Deepening (Pass X Block 5) ---")
     res_sec_deep = subprocess.run([sys.executable, "-m", "unittest", "tests/test_crypto_net_dsp_deepened.py"])
 
-    all_pass = all(r.returncode == 0 for r in [
-        res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk,
-        res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc,
-        res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv,
-        res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs,
-        res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui,
-        res_mdesk, res_pass1, res_pass2, res_pass3, res_pass4, res_res1024, res_ap_deep,
-        res_c_deep, res_storage_deep, res_sec_deep
-    ])
+    print("\n--- 51. Testing Kernel Core, Process, Concurrency & Virtual Memory Deepening ---")
+    res_kcore_deep = subprocess.run([sys.executable, "-m", "unittest", "tests/test_kernel_core_deepened.py"])
+
+    print("\n--- 52. Testing Network Protocols, Fragmentation & Transport Deepening ---")
+    res_net_deep = subprocess.run([sys.executable, "-m", "unittest", "tests/test_net_stack_deepened.py"])
+
+    print("\n--- 53. Testing Toolchain, Filesystem, GUI & 3D Graphics Deepening ---")
+    res_tool_deep = subprocess.run([sys.executable, "-m", "unittest", "tests/test_toolchain_fs_graphics_deepened.py"])
+
+    all_tests = [
+        ("VM", res_vm), ("AP", res_ap), ("JIT", res_jit), ("DIS", res_dis), ("STD", res_std),
+        ("DOC", res_doc), ("3D", res_3d), ("TRK", res_trk), ("FS", res_fs), ("CLI", res_cli),
+        ("WM", res_wm), ("ED", res_ed), ("CAS", res_cas), ("STDA", res_stda), ("OPT", res_opt),
+        ("KBLKC", res_kblkc), ("BLKD", res_blkd), ("NET", res_net), ("CRY", res_cry), ("MMU", res_mmu),
+        ("PROC", res_proc), ("CC", res_cc), ("LIBC", res_libc), ("DRV", res_drv), ("TCP", res_tcp),
+        ("PROTO", res_proto), ("USR", res_usr), ("DB", res_db), ("UI", res_ui), ("SMP", res_smp),
+        ("DSP", res_dsp), ("VFS", res_vfs), ("TLS", res_tls), ("DBG", res_dbg), ("GL", res_gl),
+        ("SP", res_sp), ("BRW", res_brw), ("VM2", res_vm2), ("HYP", res_hyp), ("GUI", res_gui),
+        ("MDESK", res_mdesk), ("PASS1", res_pass1), ("PASS2", res_pass2), ("PASS3", res_pass3),
+        ("PASS4", res_pass4), ("RES1024", res_res1024), ("AP_DEEP", res_ap_deep), ("C_DEEP", res_c_deep),
+        ("STORAGE_DEEP", res_storage_deep), ("SEC_DEEP", res_sec_deep), ("KCORE_DEEP", res_kcore_deep),
+        ("NET_DEEP", res_net_deep), ("TOOL_DEEP", res_tool_deep)
+    ]
+    all_pass = all(r.returncode == 0 for name, r in all_tests)
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 50 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 53 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -277,7 +292,7 @@ def test():
         print("  - Web Engine & Hypertext Layout Browser (HTML/CSS/DOM):  PASS")
         print("  - Dynamic Bytecode VM & Lisp S-Expression Engine:        PASS")
         print("  - Type-1 Hypervisor & Stage-2 Nested Paging (H-Ext):     PASS")
-        print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
+        print("  - Bare-Metal Graphical Desktop & Mouse Subsystem:        PASS")
         print("  - Unified Sovereign Master Desktop & 8 Integrated Apps:  PASS")
         print("  - Pass 1 Systems Deepening (Preprocessor, Types, COW, Threads): PASS")
         print("  - Pass 2 Security & Protocols (X.509, AES, Congestion, WebSocket): PASS")
@@ -288,9 +303,15 @@ def test():
         print("  - Pass X C Compiler Toolchain & Zero-Dependency Libc Deepening: PASS")
         print("  - Pass X Storage, B+ Tree & Relational Query Planner Deepening: PASS")
         print("  - Pass X Security, Protocols, 3D Graphics & DSP Deepening: PASS")
+        print("  - Pass X Kernel Core, Process, Concurrency & Sv32 MMU Deepening: PASS")
+        print("  - Pass X Network Protocols, Fragmentation & Transport Deepening: PASS")
+        print("  - Pass X Toolchain, Filesystem, GUI & 3D Graphics Deepening: PASS")
         print("===========================================================")
     else:
-        print("\n[AdiOS] Test failure detected.")
+        print("\n[AdiOS] Test failure detected:")
+        for name, r in all_tests:
+            if r.returncode != 0:
+                print(f"  FAILED: {name} with code {r.returncode}")
         sys.exit(1)
 
 def run_castle3d():

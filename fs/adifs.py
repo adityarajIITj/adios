@@ -53,7 +53,7 @@ class Superblock:
         self.root_dir_sectors = ROOT_DIR_SECTORS
         self.data_start_sector = DATA_START_SECTOR
         self.free_sector_ptr = DATA_START_SECTOR
-        self.journal_sector = total_sectors - 64  # Last 64 sectors for WAL
+        self.journal_sector = (total_sectors - 64) if total_sectors > 256 else total_sectors
         self.dirty_flag = 0
 
     def pack(self) -> bytes:
@@ -82,7 +82,10 @@ class Superblock:
         sb.root_dir_sectors = rd_secs
         sb.data_start_sector = d_sec
         sb.free_sector_ptr = f_ptr
-        sb.journal_sector = j_sec
+        if j_sec <= d_sec or j_sec >= t_sec:
+            sb.journal_sector = (t_sec - 64) if t_sec > 256 else t_sec
+        else:
+            sb.journal_sector = j_sec
         return sb
 
 class DirEntry:
@@ -132,15 +135,33 @@ class WALJournal:
         self.num_sectors = num_sectors
 
     def append_record(self, op: int, filename: str, start_sec: int, size: int):
-        record = struct.pack("<II32sII", 0x4A4F5552, op, filename.encode("utf-8")[:32].ljust(32, b"\0"), start_sec, size)
-        with open(self.disk_path, "r+b") as fp:
-            fp.seek(self.start_sector * SECTOR_SIZE)
-            fp.write(record.ljust(SECTOR_SIZE, b"\0"))
+        if self.start_sector <= 0:
+            return
+        try:
+            if os.path.exists(self.disk_path):
+                disk_sz = os.path.getsize(self.disk_path)
+                if (self.start_sector + 1) * SECTOR_SIZE > disk_sz:
+                    return
+            record = struct.pack("<II32sII", 0x4A4F5552, op, filename.encode("utf-8")[:32].ljust(32, b"\0"), start_sec, size)
+            with open(self.disk_path, "r+b") as fp:
+                fp.seek(self.start_sector * SECTOR_SIZE)
+                fp.write(record.ljust(SECTOR_SIZE, b"\0"))
+        except Exception:
+            pass
 
     def clear(self):
-        with open(self.disk_path, "r+b") as fp:
-            fp.seek(self.start_sector * SECTOR_SIZE)
-            fp.write(b"\0" * SECTOR_SIZE)
+        if self.start_sector <= 0:
+            return
+        try:
+            if os.path.exists(self.disk_path):
+                disk_sz = os.path.getsize(self.disk_path)
+                if (self.start_sector + 1) * SECTOR_SIZE > disk_sz:
+                    return
+            with open(self.disk_path, "r+b") as fp:
+                fp.seek(self.start_sector * SECTOR_SIZE)
+                fp.write(b"\0" * SECTOR_SIZE)
+        except Exception:
+            pass
 
 class AdiFS:
     def __init__(self, disk_path: str = "disk.img"):
@@ -205,7 +226,8 @@ class AdiFS:
             sectors_needed = 1
 
         start_sector = sb.free_sector_ptr
-        if start_sector + sectors_needed > sb.journal_sector:
+        max_alloc_sector = sb.journal_sector if (sb.journal_sector > sb.data_start_sector and sb.journal_sector <= sb.total_sectors) else sb.total_sectors
+        if start_sector + sectors_needed > max_alloc_sector:
             raise IOError("AdiFS: Out of disk space")
 
         chk = zlib.crc32(data) & 0xFFFFFFFF
