@@ -199,10 +199,13 @@ def test():
     print("\n--- 41. Testing Unified Sovereign Master Desktop & 8 Subsystem Apps ---")
     res_mdesk = subprocess.run([sys.executable, "-m", "unittest", "tests/test_master_desktop.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk])
+    print("\n--- 42. Testing Pass 1 Systems Deepening (Preprocessor, Types, COW, Threads) ---")
+    res_pass1 = subprocess.run([sys.executable, "-m", "unittest", "tests/test_deep_pass1.py"])
+
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk, res_pass1])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 41 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 42 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -244,6 +247,7 @@ def test():
         print("  - Type-1 Hypervisor & Stage-2 Nested Paging (H-Ext):     PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
         print("  - Unified Sovereign Master Desktop & 8 Integrated Apps:  PASS")
+        print("  - Pass 1 Systems Deepening (Preprocessor, Types, COW, Threads): PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
