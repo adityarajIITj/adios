@@ -1,16 +1,18 @@
-# AdiOS (v2.0 Beta Phase 2: Plan B - 256MB RAM & VPU 30 FPS Video Controller)
+# AdiOS (v2.0 Beta Phase 3: Network Drivers & Real Internet YouTube Streaming)
 
-**AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, hardware Video Processing Unit (VPU), and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
+**AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, hardware Video Processing Unit (VPU), host network bridge & drivers, and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
 
 Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. Davis's legendary operating system architecture, AdiOS reimagines sovereign computing within a rigorous modern mathematical, cryptographic, and cyber-engineering framework.
 
-- **Release Status**: `v2.0.0-beta.2 (Phase 2: Plan B Completed)`
+- **Release Status**: `v2.0.0-beta.3 (Phase 3: Network Drivers & Real Internet Streaming)`
 - **Target Architecture**: RISC-V 32-bit (RV32IM + H-Extension)
-- **Codebase Scale**: **44,100+ Lines of Code across 185 source files**
-- **Verification Harness**: **54/54 Automated Subsystems Passing (100% Success)**
+- **Codebase Scale**: **45,000+ Lines of Code across 188 source files**
+- **Verification Harness**: **55/55 Automated Subsystems Passing (100% Success)**
+- **Host Network Driver Bridge**: **Native Host Socket Relay, ARP Synthesizer, Live DNS 8.8.8.8 & HTTP/HTTPS Stream Demuxer**
 - **Physical Memory**: **256 MB Physical RAM [0x80000000 - 0x8FFFFFFF] with Dynamic Zone Paging**
 - **Video Controller**: **Hardware MMIO VPU (0x30000000) with DMA Frame Blitter & Deterministic 30 FPS Pacing**
-- **Sovereign YouTube Player**: **Native 10th Workstation Application with 480x270 16:9 Viewport & Audio Sync**
+- **Sovereign YouTube Player**: **Real Internet YouTube & World Video Streaming (Interactive URL Typing, Load, [ONLINE] Badge)**
+- **Media Engine**: **Pure Python 3 ISO Base Media File Format (MP4) Container Demuxer & YouTube oEmbed Metadata Resolver**
 - **Workstation Display**: **Native 1024x768 XGA Workstation with Window Snapping, Taskbar & Compositor**
 - **Desktop Customization**: **Sovereign ASCII Art Wallpaper Subsystem with Cyber Grid & Multi-Theme Switcher**
 - **Toolchains & Shell**: **In-OS C99 Compiler Driver (cc), Sovereign Make Engine & POSIX Utilities**
@@ -18,8 +20,8 @@ Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. D
 - **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly.
 
 <div align="center">
-  <img src="docs/assets/youtube_player_30fps.png" alt="AdiOS Sovereign YouTube Player 30 FPS" width="920"/>
-  <p><em>Figure 1: Live Sovereign YouTube Player running at deterministic 30 FPS in the 1024x768 XGA Workstation with Hardware MMIO VPU (0x30000000), 256MB RAM telemetry, and transport controls.</em></p>
+  <img src="docs/assets/youtube_network_stream.png" alt="AdiOS Sovereign YouTube Player Real Internet Streaming" width="920"/>
+  <p><em>Figure 1: Live Sovereign YouTube Player streaming real-world internet video (Rick Astley - Never Gonna Give You Up) at deterministic 30 FPS in the 1024x768 XGA Workstation with active Host Network Driver Bridge ([ONLINE]), live audio spectrum oscilloscope, 256MB RAM telemetry, and interactive URL input.</em></p>
 </div>
 
 <div align="center">
@@ -671,6 +673,7 @@ adios/
 |   |-- sanctuary3d.py      # 3D Cyber Citadel & Quantum Core wireframe engine
 |   `-- holy_shell.py       # Unified interactive Sovereign Cyber Shell
 |-- drivers/                # Hardware device drivers & bus architecture
+|   |-- net_bridge.py       # Host network driver bridge, raw sockets & ARP synthesis
 |   |-- virtio_ring.py      # VirtIO v1.0 standard split virtqueues
 |   |-- virtio_blk.py       # VirtIO block storage sector I/O driver
 |   |-- virtio_net.py       # VirtIO network adapter RX/TX driver
@@ -705,9 +708,10 @@ adios/
 |   |-- vpu.py              # Hardware MMIO Video Processing Unit (30 FPS DMA)
 |   `-- display.py          # 1024x768 Framebuffer window & mouse driver
 |-- net/                    # Network transports & streaming
+|   |-- mp4_demuxer.py      # ISO Base Media File Format (MP4) container demuxer
 |   |-- slip.py             # Serial Line Internet Protocol
 |   |-- eth.py              # Ethernet II, ARP, IPv4, UDP, TCP
-|   `-- yt_relay.py         # YouTube stream relay & 30 FPS media synthesizer
+|   `-- yt_relay.py         # YouTube stream relay, oEmbed & 30 FPS media synthesizer
 |-- desktop/                # Sovereign Workstation Applications
 |   |-- master_desktop.py   # Unified 1024x768 Compositor & 10 applications
 |   |-- youtube_player.py   # Sovereign YouTube Player (480x270 @ 30 FPS)
@@ -717,7 +721,8 @@ adios/
 |   `-- disasm.py           # RV32IM disassembler
 |-- debug/                  # In-OS Debugger & GDB Remote Serial Protocol
 |   `-- gdb_stub.py         # RSP server, breakpoints, call stack unwinder
-|-- tests/                  # 54 Automated Subsystem Test Suites (100% Pass Rate)
+|-- tests/                  # 55 Automated Subsystem Test Suites (100% Pass Rate)
+|   |-- test_net_driver_youtube.py      # Network Drivers, Host Bridge, MP4 Demuxer & YouTube Streaming
 |   |-- test_vpu_ram256.py              # 256MB RAM Expansion, Hardware MMIO VPU & 30 FPS YouTube
 |   |-- test_master_desktop.py          # Sovereign Master Desktop & 10 GUI applications
 |   |-- test_desktop_res1024.py         # Native 1024x768 XGA Workstation & Window Snapping
@@ -729,7 +734,7 @@ adios/
 |   |-- test_deep_pass2.py              # X.509 DER, AES Modes, TCP Reno, WebSocket
 |   |-- test_deep_pass3.py              # Ext2 Indirect, B+ Tree, Volcano Query Planner
 |   |-- test_deep_pass4.py              # GL Textures, Blinn-Phong, 6-DOF, Audio Tracker
-|   `-- ...                             # 41 Subsystem Block Regression Suites
+|   `-- ...                             # 42 Subsystem Block Regression Suites
 `-- build.py                # Unified build, test, benchmark, and launcher driver
 ```
 

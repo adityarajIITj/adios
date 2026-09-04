@@ -238,6 +238,9 @@ def test():
     print("\n--- 54. Testing 256MB RAM Expansion, Hardware MMIO VPU & 30 FPS YouTube Player ---")
     res_vpu_ram = subprocess.run([sys.executable, "-m", "unittest", "tests/test_vpu_ram256.py"])
 
+    print("\n--- 55. Testing Network Drivers, Host Internet Bridge & Real YouTube Streaming ---")
+    res_net_yt = subprocess.run([sys.executable, "-m", "unittest", "tests/test_net_driver_youtube.py"])
+
     all_tests = [
         ("VM", res_vm), ("AP", res_ap), ("JIT", res_jit), ("DIS", res_dis), ("STD", res_std),
         ("DOC", res_doc), ("3D", res_3d), ("TRK", res_trk), ("FS", res_fs), ("CLI", res_cli),
@@ -250,12 +253,13 @@ def test():
         ("MDESK", res_mdesk), ("PASS1", res_pass1), ("PASS2", res_pass2), ("PASS3", res_pass3),
         ("PASS4", res_pass4), ("RES1024", res_res1024), ("AP_DEEP", res_ap_deep), ("C_DEEP", res_c_deep),
         ("STORAGE_DEEP", res_storage_deep), ("SEC_DEEP", res_sec_deep), ("KCORE_DEEP", res_kcore_deep),
-        ("NET_DEEP", res_net_deep), ("TOOL_DEEP", res_tool_deep), ("VPU_RAM256", res_vpu_ram)
+        ("NET_DEEP", res_net_deep), ("TOOL_DEEP", res_tool_deep), ("VPU_RAM256", res_vpu_ram),
+        ("NET_YT", res_net_yt)
     ]
     all_pass = all(r.returncode == 0 for name, r in all_tests)
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 54 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 55 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -310,6 +314,7 @@ def test():
         print("  - Pass X Network Protocols, Fragmentation & Transport Deepening: PASS")
         print("  - Pass X Toolchain, Filesystem, GUI & 3D Graphics Deepening: PASS")
         print("  - VPU Video Controller & 256MB RAM Expansion (30 FPS YouTube): PASS")
+        print("  - Network Drivers & Real Internet YouTube Streaming:     PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected:")
@@ -350,7 +355,7 @@ def run_castle3d():
     except KeyboardInterrupt:
         print("\n[CastleAdiOS 3D] Exited.")
 
-def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clean_wallpaper=False, ram_mb=256, auto_launch_yt=False):
+def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clean_wallpaper=False, ram_mb=256, auto_launch_yt=False, custom_yt_url=None):
     print("=====================================================")
     print("     AdiOS Sovereign Workstation (1024x768 XGA)      ")
     print("=====================================================")
@@ -367,9 +372,13 @@ def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clea
     if auto_launch_games or "--games" in sys.argv or "--arcade" in sys.argv:
         desktop.launch_or_focus("games")
         print("[AdiOS Desktop] Sovereign 3D Games Arcade auto-launched.")
-    if auto_launch_yt or "--youtube" in sys.argv or "--yt" in sys.argv:
+    if auto_launch_yt or "--youtube" in sys.argv or "--yt" in sys.argv or custom_yt_url:
         desktop.launch_or_focus("youtube")
         print("[AdiOS Desktop] Sovereign YouTube Player (30 FPS) auto-launched.")
+        if custom_yt_url and hasattr(desktop, "youtube_app"):
+            desktop.youtube_app.url_text = custom_yt_url
+            desktop.youtube_app.load_active_url()
+            print(f"[AdiOS Desktop] Streaming URL: {custom_yt_url}")
     if clean_wallpaper or "--wallpaper" in sys.argv or "--clean" in sys.argv:
         desktop.toggle_desktop_wallpaper()
         print("[AdiOS Desktop] ASCII Art Wallpaper active (windows minimized, click [WALL] to restore).")
@@ -561,6 +570,8 @@ if __name__ == "__main__":
         print("  --desktop --wallpaper Launch Workstation with ASCII Art Wallpaper in full view")
         print("  --desktop --games     Launch Workstation with Sovereign 3D Games Arcade open")
         print("  --youtube, --yt       Launch Workstation with Sovereign 30 FPS YouTube Player focused")
+        print("  --yt-url <URL>        Stream specific YouTube / media URL at launch")
+        print("  --net                 Probe and display host network driver & internet bridge status")
         print("  --ram <MB>            Specify physical memory size in MB (e.g. 64 or 256, default 256)")
         print("  --res WxH             Specify custom workstation resolution (e.g. 1024x768)")
         print("  --scale S             Specify display scaling factor (e.g. 1.0 or 1.5)")
@@ -571,7 +582,7 @@ if __name__ == "__main__":
         print("  --3d, --flight, --game Direct standalone launch of StarFlight 3D Flight Simulator")
         print("")
         print("Systems, Toolchains & Tests:")
-        print("  --test                Run automated 54-subsystem regression test suite")
+        print("  --test                Run automated 55-subsystem regression test suite")
         print("  --bench               Run systems throughput benchmark suite")
         print("  --shell, --cyber      Launch interactive Sovereign Cyber Command Shell")
         print("  --hymn, --song        Play 4-channel synthesized Baroque Hymn of AdiOS")
@@ -585,6 +596,18 @@ if __name__ == "__main__":
         test()
     elif "--bench" in sys.argv:
         run_benchmarks()
+    elif "--net" in sys.argv:
+        from drivers.net_bridge import get_net_bridge
+        bridge = get_net_bridge()
+        online = bridge.is_online(force_check=True)
+        print("=================================================================")
+        print("  AdiOS Host Network Driver & Internet Adapter Status            ")
+        print("=================================================================")
+        print(f"  Connection Status: {'ONLINE (Connected)' if online else 'OFFLINE (Standalone)'}")
+        print(f"  DNS Server:        {bridge.dns_server}")
+        print(f"  Bytes Transmitted: {bridge.tx_bytes} bytes")
+        print(f"  Bytes Received:    {bridge.rx_bytes} bytes")
+        print("=================================================================")
     elif "--youtube" in sys.argv or "--yt" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -597,7 +620,12 @@ if __name__ == "__main__":
             idx = sys.argv.index("--ram")
             if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
                 ram_mb = int(sys.argv[idx + 1])
-        run_desktop(scale=scale, width=1024, height=768, ram_mb=ram_mb, auto_launch_yt=True)
+        custom_yt_url = None
+        if "--yt-url" in sys.argv:
+            idx = sys.argv.index("--yt-url")
+            if idx + 1 < len(sys.argv):
+                custom_yt_url = sys.argv[idx + 1]
+        run_desktop(scale=scale, width=1024, height=768, ram_mb=ram_mb, auto_launch_yt=True, custom_yt_url=custom_yt_url)
     elif "--games" in sys.argv or "--arcade" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -625,7 +653,12 @@ if __name__ == "__main__":
             idx = sys.argv.index("--ram")
             if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
                 ram_mb = int(sys.argv[idx + 1])
-        auto_launch_yt = ("--youtube" in sys.argv or "--yt" in sys.argv)
+        custom_yt_url = None
+        if "--yt-url" in sys.argv:
+            idx = sys.argv.index("--yt-url")
+            if idx + 1 < len(sys.argv):
+                custom_yt_url = sys.argv[idx + 1]
+        auto_launch_yt = ("--youtube" in sys.argv or "--yt" in sys.argv or custom_yt_url is not None)
         auto_launch_games = ("--games" in sys.argv or "--arcade" in sys.argv)
         clean_wallpaper = ("--wallpaper" in sys.argv or "--clean" in sys.argv)
         width, height = 1024, 768
@@ -635,7 +668,7 @@ if __name__ == "__main__":
                 parts = sys.argv[idx + 1].lower().split("x")
                 if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                     width, height = int(parts[0]), int(parts[1])
-        run_desktop(scale=scale, width=width, height=height, ram_mb=ram_mb, auto_launch_games=auto_launch_games, auto_launch_yt=auto_launch_yt, clean_wallpaper=clean_wallpaper)
+        run_desktop(scale=scale, width=width, height=height, ram_mb=ram_mb, auto_launch_games=auto_launch_games, auto_launch_yt=auto_launch_yt, custom_yt_url=custom_yt_url, clean_wallpaper=clean_wallpaper)
     elif "--shell" in sys.argv or "--cyber" in sys.argv:
         run_cyber_shell()
     elif "--castle" in sys.argv or "--fps" in sys.argv:

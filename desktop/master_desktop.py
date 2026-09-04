@@ -1660,6 +1660,10 @@ class MasterDesktop:
                 if self.game_mode == "flight":
                     self.flight_speed = 26.0
 
+        elif active_win.win_id == "youtube":
+            if hasattr(self, "youtube_app"):
+                self.youtube_app.handle_key(key_char)
+
 if __name__ == "__main__":
     desktop = MasterDesktop()
     fb = bytearray(DEFAULT_WIDTH * DEFAULT_HEIGHT * 4)
