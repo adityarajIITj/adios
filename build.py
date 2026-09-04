@@ -208,10 +208,13 @@ def test():
     print("\n--- 44. Testing Pass 3 Storage & Database (Ext2 Deep, B+ Tree, Query Planner) ---")
     res_pass3 = subprocess.run([sys.executable, "-m", "unittest", "tests/test_deep_pass3.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk, res_pass1, res_pass2, res_pass3])
+    print("\n--- 45. Testing Pass 4 3D Graphics, Physics & Audio DSP ---")
+    res_pass4 = subprocess.run([sys.executable, "-m", "unittest", "tests/test_deep_pass4.py"])
+
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk, res_pass1, res_pass2, res_pass3, res_pass4])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 44 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 45 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -256,6 +259,7 @@ def test():
         print("  - Pass 1 Systems Deepening (Preprocessor, Types, COW, Threads): PASS")
         print("  - Pass 2 Security & Protocols (X.509, AES, Congestion, WebSocket): PASS")
         print("  - Pass 3 Storage & Database (Ext2 Deep, B+ Tree, Query Planner): PASS")
+        print("  - Pass 4 3D Graphics, Physics & Audio DSP (Textures, Light, Physics, Synth): PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
