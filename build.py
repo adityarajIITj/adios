@@ -196,10 +196,13 @@ def test():
     assemble("kernel/gui_kernel.s", "adios.bin")
     res_gui = subprocess.run([sys.executable, "tests/test_gui.py"])
 
-    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui])
+    print("\n--- 41. Testing Unified Sovereign Master Desktop & 8 Subsystem Apps ---")
+    res_mdesk = subprocess.run([sys.executable, "-m", "unittest", "tests/test_master_desktop.py"])
+
+    all_pass = all(r.returncode == 0 for r in [res_vm, res_ap, res_jit, res_dis, res_std, res_doc, res_3d, res_trk, res_fs, res_cli, res_wm, res_ed, res_cas, res_stda, res_opt, res_kblkc, res_blkd, res_net, res_cry, res_mmu, res_proc, res_cc, res_libc, res_drv, res_tcp, res_proto, res_usr, res_db, res_ui, res_smp, res_dsp, res_vfs, res_tls, res_dbg, res_gl, res_sp, res_brw, res_vm2, res_hyp, res_gui, res_mdesk])
     if all_pass:
         print("\n===========================================================")
-        print("[AdiOS] ALL 40 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
+        print("[AdiOS] ALL 41 SUBSYSTEMS PASSED WITH 100% SUCCESS!")
         print("  - Capable Simulation Layer (64MB RAM, Disk MMIO, RV32M): PASS")
         print("  - AdiPython In-House Language & Hardware Bridge:         PASS")
         print("  - AdiPython Native RV32IM JIT Compiler & Preprocessor:   PASS")
@@ -240,6 +243,7 @@ def test():
         print("  - Dynamic Bytecode VM & Lisp S-Expression Engine:        PASS")
         print("  - Type-1 Hypervisor & Stage-2 Nested Paging (H-Ext):     PASS")
         print("  - Bare-Metal Windowing Desktop & Applications:           PASS")
+        print("  - Unified Sovereign Master Desktop & 8 Integrated Apps:  PASS")
         print("===========================================================")
     else:
         print("\n[AdiOS] Test failure detected.")
@@ -279,19 +283,19 @@ def run_castle3d():
 
 def run_desktop():
     print("=====================================================")
-    print("        AdiOS Sovereign Desktop Environment          ")
+    print("     AdiOS Unified Sovereign Master Desktop          ")
     print("=====================================================")
-    print("[AdiOS Desktop] Initializing Window Compositor, DolDoc & 3D Viewport...")
+    print("[AdiOS Desktop] Initializing Master Compositor with 8 Integrated Applications...")
     from vm.vm import VM
     from vm.display import DisplayWindow
-    from desktop import SovereignDesktop
+    from desktop import MasterDesktop
 
     vm = VM()
-    desktop = SovereignDesktop(vm)
+    desktop = MasterDesktop(vm)
     disp = DisplayWindow(vm.fb, uart_callback=lambda c: None)
     vm.display = disp
 
-    print("[AdiOS Desktop] 640x480 Sovereign Desktop Running. Close window to exit.")
+    print("[AdiOS Desktop] 640x480 Sovereign Master Desktop Running. Close window to exit.")
     last_frame = time.time()
     try:
         while True:

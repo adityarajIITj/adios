@@ -104,10 +104,12 @@ class Engine3D:
         self.vm = vm
         self.light_dir = Vector3(0.577, 0.577, -0.577).normalized()
 
-    def project_vertex(self, v):
-        if v.z <= 5.0: return None
-        sx = int(HALFW + (v.x * FOCAL) / v.z)
-        sy = int(HALFH - (v.y * FOCAL) / v.z)
+    def project_vertex(self, v, center_x=HALFW, center_y=HALFH):
+        """Perspective projection: v.z is distance into screen."""
+        if v.z <= 5.0:
+            return None
+        sx = int(center_x + (v.x * FOCAL) / v.z)
+        sy = int(center_y - (v.y * FOCAL) / v.z)
         return (sx, sy, v.z)
 
     def shade_color(self, base_color, normal):
@@ -120,7 +122,7 @@ class Engine3D:
         b = int((base_color & 0xFF) * factor)
         return (r << 16) | (g << 8) | b
 
-    def render_mesh(self, mesh, pos, rot, wireframe=False):
+    def render_mesh(self, mesh, pos, rot, wireframe=False, center_x=HALFW, center_y=HALFH, clip_rect=None):
         """Renders 3D mesh with Euler rotation, backface culling, depth sort, and flat shading."""
         if not self.vm: return
 
@@ -173,9 +175,11 @@ class Engine3D:
                 continue # Faces away from camera
 
             # Project vertices to 2D screen coordinates
-            p0 = self.project_vertex(v0)
-            p1 = self.project_vertex(v1)
-            p2 = self.project_vertex(v2)
+            p0 = self.project_vertex(v0, center_x=center_x, center_y=center_y)
+            p1 = self.project_vertex(v1, center_x=center_x, center_y=center_y)
+            p2 = self.project_vertex(v2, center_x=center_x, center_y=center_y)
+            if p0 is None or p1 is None or p2 is None:
+                continue
 
             avg_z = (v0.z + v1.z + v2.z) / 3.0
             lit_color = self.shade_color(face.base_color, normal)
@@ -187,15 +191,16 @@ class Engine3D:
         # 4. Rasterize faces
         for _, p0, p1, p2, color in drawable_faces:
             if wireframe:
-                self.draw_line(p0[0], p0[1], p1[0], p1[1], color)
-                self.draw_line(p1[0], p1[1], p2[0], p2[1], color)
-                self.draw_line(p2[0], p2[1], p0[0], p0[1], color)
+                self.draw_line(p0[0], p0[1], p1[0], p1[1], color, clip_rect=clip_rect)
+                self.draw_line(p1[0], p1[1], p2[0], p2[1], color, clip_rect=clip_rect)
+                self.draw_line(p2[0], p2[1], p0[0], p0[1], color, clip_rect=clip_rect)
             else:
-                self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], color)
+                self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], color, clip_rect=clip_rect)
 
-    def draw_line(self, x0, y0, x1, y1, color):
+    def draw_line(self, x0, y0, x1, y1, color, clip_rect=None):
         fb = self.vm.fb
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
+        min_x, min_y, max_x, max_y = (0, 0, WIDTH - 1, HEIGHT - 1) if clip_rect is None else clip_rect
         dx = abs(x1 - x0)
         dy = -abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
@@ -203,7 +208,7 @@ class Engine3D:
         err = dx + dy
 
         while True:
-            if 0 <= x0 < WIDTH and 0 <= y0 < HEIGHT:
+            if min_x <= x0 <= max_x and min_y <= y0 <= max_y and 0 <= x0 < WIDTH and 0 <= y0 < HEIGHT:
                 off = (y0 * WIDTH + x0) * 4
                 fb[off:off+4] = c_bytes
             if x0 == x1 and y0 == y1: break
@@ -215,10 +220,11 @@ class Engine3D:
                 err += dx
                 y0 += sy
 
-    def fill_triangle(self, x0, y0, x1, y1, x2, y2, color):
+    def fill_triangle(self, x0, y0, x1, y1, x2, y2, color, clip_rect=None):
         """Scanline triangle filler."""
         fb = self.vm.fb
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
+        min_x, min_y, max_x, max_y = (0, 0, WIDTH - 1, HEIGHT - 1) if clip_rect is None else clip_rect
 
         # Sort vertices by y: y0 <= y1 <= y2
         if y0 > y1: x0, x1 = x1, x0; y0, y1 = y1, y0
@@ -243,10 +249,10 @@ class Engine3D:
             if ax > bx: ax, bx = bx, ax
 
             curr_y = y0 + i
-            if 0 <= curr_y < HEIGHT:
+            if min_y <= curr_y <= max_y and 0 <= curr_y < HEIGHT:
                 # Clamp scanline span to screen
-                start_x = max(0, ax)
-                end_x   = min(WIDTH - 1, bx)
+                start_x = max(min_x, max(0, ax))
+                end_x   = min(max_x, min(WIDTH - 1, bx))
                 if start_x <= end_x:
                     off_start = (curr_y * WIDTH + start_x) * 4
                     span_len = end_x - start_x + 1
