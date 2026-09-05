@@ -202,6 +202,11 @@ class AVDecoder:
         self.stop()
         self._stop_event.clear()
         self._current_seek_s = seek_s
+        self._frames_decoded = 0
+        self._last_frame_bytes = None
+        self._last_target_pts_s = seek_s
+        with self._frame_lock:
+            self._frame_buffer.clear()
         self.state = DECODER_STARTING
 
         # Probe duration in background if not known
@@ -229,15 +234,18 @@ class AVDecoder:
         """Stops all decoder subprocesses."""
         self._stop_event.set()
         if self._video_proc:
-            try:
-                self._video_proc.terminate()
-                self._video_proc.wait(timeout=2.0)
-            except Exception:
-                try:
-                    self._video_proc.kill()
-                except Exception:
-                    pass
+            proc = self._video_proc
             self._video_proc = None
+            try:
+                if proc.stdout:
+                    proc.stdout.close()
+            except Exception:
+                pass
+            try:
+                proc.kill()
+                proc.wait(timeout=1.0)
+            except Exception:
+                pass
 
         if self._video_thread and self._video_thread.is_alive():
             self._video_thread.join(timeout=3.0)
@@ -351,16 +359,18 @@ class AVDecoder:
 
             self.state = DECODER_RUNNING
 
+            loop_frames = 0
             while not self._stop_event.is_set():
                 # Read exactly one frame
                 raw = self._video_proc.stdout.read(self.frame_size)
                 if not raw or len(raw) < self.frame_size:
                     break  # End of stream or error
 
-                pts_s = seek_s + (self._frames_decoded / float(max(1, self.fps)))
+                pts_s = seek_s + (loop_frames / float(max(1, self.fps)))
                 with self._frame_lock:
                     self._frame_buffer.append((pts_s, raw))
                     self._frames_decoded += 1
+                loop_frames += 1
 
                 # Throttle if buffer is getting full (back-pressure)
                 while not self._stop_event.is_set():

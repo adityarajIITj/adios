@@ -188,8 +188,8 @@ class YouTubePlayerApp:
         """Starts 30 FPS playback."""
         self.is_playing = True
         self.vpu.write32(0x30000000, CMD_PLAY)
-        if self.sound_enabled:
-            self.vpu.play_host_audio()
+        if self.sound_enabled and not getattr(self.vpu, "_host_audio_playing", False):
+            self.vpu.play_host_audio(seek_ms=self.vpu.current_pts)
 
     def pause(self):
         """Pauses playback."""
@@ -215,6 +215,7 @@ class YouTubePlayerApp:
         """Switches to a world catalog video by index."""
         if 0 <= idx < len(WORLD_VIDEOS):
             self.vpu.stop_host_audio()
+            self.vpu._audio_temp_path = None
             self.active_catalog_idx = idx
             v = WORLD_VIDEOS[idx]
             self.url_text = v["url"]
@@ -231,6 +232,7 @@ class YouTubePlayerApp:
         if not url:
             return
         self.vpu.stop_host_audio()
+        self.vpu._audio_temp_path = None
         success = self.relay.load_url(url)
         if success:
             self.vpu.duration_ms = self.relay.duration_ms
@@ -405,7 +407,7 @@ class YouTubePlayerApp:
         if self.sound_enabled and self.is_playing and self.relay:
             real_wav = self.relay.get_audio_wav_path()
             if real_wav and getattr(self.vpu, "_audio_temp_path", None) != real_wav:
-                self.vpu.play_host_audio()
+                self.vpu.play_host_audio(seek_ms=self.vpu.current_pts)
         return self.vpu.step(now)
 
     def render(self, surface_buffer: bytearray, surf_w: int, surf_h: int):

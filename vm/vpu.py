@@ -99,11 +99,15 @@ class VPU:
         # Connected Host Relay
         self.relay = None
 
-    def play_host_audio(self, pcm_bytes: Optional[bytes] = None):
+    def play_host_audio(self, pcm_bytes: Optional[bytes] = None, seek_ms: Optional[int] = None):
         """Starts asynchronous looping audio playback on host speakers.
         Priority: Real audio WAV/media from relay > Provided PCM bytes > Synthetic PCM."""
         if not self.sound_enabled:
             return
+
+        if seek_ms is None:
+            seek_ms = self.current_pts
+        seek_pos_s = max(0.0, float(seek_ms) / 1000.0)
 
         try:
             from audio.sound_server import SoundServer
@@ -119,11 +123,11 @@ class VPU:
             if media_path and os.path.isfile(media_path):
                 self._audio_temp_path = media_path
                 if server:
-                    server.stream_audio_file(media_path, loop=True)
+                    server.stream_audio_file(media_path, loop=True, start_pos_s=seek_pos_s)
                     self._host_audio_playing = True
                     return
                 else:
-                    self._play_wav_direct(media_path)
+                    self._play_wav_direct(media_path, start_pos_s=seek_pos_s)
                     return
 
         # === PRIORITY 2: Provided or generated PCM bytes (fallback) ===
@@ -160,13 +164,13 @@ class VPU:
         except Exception:
             pass
 
-    def _play_wav_direct(self, wav_path: str):
+    def _play_wav_direct(self, wav_path: str, start_pos_s: float = 0.0):
         """Plays a WAV or media file directly through SoundServer or winsound."""
         try:
             from audio.sound_server import SoundServer
             server = SoundServer.get_instance()
             if server and not server.is_muted and server.master_volume > 0.01:
-                server.stream_audio_file(wav_path, loop=True)
+                server.stream_audio_file(wav_path, loop=True, start_pos_s=start_pos_s)
                 self._host_audio_playing = True
                 return
         except Exception:
@@ -201,17 +205,19 @@ class VPU:
         try:
             import winsound
             winsound.PlaySound(None, winsound.SND_PURGE)
-            old_path = getattr(self, "_audio_temp_path", None)
-            if old_path:
-                if "adios_audio_" in old_path or "temp" in old_path.lower():
-                    try:
-                        if os.path.exists(old_path):
-                            os.remove(old_path)
-                    except Exception:
-                        pass
-                self._audio_temp_path = None
         except Exception:
             pass
+
+        old_path = getattr(self, "_audio_temp_path", None)
+        if old_path:
+            if "adios_audio_" in old_path or "temp" in old_path.lower():
+                try:
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
+
+        self._audio_temp_path = None
         self._host_audio_playing = False
 
     def set_sound_enabled(self, enabled: bool):
@@ -220,7 +226,7 @@ class VPU:
         if not self.sound_enabled:
             self.stop_host_audio()
         elif self.status == STATUS_PLAYING:
-            self.play_host_audio()
+            self.play_host_audio(seek_ms=self.current_pts)
 
     def _pcm_to_wav(self, pcm_data: bytes, sample_rate: int = 44100, volume_pct: int = 100) -> bytes:
         """Formats 16-bit mono PCM into standard RIFF WAVE bytes with volume attenuation."""
@@ -301,7 +307,7 @@ class VPU:
             if self.volume <= 1:
                 self.stop_host_audio()
             elif self._host_audio_playing and self.sound_enabled:
-                self.play_host_audio()
+                self.play_host_audio(seek_ms=self.current_pts)
         elif addr == VPU_STREAM_TYPE:
             self.stream_type = val
 
@@ -316,7 +322,7 @@ class VPU:
                 self._playback_start_clock = now
                 self._playback_start_pts = self.current_pts
                 self._last_frame_time = now
-                self.play_host_audio()
+                self.play_host_audio(seek_ms=self.current_pts)
         elif cmd == CMD_PAUSE:
             if self.status == STATUS_PLAYING:
                 self.status = STATUS_PAUSED
@@ -324,6 +330,7 @@ class VPU:
         elif cmd == CMD_STOP:
             self.status = STATUS_STOPPED
             self.current_pts = 0
+            self._playback_start_pts = 0
             self.stop_host_audio()
             with self._lock:
                 self._frame_queue.clear()
@@ -332,10 +339,12 @@ class VPU:
             self.current_pts = min(self.duration_ms, self.seek_target)
             self._playback_start_clock = now
             self._playback_start_pts = self.current_pts
+            with self._lock:
+                self._frame_queue.clear()
             if self.relay:
                 self.relay.seek(self.current_pts)
             if self.status == STATUS_PLAYING:
-                self.play_host_audio()
+                self.play_host_audio(seek_ms=self.current_pts)
 
     def push_frame(self, frame: VideoFrame) -> bool:
         """Pushes an incoming decoded video frame into the VPU ring buffer."""
@@ -389,6 +398,12 @@ class VPU:
             self.current_pts = 0
             self._playback_start_clock = now
             self._playback_start_pts = 0
+            with self._lock:
+                self._frame_queue.clear()
+            if self.relay:
+                self.relay.seek(0)
+            if self._host_audio_playing and self.sound_enabled:
+                self.play_host_audio(seek_ms=0)
 
         # Retrieve next frame from ring buffer or request from relay
         advanced = False
@@ -407,7 +422,7 @@ class VPU:
         # Check if real audio has become available and start it
         if advanced and self.relay and hasattr(self.relay, 'is_real_video_active'):
             if self.relay.is_real_video_active and not self._host_audio_playing and self.sound_enabled:
-                self.play_host_audio()
+                self.play_host_audio(seek_ms=self.current_pts)
 
         return advanced
 

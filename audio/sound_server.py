@@ -38,6 +38,7 @@ class SoundServer:
         self.active_stream_path: Optional[str] = None
         self._mci_alias = "adios_stream"
         self._mci_active = False
+        self._active_stream_bio = None
 
         # Windows winmm.dll for MCI hardware control
         try:
@@ -200,8 +201,8 @@ class SoundServer:
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
-    def stream_audio_file(self, file_path: str, loop: bool = True):
-        """Streams an audio file (WAV, MP3, M4A, OGG) with volume control & instant stop."""
+    def stream_audio_file(self, file_path: str, loop: bool = True, start_pos_s: float = 0.0):
+        """Streams an audio file (WAV, MP3, M4A, OGG) with volume control, seek position, & instant stop."""
         if not os.path.exists(file_path):
             return
         if self.is_muted or self.master_volume <= 0.01:
@@ -212,15 +213,47 @@ class SoundServer:
 
         with self.lock:
             self.active_stream_path = file_path
+            self._active_stream_bio = None
             eff_vol = self.get_effective_volume()
+            is_wav = file_path.lower().endswith(".wav")
 
             # 1. Premier pygame.mixer.music streaming (supports WAV, MP3, OGG, FLAC)
             if self._has_pygame:
                 try:
                     import pygame
+
+                    # In-memory WAV slicing for accurate non-zero seek positions
+                    if is_wav and start_pos_s > 0.05:
+                        try:
+                            import wave, io
+                            with wave.open(file_path, "rb") as w:
+                                params = w.getparams()
+                                framerate = w.getframerate()
+                                nframes = w.getnframes()
+                                start_frame = max(0, min(nframes - 1, int(start_pos_s * framerate)))
+                                w.setpos(start_frame)
+                                pcm_frames = w.readframes(nframes - start_frame)
+                            bio = io.BytesIO()
+                            with wave.open(bio, "wb") as out_w:
+                                out_w.setparams(params)
+                                out_w.writeframes(pcm_frames)
+                            bio.seek(0)
+                            self._active_stream_bio = bio
+                            pygame.mixer.music.load(bio)
+                            pygame.mixer.music.set_volume(eff_vol)
+                            pygame.mixer.music.play(-1 if loop else 0)
+                            self.vu_level = 0.75 * eff_vol
+                            return
+                        except Exception:
+                            pass
+
+                    # Direct file load
                     pygame.mixer.music.load(file_path)
                     pygame.mixer.music.set_volume(eff_vol)
-                    pygame.mixer.music.play(-1 if loop else 0)
+                    if start_pos_s > 0.05 and not is_wav:
+                        pygame.mixer.music.play(-1 if loop else 0, start=start_pos_s)
+                    else:
+                        pygame.mixer.music.play(-1 if loop else 0)
                     self.vu_level = 0.75 * eff_vol
                     return
                 except Exception:
@@ -233,14 +266,18 @@ class SoundServer:
                 if res == 0:
                     vol_1000 = int(eff_vol * 1000)
                     self._mci_send(f"setaudio {self._mci_alias} volume to {vol_1000}")
-                    play_cmd = f"play {self._mci_alias} repeat" if loop else f"play {self._mci_alias}"
+                    start_ms = int(start_pos_s * 1000)
+                    if start_ms > 50:
+                        play_cmd = f"play {self._mci_alias} from {start_ms} repeat" if loop else f"play {self._mci_alias} from {start_ms}"
+                    else:
+                        play_cmd = f"play {self._mci_alias} repeat" if loop else f"play {self._mci_alias}"
                     self._mci_send(play_cmd)
                     self._mci_active = True
                     self.vu_level = 0.75 * eff_vol
                     return
 
             # 3. Fallback to winsound (for WAV files)
-            if file_path.lower().endswith(".wav"):
+            if is_wav:
                 try:
                     import winsound
                     self.vu_level = 0.75 * eff_vol
@@ -353,6 +390,7 @@ class SoundServer:
                 pass
             self._fallback_wav_path = None
 
+        self._active_stream_bio = None
         self.active_stream_path = None
         self.vu_level = 0.0
 
