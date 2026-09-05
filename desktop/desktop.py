@@ -26,7 +26,7 @@ class SovereignDesktop:
         self.vm = vm
         self.font_dict = font_dict or {}
         self.wm = WindowManager()
-        self.engine3d = Engine3D(vm)
+        self.engine3d = Engine3D(vm, width=WIDTH, height=HEIGHT)
         self.adifs = AdiFS("disk.img")
         self.pyramid_mesh = create_temple_pyramid(base=70, height=65)
         self.rot_angle = 0.0
@@ -97,13 +97,23 @@ class SovereignDesktop:
         cx, cy, cw, ch = win.client_rect
         center_x = cx + cw // 2
         center_y = cy + ch // 2
+        clip = (cx + 1, cy + 1, cx + cw - 1, cy + ch - 1)
 
         # Rotate Temple Pyramid
         pos = Vector3(0, 0, 160)
         rot = Vector3(20, self.rot_angle, 0)
 
-        # Render 3D mesh directly into the window area
-        self.engine3d.render_mesh(self.pyramid_mesh, pos, rot, wireframe=False)
+        # Render 3D mesh directly into the window area with strict client clipping
+        self.engine3d.render_mesh(
+            self.pyramid_mesh,
+            pos=pos,
+            rot=rot,
+            wireframe=False,
+            center_x=center_x,
+            center_y=center_y,
+            clip_rect=clip,
+            fb=fb
+        )
 
     def _draw_fs_content(self, win, fb, font_dict):
         cx, cy, cw, ch = win.client_rect

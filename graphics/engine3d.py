@@ -312,12 +312,29 @@ class Engine3D:
             else:
                 self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect, fb=target_fb)
 
+    def _get_target_pitch(self, fb) -> int:
+        if fb is not None:
+            n = len(fb)
+            if n == 1280 * 720 * 4:
+                return 1280
+            elif n == 1024 * 768 * 4:
+                return 1024
+            elif n == 640 * 480 * 4:
+                return 640
+            elif n == 800 * 600 * 4:
+                return 800
+            elif n == 1920 * 1080 * 4:
+                return 1920
+        return self.width
+
     def draw_line(self, x0, y0, x1, y1, color, clip_rect=None, fb=None):
         target_fb = fb if fb is not None else (self.vm.fb if self.vm else None)
         if not target_fb:
             return
+        pitch = self._get_target_pitch(target_fb)
+        max_h = len(target_fb) // (pitch * 4) if pitch > 0 else self.height
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
+        min_x, min_y, max_x, max_y = (0, 0, pitch - 1, max_h - 1) if clip_rect is None else clip_rect
         dx = abs(x1 - x0)
         dy = -abs(y1 - y0)
         sx = 1 if x0 < x1 else -1
@@ -326,8 +343,8 @@ class Engine3D:
         fb_len = len(target_fb)
 
         while True:
-            if min_x <= x0 <= max_x and min_y <= y0 <= max_y and 0 <= x0 < self.width and 0 <= y0 < self.height:
-                off = (y0 * self.width + x0) * 4
+            if min_x <= x0 <= max_x and min_y <= y0 <= max_y and 0 <= x0 < pitch and 0 <= y0 < max_h:
+                off = (y0 * pitch + x0) * 4
                 if off + 4 <= fb_len:
                     target_fb[off:off+4] = c_bytes
             if x0 == x1 and y0 == y1:
@@ -345,8 +362,10 @@ class Engine3D:
         target_fb = fb if fb is not None else (self.vm.fb if self.vm else None)
         if not target_fb:
             return
+        pitch = self._get_target_pitch(target_fb)
+        max_h = len(target_fb) // (pitch * 4) if pitch > 0 else self.height
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
+        min_x, min_y, max_x, max_y = (0, 0, pitch - 1, max_h - 1) if clip_rect is None else clip_rect
 
         # Sort vertices by y: y0 <= y1 <= y2
         if y0 > y1: x0, x1 = x1, x0; y0, y1 = y1, y0
@@ -375,23 +394,25 @@ class Engine3D:
                 ax, bx = bx, ax
 
             curr_y = y0 + i
-            if min_y <= curr_y <= max_y and 0 <= curr_y < self.height:
+            if min_y <= curr_y <= max_y and 0 <= curr_y < max_h:
                 start_x = max(min_x, max(0, ax))
-                end_x   = min(max_x, min(self.width - 1, bx))
+                end_x   = min(max_x, min(pitch - 1, bx))
                 if start_x <= end_x:
-                    off_start = (curr_y * self.width + start_x) * 4
+                    off_start = (curr_y * pitch + start_x) * 4
                     span_len = end_x - start_x + 1
                     row_len = span_len * 4
                     if off_start + row_len <= fb_len:
                         target_fb[off_start : off_start + row_len] = c_bytes * span_len
 
-    def fill_triangle_depth(self, p0: Tuple[int, int, float], p1: Tuple[int, int, float], p2: Tuple[int, int, float], color: int, clip_rect=None):
+    def fill_triangle_depth(self, p0: Tuple[int, int, float], p1: Tuple[int, int, float], p2: Tuple[int, int, float], color: int, clip_rect=None, fb=None):
         """Perspective-correct scanline triangle filler with 1/z depth testing."""
-        if not self.vm:
+        target_fb = fb if fb is not None else (self.vm.fb if self.vm else None)
+        if not target_fb:
             return
-        fb = self.vm.fb
+        pitch = self._get_target_pitch(target_fb)
+        max_h = len(target_fb) // (pitch * 4) if pitch > 0 else self.height
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
+        min_x, min_y, max_x, max_y = (0, 0, pitch - 1, max_h - 1) if clip_rect is None else clip_rect
 
         x0, y0, z0 = p0
         x1, y1, z1 = p1
@@ -407,6 +428,7 @@ class Engine3D:
 
         inv_z0, inv_z1, inv_z2 = 1.0 / z0, 1.0 / z1, 1.0 / z2
         total_height = y2 - y0
+        fb_len = len(target_fb)
 
         for i in range(total_height):
             second_half = i > (y1 - y0) or (y1 == y0)
@@ -428,9 +450,9 @@ class Engine3D:
                 az, bz = bz, az
 
             curr_y = y0 + i
-            if min_y <= curr_y <= max_y and 0 <= curr_y < self.height:
+            if min_y <= curr_y <= max_y and 0 <= curr_y < max_h:
                 start_x = max(min_x, max(0, ax))
-                end_x   = min(max_x, min(self.width - 1, bx))
+                end_x   = min(max_x, min(pitch - 1, bx))
                 span = max(1, bx - ax)
 
                 for px in range(start_x, end_x + 1):
@@ -438,11 +460,12 @@ class Engine3D:
                     pz_inv = az + (bz - az) * t
                     pz = 1.0 / pz_inv if pz_inv > 1e-6 else 1e9
 
-                    buf_idx = curr_y * self.width + px
-                    if pz < self.z_buffer[buf_idx]:
+                    buf_idx = curr_y * pitch + px
+                    if buf_idx < len(self.z_buffer) and pz < self.z_buffer[buf_idx]:
                         self.z_buffer[buf_idx] = pz
                         off = buf_idx * 4
-                        fb[off:off+4] = c_bytes
+                        if off + 4 <= fb_len:
+                            target_fb[off:off+4] = c_bytes
 
 if __name__ == "__main__":
     # Test Matrix4
