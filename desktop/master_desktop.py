@@ -115,7 +115,10 @@ class MasterDesktop:
             self.vpu = vm.vpu
         else:
             from vm.vpu import VPU
-            self.vpu = VPU(vm=vm, width=480, height=270, fps=30)
+            if self.width >= 1200:
+                self.vpu = VPU(vm=vm, width=640, height=360, fps=60)
+            else:
+                self.vpu = VPU(vm=vm, width=480, height=270, fps=30)
             if vm:
                 vm.vpu = self.vpu
 
@@ -374,10 +377,16 @@ class MasterDesktop:
         self.win_games.on_click_content = self._click_games
         self.wm.add_window(self.win_games)
 
-        # 10. Sovereign YouTube Player (30 FPS)
-        yt_w = min(self.width - 40, 660)
-        yt_h = min(self.height - TASKBAR_HEIGHT - 30, 460)
-        self.win_youtube = Window("youtube", "Sovereign YouTube Player (30 FPS)", max(left_margin, self.width // 2 - yt_w // 2), TASKBAR_HEIGHT + 20, yt_w, yt_h)
+        # 10. Sovereign YouTube Player
+        if self.width >= 1200:
+            yt_w = min(self.width - 40, 680)
+            yt_h = min(self.height - TASKBAR_HEIGHT - 30, 490)
+            yt_title = "Sovereign YouTube Player (60 FPS HD)"
+        else:
+            yt_w = min(self.width - 40, 660)
+            yt_h = min(self.height - TASKBAR_HEIGHT - 30, 460)
+            yt_title = "Sovereign YouTube Player (30 FPS)"
+        self.win_youtube = Window("youtube", yt_title, max(left_margin, self.width // 2 - yt_w // 2), TASKBAR_HEIGHT + 20, yt_w, yt_h)
         self.win_youtube.visible = False
         self.win_youtube.on_draw_content = self._draw_youtube
         self.win_youtube.on_click_content = self._click_youtube
@@ -1410,13 +1419,14 @@ class MasterDesktop:
                     if s["z"] <= 20.0:
                         s["z"] = 900.0
 
-        # YouTube Player 30 FPS Frame Stepping
+        # YouTube Player 60 FPS Frame Stepping
         if hasattr(self, "youtube_app") and hasattr(self, "win_youtube") and self.win_youtube.visible and not self.win_youtube.minimized:
             self.youtube_app.step()
 
     def _init_youtube_player(self):
         from desktop.youtube_player import YouTubePlayerApp
-        self.youtube_app = YouTubePlayerApp(vpu=self.vpu)
+        init_ch = 3 if self.width >= 1200 else 0
+        self.youtube_app = YouTubePlayerApp(vpu=self.vpu, initial_channel=init_ch)
 
     def _draw_youtube(self, win: Window, fb: bytearray, font_dict):
         cx, cy, cw, ch = win.client_rect
@@ -1471,11 +1481,11 @@ class MasterDesktop:
         wall_txt = 0x00000000 if self.desktop_clean_mode else COLOR_ACCENT_CYAN
         self._draw_button(fb, 156, 3, 52, 18, "WALL", wall_bg, wall_txt)
 
-        # Dedicated YouTube 30 FPS Pill on Taskbar
-        self._draw_button(fb, 212, 3, 44, 18, "YT", COLOR_YOUTUBE_RED, COLOR_START_TXT)
+        # Dedicated YouTube 60 FPS HD Pill on Taskbar
+        self._draw_button(fb, 212, 3, 50, 18, "YT HD", COLOR_YOUTUBE_RED, COLOR_START_TXT)
 
         # Window Switcher Pills on Taskbar
-        sw_x = 262
+        sw_x = 268
         max_sw_x = self.width - 440
         for w in self.wm.windows:
             if w.visible and not w.minimized:
@@ -1595,7 +1605,7 @@ class MasterDesktop:
             ("8. Paint Studio & Calculator", "paint"),
             ("9. Sovereign 3D Games Arcade", "games"),
             ("10. Toggle Wallpaper Theme", "wallpaper"),
-            ("11. Sovereign YouTube (30 FPS)", "youtube")
+            ("11. Sovereign YouTube (60 FPS HD)", "youtube")
         ]
 
         for idx, (label, wid) in enumerate(items):
@@ -1608,7 +1618,7 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def handle_mouse_down(self, mx: int, my: int) -> Optional[Tuple[str, Any]]:
-        # 1. Top Taskbar Clicks
+        # 1. Taskbar Click Handling
         if my < TASKBAR_HEIGHT:
             if 4 <= mx <= 84:
                 self.toggle_start_menu()
@@ -1619,7 +1629,7 @@ class MasterDesktop:
             if 156 <= mx <= 208:
                 self.toggle_desktop_wallpaper()
                 return ("wallpaper_toggle", None)
-            if 212 <= mx <= 256:
+            if 212 <= mx <= 264:
                 self.launch_or_focus("youtube")
                 return ("menu_select", "youtube")
 
