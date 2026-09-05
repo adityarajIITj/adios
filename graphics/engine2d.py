@@ -56,42 +56,38 @@ def draw_circle(
     screen_w: int = 1280,
     screen_h: int = 720
 ):
-    """Draws an anti-aliased circle at (cx, cy)."""
+    """Draws a circle at (cx, cy) using fast horizontal row slices."""
+    if radius <= 0:
+        return
     r_fill, g_fill, b_fill = unpack_rgb(fill_color)
     r_bord, g_bord, b_bord = unpack_rgb(border_color) if border_color is not None else (r_fill, g_fill, b_fill)
+    fill_px = bytes([b_fill, g_fill, r_fill, 0])
+    bord_px = bytes([b_bord, g_bord, r_bord, 0])
 
-    x0 = max(0, cx - radius - 1)
-    x1 = min(screen_w, cx + radius + 2)
-    y0 = max(0, cy - radius - 1)
-    y1 = min(screen_h, cy + radius + 2)
+    cx0 = 0 if clip is None else max(0, clip[0])
+    cy0 = 0 if clip is None else max(0, clip[1])
+    cx1 = screen_w if clip is None else min(screen_w, clip[2])
+    cy1 = screen_h if clip is None else min(screen_h, clip[3])
 
-    if clip:
-        x0 = max(x0, clip[0])
-        y0 = max(y0, clip[1])
-        x1 = min(x1, clip[2])
-        y1 = min(y1, clip[3])
-
-    r_outer = float(radius)
-    r_inner = float(radius - 1) if border_color is not None else float(radius)
-
-    for py in range(y0, y1):
-        dy = py - cy
-        dy2 = dy * dy
-        for px in range(x0, x1):
-            dx = px - cx
-            dist = math.sqrt(dx * dx + dy2)
-            if dist > r_outer + 0.5:
-                continue
-            
-            # Anti-aliased outer edge
-            if dist > r_outer - 0.5:
-                alpha = max(0.0, min(1.0, (r_outer + 0.5 - dist)))
-                use_r, use_g, use_b = (r_bord, g_bord, b_bord) if border_color is not None else (r_fill, g_fill, b_fill)
-                blend_pixel(fb, px, py, use_r, use_g, use_b, alpha, screen_w, screen_h)
-            elif border_color is not None and dist > r_inner:
-                blend_pixel(fb, px, py, r_bord, g_bord, b_bord, 1.0, screen_w, screen_h)
-            else:
-                blend_pixel(fb, px, py, r_fill, g_fill, b_fill, 1.0, screen_w, screen_h)
+    r2 = radius * radius
+    for dy in range(-radius, radius + 1):
+        py = cy + dy
+        if cy0 <= py < cy1:
+            dx_max = math.isqrt(max(0, r2 - dy * dy))
+            rx0 = max(cx0, cx - dx_max)
+            rx1 = min(cx1, cx + dx_max + 1)
+            if rx1 > rx0:
+                span_len = rx1 - rx0
+                off = (py * screen_w + rx0) * 4
+                if border_color is not None and (abs(dy) == radius):
+                    fb[off : off + span_len * 4] = bord_px * span_len
+                else:
+                    fb[off : off + span_len * 4] = fill_px * span_len
+                    if border_color is not None:
+                        if rx0 == cx - dx_max:
+                            fb[off : off + 4] = bord_px
+                        if rx1 == cx + dx_max + 1 and span_len > 1:
+                            fb[off + (span_len - 1) * 4 : off + span_len * 4] = bord_px
 
 def draw_gradient_v(
     fb: bytearray,
@@ -135,6 +131,8 @@ def draw_gradient_v(
         idx = (py * screen_w + x0) * 4
         fb[idx : idx + row_width * 4] = row_bytes
 
+_SHADOW_LUT = bytes(int(i * 0.65) for i in range(256))
+
 def draw_drop_shadow(
     fb: bytearray,
     x: int,
@@ -146,24 +144,48 @@ def draw_drop_shadow(
     screen_w: int = 1280,
     screen_h: int = 720
 ):
-    """Renders a smooth multi-pass alpha drop shadow to the bottom and right of a rectangular window."""
-    layers = 4
-    for i in range(layers, 0, -1):
-        offset = int(i * (radius / layers))
-        layer_alpha = (alpha / layers) * (1.0 - (i - 1) / layers * 0.4)
-        sx0 = max(0, x + 4)
-        sy0 = max(0, y + 4)
-        sx1 = min(screen_w, x + w + offset)
-        sy1 = min(screen_h, y + h + offset)
+    """Renders a smooth fast drop shadow to the bottom and right of a rectangular window using byte LUT."""
+    if w <= 0 or h <= 0:
+        return
+    offset = radius
+    lut = _SHADOW_LUT
+    sx0 = max(0, x + 4)
+    sy0 = max(0, y + 4)
+    sx1 = min(screen_w, x + w + offset)
+    sy1 = min(screen_h, y + h + offset)
 
-        # Bottom shadow strip
-        for py in range(max(y + h, sy0), sy1):
-            for px in range(sx0, sx1):
-                blend_pixel(fb, px, py, 0, 0, 0, layer_alpha, screen_w, screen_h)
-        # Right shadow strip
-        for py in range(sy0, min(y + h, sy1)):
-            for px in range(max(x + w, sx0), sx1):
-                blend_pixel(fb, px, py, 0, 0, 0, layer_alpha, screen_w, screen_h)
+    # Bottom shadow strip
+    bot_y0 = max(y + h, sy0)
+    for py in range(bot_y0, sy1):
+        row_off = py * screen_w * 4
+        for px in range(sx0, sx1):
+            idx = row_off + px * 4
+            fb[idx]   = lut[fb[idx]]
+            fb[idx+1] = lut[fb[idx+1]]
+            fb[idx+2] = lut[fb[idx+2]]
+
+    # Right shadow strip
+    right_x0 = max(x + w, sx0)
+    right_y1 = min(y + h, sy1)
+    for py in range(sy0, right_y1):
+        row_off = py * screen_w * 4
+        for px in range(right_x0, sx1):
+            idx = row_off + px * 4
+            fb[idx]   = lut[fb[idx]]
+            fb[idx+1] = lut[fb[idx+1]]
+            fb[idx+2] = lut[fb[idx+2]]
+
+_CORNER_SPANS: Dict[int, List[int]] = {}
+
+def _get_corner_spans(rad: int) -> List[int]:
+    if rad not in _CORNER_SPANS:
+        spans = []
+        for dy in range(rad):
+            y_dist = rad - 1 - dy
+            w = int(math.isqrt(max(0, rad * rad - y_dist * y_dist)))
+            spans.append(w)
+        _CORNER_SPANS[rad] = spans
+    return _CORNER_SPANS[rad]
 
 def draw_rounded_rect(
     fb: bytearray,
@@ -180,112 +202,103 @@ def draw_rounded_rect(
     screen_h: int = 720
 ):
     """
-    Renders a rectangle with smoothly rounded anti-aliased corners.
-    If round_top_only is True, bottom corners remain square (useful for window headers).
+    Renders a rectangle with smoothly rounded corners.
+    Accelerated with vectorized row slices and precomputed span lookup tables.
     """
     if w <= 0 or h <= 0:
         return
-    r_fill, g_fill, b_fill = unpack_rgb(fill_color)
-    r_bord, g_bord, b_bord = unpack_rgb(border_color) if border_color is not None else (r_fill, g_fill, b_fill)
-    fill_bytes = bytes([b_fill, g_fill, r_fill, 0])
-    bord_bytes = bytes([b_bord, g_bord, r_bord, 0])
-
     rad = min(radius, w // 2, h // 2)
-    x0 = max(0, x)
-    x1 = min(screen_w, x + w)
-    y0 = max(0, y)
-    y1 = min(screen_h, y + h)
+    rf, gf, bf = unpack_rgb(fill_color)
+    rb, gb, bb = unpack_rgb(border_color) if border_color is not None else (rf, gf, bf)
+    fill_px = bytes([bf, gf, rf, 0])
+    bord_px = bytes([bb, gb, rb, 0])
 
-    if clip:
-        x0 = max(x0, clip[0])
-        y0 = max(y0, clip[1])
-        x1 = min(x1, clip[2])
-        y1 = min(y1, clip[3])
+    cx0 = 0 if clip is None else max(0, clip[0])
+    cy0 = 0 if clip is None else max(0, clip[1])
+    cx1 = screen_w if clip is None else min(screen_w, clip[2])
+    cy1 = screen_h if clip is None else min(screen_h, clip[3])
 
-    if x0 >= x1 or y0 >= y1:
+    if rad <= 0:
+        x0 = max(cx0, x)
+        x1 = min(cx1, x + w)
+        y0 = max(cy0, y)
+        y1 = min(cy1, y + h)
+        if x0 >= x1 or y0 >= y1:
+            return
+        row_len = x1 - x0
+        body_slice = fill_px * row_len
+        bord_slice = bord_px * row_len
+        for py in range(y0, y1):
+            off = (py * screen_w + x0) * 4
+            if border_color is not None and (py == y or py == y + h - 1):
+                fb[off : off + row_len * 4] = bord_slice
+            else:
+                fb[off : off + row_len * 4] = body_slice
+                if border_color is not None:
+                    if x0 == x: fb[off : off + 4] = bord_px
+                    if x1 == x + w and row_len > 1: fb[off + (row_len - 1) * 4 : off + row_len * 4] = bord_px
         return
 
-    tl_cx, tl_cy = x + rad, y + rad
-    tr_cx, tr_cy = x + w - rad - 1, y + rad
-    bl_cx, bl_cy = x + rad, y + h - rad - 1
-    br_cx, br_cy = x + w - rad - 1, y + h - rad - 1
+    spans = _get_corner_spans(rad)
 
-    rad_f = float(rad)
-
-    for py in range(y0, y1):
-        for px in range(x0, x1):
-            is_border = False
-            alpha = 1.0
-
-            # Top-left corner
-            if px < tl_cx and py < tl_cy:
-                dx = px - tl_cx
-                dy = py - tl_cy
-                dist = math.sqrt(dx * dx + dy * dy)
-                if dist > rad_f + 0.5:
-                    continue
-                if dist > rad_f - 0.5:
-                    alpha = max(0.0, min(1.0, rad_f + 0.5 - dist))
-                    is_border = True
-                elif border_color is not None and dist > rad_f - 1.5:
-                    is_border = True
-
-            # Top-right corner
-            elif px > tr_cx and py < tr_cy:
-                dx = px - tr_cx
-                dy = py - tr_cy
-                dist = math.sqrt(dx * dx + dy * dy)
-                if dist > rad_f + 0.5:
-                    continue
-                if dist > rad_f - 0.5:
-                    alpha = max(0.0, min(1.0, rad_f + 0.5 - dist))
-                    is_border = True
-                elif border_color is not None and dist > rad_f - 1.5:
-                    is_border = True
-
-            # Bottom-left corner (if rounded)
-            elif not round_top_only and px < bl_cx and py > bl_cy:
-                dx = px - bl_cx
-                dy = py - bl_cy
-                dist = math.sqrt(dx * dx + dy * dy)
-                if dist > rad_f + 0.5:
-                    continue
-                if dist > rad_f - 0.5:
-                    alpha = max(0.0, min(1.0, rad_f + 0.5 - dist))
-                    is_border = True
-                elif border_color is not None and dist > rad_f - 1.5:
-                    is_border = True
-
-            # Bottom-right corner (if rounded)
-            elif not round_top_only and px > br_cx and py > br_cy:
-                dx = px - br_cx
-                dy = py - br_cy
-                dist = math.sqrt(dx * dx + dy * dy)
-                if dist > rad_f + 0.5:
-                    continue
-                if dist > rad_f - 0.5:
-                    alpha = max(0.0, min(1.0, rad_f + 0.5 - dist))
-                    is_border = True
-                elif border_color is not None and dist > rad_f - 1.5:
-                    is_border = True
-
-            # Straight edge outer border
-            elif border_color is not None:
-                if px == x or px == x + w - 1 or py == y or py == y + h - 1:
-                    is_border = True
-
-            if is_border and border_color is not None:
-                if alpha < 0.99:
-                    blend_pixel(fb, px, py, r_bord, g_bord, b_bord, alpha, screen_w, screen_h)
+    # 1. Top rounded rows
+    for dy in range(rad):
+        py = y + dy
+        if cy0 <= py < cy1:
+            span_w = spans[dy]
+            rx0 = max(cx0, x + rad - span_w)
+            rx1 = min(cx1, x + w - rad + span_w)
+            if rx1 > rx0:
+                row_len = rx1 - rx0
+                off = (py * screen_w + rx0) * 4
+                if dy == 0 and border_color is not None:
+                    fb[off : off + row_len * 4] = bord_px * row_len
                 else:
-                    idx = (py * screen_w + px) * 4
-                    fb[idx : idx + 4] = bord_bytes
-            else:
-                if alpha < 0.99:
-                    blend_pixel(fb, px, py, r_fill, g_fill, b_fill, alpha, screen_w, screen_h)
-                else:
-                    idx = (py * screen_w + px) * 4
-                    fb[idx : idx + 4] = fill_bytes
+                    fb[off : off + row_len * 4] = fill_px * row_len
+                    if border_color is not None:
+                        if rx0 == x + rad - span_w:
+                            fb[off : off + 4] = bord_px
+                        if rx1 == x + w - rad + span_w and row_len > 1:
+                            fb[off + (row_len - 1) * 4 : off + row_len * 4] = bord_px
+
+    # 2. Middle rows
+    mid_start = rad
+    mid_end = h if round_top_only else h - rad
+    for dy in range(mid_start, mid_end):
+        py = y + dy
+        if cy0 <= py < cy1:
+            rx0 = max(cx0, x)
+            rx1 = min(cx1, x + w)
+            if rx1 > rx0:
+                row_len = rx1 - rx0
+                off = (py * screen_w + rx0) * 4
+                fb[off : off + row_len * 4] = fill_px * row_len
+                if border_color is not None:
+                    if rx0 == x:
+                        fb[off : off + 4] = bord_px
+                    if rx1 == x + w and row_len > 1:
+                        fb[off + (row_len - 1) * 4 : off + row_len * 4] = bord_px
+
+    # 3. Bottom rounded rows
+    if not round_top_only:
+        for dy in range(rad):
+            py = y + h - rad + dy
+            if cy0 <= py < cy1:
+                span_w = spans[rad - 1 - dy]
+                rx0 = max(cx0, x + rad - span_w)
+                rx1 = min(cx1, x + w - rad + span_w)
+                if rx1 > rx0:
+                    row_len = rx1 - rx0
+                    off = (py * screen_w + rx0) * 4
+                    if dy == rad - 1 and border_color is not None:
+                        fb[off : off + row_len * 4] = bord_px * row_len
+                    else:
+                        fb[off : off + row_len * 4] = fill_px * row_len
+                        if border_color is not None:
+                            if rx0 == x + rad - span_w:
+                                fb[off : off + 4] = bord_px
+                            if rx1 == x + w - rad + span_w and row_len > 1:
+                                fb[off + (row_len - 1) * 4 : off + row_len * 4] = bord_px
 
 def draw_procedural_icon(
     fb: bytearray,

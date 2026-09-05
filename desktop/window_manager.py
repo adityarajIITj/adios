@@ -364,9 +364,9 @@ class WindowManager:
         """Draws window drop shadow, window background, titlebar, controls, and client content."""
         wx, wy, ww, wh = win.x, win.y, win.w, win.h
 
-        # 1. Multi-Stage Soft Drop Shadow (if floating)
-        if not win.maximized:
-            draw_drop_shadow(fb, wx, wy, ww, wh, radius=10, alpha=0.45, screen_w=self.width, screen_h=self.height)
+        # 1. Soft Drop Shadow (elevates active floating window)
+        if not win.maximized and win.active:
+            draw_drop_shadow(fb, wx, wy, ww, wh, radius=8, alpha=0.35, screen_w=self.width, screen_h=self.height)
 
         # 2. Window Background with Rounded Outer Border
         border_col = COLOR_BORDER_ACT if win.active else COLOR_BORDER
