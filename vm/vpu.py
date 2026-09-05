@@ -12,6 +12,7 @@ Zero external dependencies. Pure RV32IM hardware simulation architecture.
 STRICT ZERO EMOJI POLICY ENFORCED.
 """
 
+import os
 import time
 import threading
 from typing import Optional, Tuple, List, Dict
@@ -137,7 +138,6 @@ class VPU:
 
         try:
             import tempfile
-            import os
             wav = self._pcm_to_wav(pcm_bytes, sample_rate=44100, volume_pct=self.volume)
             tmp = tempfile.NamedTemporaryFile(prefix="adios_audio_", suffix=".wav", delete=False)
             tmp.write(wav)
@@ -173,7 +173,6 @@ class VPU:
 
         try:
             import winsound
-            import os
 
             old_path = getattr(self, "_audio_temp_path", None)
             if old_path:
@@ -200,7 +199,6 @@ class VPU:
 
         try:
             import winsound
-            import os
             winsound.PlaySound(None, winsound.SND_PURGE)
             old_path = getattr(self, "_audio_temp_path", None)
             if old_path:
