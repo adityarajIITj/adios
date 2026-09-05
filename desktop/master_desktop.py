@@ -49,6 +49,15 @@ from games.flight3d import (
     COLOR_HUD as FLIGHT_COLOR_HUD
 )
 from .wallpaper import render_wallpaper_to_framebuffer, get_wallpaper_text, THEME_KEYS
+from .icons import DesktopIconManager
+from audio.sound_server import SoundServer
+from graphics.engine2d import (
+    draw_rounded_rect,
+    draw_gradient_v,
+    draw_drop_shadow,
+    draw_procedural_icon,
+    draw_circle,
+)
 
 # Theme Palette (Tokyo Dark Sovereign)
 COLOR_DESKTOP_BG     = 0x001A1B26
@@ -78,20 +87,25 @@ class MasterDesktop:
     Unified Sovereign Master Desktop Environment (1024x768 XGA Workstation).
     Composites 10 applications into overlapping, interactive, resizable windows.
     """
-    def __init__(self, vm=None, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT, ram_capacity_mb: int = 64):
+    def __init__(self, vm=None, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT, ram_capacity_mb: int = 512):
         self.vm = vm
         self.width = width
         self.height = height
         self.font = get_default_font()
         self.wm = WindowManager(width=self.width, height=self.height)
         self.engine3d = Engine3D(vm, width=self.width, height=self.height)
+        self.icons = DesktopIconManager(screen_w=self.width, screen_h=self.height)
+        self.sound_server = SoundServer.get_instance()
         self.start_menu_open = False
-        self.status_message = "AdiOS Sovereign Workstation (1024x768 XGA) Ready."
+        self.sound_flyout_open = False
+        self.net_flyout_open = False
+        self.network_online = True
+        self.status_message = "AdiOS Sovereign Workstation (1280x720 HD 60 FPS) Ready."
         self.active_input_target = "shell"
 
         # Telemetry State
         self.hart_loads = [14, 18, 9, 22]
-        self.ram_used_mb = 3.2
+        self.ram_used_mb = 38.4
         self.ram_capacity_mb = ram_capacity_mb
         if vm and hasattr(vm, 'ram_size'):
             self.ram_capacity_mb = vm.ram_size // (1024 * 1024)
@@ -294,70 +308,76 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def _setup_master_windows(self):
-        win_w = 490
-        win_h = 350
+        left_margin = 110 if self.width >= 1200 else 12
+        avail_w = self.width - left_margin - 24
+        win_w = max(460, avail_w // 2 - 12)
+        win_h = max(280, (self.height - TASKBAR_HEIGHT - 32) // 2)
+        right_x = left_margin + win_w + 16
+        bot_y = TASKBAR_HEIGHT + win_h + 16
 
-        # 1. Sovereign Web Browser Window (Top-Left: 12, 28)
-        self.win_browser = Window("browser", "Sovereign Browser (HTML/CSS Box Model)", 12, 28, win_w, win_h)
+        # 1. Sovereign Web Browser Window
+        self.win_browser = Window("browser", "Sovereign Browser (HTML/CSS Box Model)", left_margin, TASKBAR_HEIGHT + 8, win_w, win_h)
         self.win_browser.on_draw_content = self._draw_browser
         self.win_browser.on_click_content = self._click_browser
         self.wm.add_window(self.win_browser)
 
-        # 2. SovereignSQL Terminal Window (Top-Right: 520, 28)
-        self.win_sql = Window("sql", "SovereignSQL Terminal (ACID/WAL Relational Engine)", 520, 28, win_w, win_h)
+        # 2. SovereignSQL Terminal Window
+        self.win_sql = Window("sql", "SovereignSQL Terminal (ACID/WAL Relational Engine)", right_x, TASKBAR_HEIGHT + 8, win_w, win_h)
         self.win_sql.on_draw_content = self._draw_sql
         self.win_sql.on_click_content = self._click_sql
         self.wm.add_window(self.win_sql)
 
-        # 3. Lisp Bytecode REPL Window (Floating: 40, 60)
-        self.win_lisp = Window("lisp", "Lisp S-Expression Bytecode VM", 40, 60, win_w, win_h)
+        # 3. Lisp Bytecode REPL Window (Floating)
+        self.win_lisp = Window("lisp", "Lisp S-Expression Bytecode VM", left_margin + 30, TASKBAR_HEIGHT + 30, win_w, win_h)
         self.win_lisp.visible = False
         self.win_lisp.on_draw_content = self._draw_lisp
         self.win_lisp.on_click_content = self._click_lisp
         self.wm.add_window(self.win_lisp)
 
-        # 4. OpenGL 3D Viewport Window (Bottom-Left: 12, 395)
-        self.win_gl = Window("gl", "OpenGL 3D Hardware Viewport", 12, 395, win_w, win_h)
+        # 4. OpenGL 3D Viewport Window
+        self.win_gl = Window("gl", "OpenGL 3D Hardware Viewport", left_margin, bot_y, win_w, win_h)
         self.win_gl.on_draw_content = self._draw_gl
         self.win_gl.on_click_content = self._click_gl
         self.wm.add_window(self.win_gl)
 
-        # 5. File Explorer Window (Floating: 100, 120)
-        self.win_explorer = Window("explorer", "Sovereign File Explorer (Ext2 / FAT32 / VFS)", 100, 120, win_w, win_h)
+        # 5. File Explorer Window (Floating)
+        self.win_explorer = Window("explorer", "Sovereign File Explorer (Ext2 / FAT32 / VFS)", left_margin + 60, TASKBAR_HEIGHT + 60, win_w, win_h)
         self.win_explorer.visible = False
         self.win_explorer.on_draw_content = self._draw_explorer
         self.win_explorer.on_click_content = self._click_explorer
         self.wm.add_window(self.win_explorer)
 
-        # 6. Network & Crypto Monitor Window (Floating: 160, 180)
-        self.win_netmon = Window("netmon", "Network & Crypto Monitor (TLS 1.3 / TCP Reno)", 160, 180, win_w, win_h)
+        # 6. Network & Crypto Monitor Window (Floating)
+        self.win_netmon = Window("netmon", "Network & Crypto Monitor (TLS 1.3 / TCP Reno)", left_margin + 90, TASKBAR_HEIGHT + 90, win_w, win_h)
         self.win_netmon.visible = False
         self.win_netmon.on_draw_content = self._draw_netmon
         self.win_netmon.on_click_content = self._click_netmon
         self.wm.add_window(self.win_netmon)
 
-        # 7. POSIX Terminal Shell Window (Bottom-Right: 520, 395)
-        self.win_shell = Window("shell", "POSIX Sovereign Shell (sh)", 520, 395, win_w, win_h)
+        # 7. POSIX Terminal Shell Window
+        self.win_shell = Window("shell", "POSIX Sovereign Shell (sh)", right_x, bot_y, win_w, win_h)
         self.win_shell.on_draw_content = self._draw_shell
         self.win_shell.on_click_content = self._click_shell
         self.wm.add_window(self.win_shell)
 
-        # 8. Paint Studio & Pocket Calculator (Floating: 220, 220)
-        self.win_paint = Window("paint", "Paint Studio & Scientific Calculator", 220, 220, 520, 360)
+        # 8. Paint Studio & Pocket Calculator (Floating)
+        self.win_paint = Window("paint", "Paint Studio & Scientific Calculator", left_margin + 120, TASKBAR_HEIGHT + 50, 540, 380)
         self.win_paint.visible = False
         self.win_paint.on_draw_content = self._draw_paint
         self.win_paint.on_click_content = self._click_paint
         self.wm.add_window(self.win_paint)
 
-        # 9. Sovereign 3D Games Arcade (CastleAdiOS & StarFlight) (Centered: 240, 160)
-        self.win_games = Window("games", "Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)", 240, 160, 520, 380)
+        # 9. Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)
+        self.win_games = Window("games", "Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)", max(left_margin, self.width // 2 - 310), TASKBAR_HEIGHT + 40, 620, 420)
         self.win_games.visible = False
         self.win_games.on_draw_content = self._draw_games
         self.win_games.on_click_content = self._click_games
         self.wm.add_window(self.win_games)
 
-        # 10. Sovereign YouTube Player (30 FPS) (Centered: 250, 140)
-        self.win_youtube = Window("youtube", "Sovereign YouTube Player (30 FPS)", 250, 140, 520, 420)
+        # 10. Sovereign YouTube Player (30 FPS)
+        yt_w = min(self.width - 40, 660)
+        yt_h = min(self.height - TASKBAR_HEIGHT - 30, 460)
+        self.win_youtube = Window("youtube", "Sovereign YouTube Player (30 FPS)", max(left_margin, self.width // 2 - yt_w // 2), TASKBAR_HEIGHT + 20, yt_w, yt_h)
         self.win_youtube.visible = False
         self.win_youtube.on_draw_content = self._draw_youtube
         self.win_youtube.on_click_content = self._click_youtube
@@ -1422,6 +1442,9 @@ class MasterDesktop:
         if self.wallpaper_visible:
             render_wallpaper_to_framebuffer(fb, self.width, self.height, self.font, style=self.wallpaper_style)
 
+        # 1.8. Render Interactive Desktop Icons Grid (Wallpaper Layer)
+        self.icons.render(fb, self.font, self.width, self.height)
+
         # 2. Render Window Manager Layer (all visible windows in Z-order)
         self.wm.render_all(fb, self.font)
 
@@ -1438,7 +1461,7 @@ class MasterDesktop:
         pill_bytes = bytes([COLOR_START_PILL & 0xFF, (COLOR_START_PILL >> 8) & 0xFF, (COLOR_START_PILL >> 16) & 0xFF, 0])
         for py in range(2, 22):
             fb[(py * self.width + 4) * 4 : (py * self.width + 84) * 4] = pill_bytes * 80
-        self._draw_string(fb, 10, 7, "AdiOS [1.1]", COLOR_START_TXT)
+        self._draw_string(fb, 10, 7, "AdiOS [2.0]", COLOR_START_TXT)
 
         # Dedicated Games Pill on Taskbar
         self._draw_button(fb, 88, 3, 64, 18, "GAMES", COLOR_ACCENT_PURPLE, COLOR_START_TXT)
@@ -1453,21 +1476,94 @@ class MasterDesktop:
 
         # Window Switcher Pills on Taskbar
         sw_x = 262
+        max_sw_x = self.width - 440
         for w in self.wm.windows:
             if w.visible and not w.minimized:
-                bg_col = COLOR_TITLE_ACT if w.active else COLOR_BUTTON_BG
-                txt_col = COLOR_START_TXT if w.active else COLOR_BUTTON_TXT
-                short_title = w.title[:8]
-                self._draw_button(fb, sw_x, 3, 68, 18, short_title, bg_col, txt_col)
-                sw_x += 72
+                if sw_x + 68 < max_sw_x:
+                    bg_col = COLOR_TITLE_ACT if w.active else COLOR_BUTTON_BG
+                    txt_col = COLOR_START_TXT if w.active else COLOR_BUTTON_TXT
+                    short_title = w.title[:8]
+                    self._draw_button(fb, sw_x, 3, 68, 18, short_title, bg_col, txt_col)
+                    sw_x += 72
 
         # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
-        telemetry = f"SMP: {self.hart_loads[0]}% | RAM: {self.ram_used_mb}MB/{self.ram_capacity_mb}MB | {self.width}x{self.height}"
-        self._draw_string(fb, self.width - 340, 7, telemetry, COLOR_ACCENT_GREEN)
+        telemetry = f"SMP: {self.hart_loads[0]}% | RAM: {self.ram_used_mb:.1f}MB/{self.ram_capacity_mb}MB | 60 FPS"
+        self._draw_string(fb, self.width - 430, 7, telemetry, COLOR_ACCENT_GREEN)
+
+        # Sound Quick Toggle Button (Tray)
+        vol_pct = self.sound_server.get_volume_pct()
+        vol_label = "MUTE" if self.sound_server.is_muted else f"VOL {vol_pct}%"
+        vol_bg = COLOR_ACCENT_PURPLE if self.sound_flyout_open else (COLOR_ACCENT_RED if self.sound_server.is_muted else COLOR_BUTTON_BG)
+        self._draw_button(fb, self.width - 200, 3, 90, 18, vol_label, vol_bg, COLOR_START_TXT)
+
+        # Internet Quick Toggle Button (Tray)
+        net_label = "NET: ON" if self.network_online else "NET: OFF"
+        net_bg = COLOR_ACCENT_CYAN if self.net_flyout_open else (COLOR_ACCENT_GREEN if self.network_online else COLOR_ACCENT_RED)
+        self._draw_button(fb, self.width - 104, 3, 96, 18, net_label, net_bg, COLOR_START_TXT)
 
         # 4. Render Dropdown Start Menu if open
         if self.start_menu_open:
             self._render_start_menu(fb)
+
+        # 5. Render Sound Flyout Card if open
+        if self.sound_flyout_open:
+            self._render_sound_flyout(fb)
+
+        # 6. Render Internet Flyout Card if open
+        if self.net_flyout_open:
+            self._render_net_flyout(fb)
+
+    def _render_sound_flyout(self, fb: bytearray):
+        fx = self.width - 240
+        fy = TASKBAR_HEIGHT + 4
+        fw = 230
+        fh = 126
+        draw_drop_shadow(fb, fx, fy, fw, fh, radius=8, alpha=0.5, screen_w=self.width, screen_h=self.height)
+        draw_rounded_rect(fb, fx, fy, fw, fh, radius=8, fill_color=0x0016161E, border_color=COLOR_START_PILL, screen_w=self.width, screen_h=self.height)
+        self._draw_string(fb, fx + 12, fy + 8, "Sound & Audio Master", COLOR_ACCENT_CYAN)
+        self._draw_string(fb, fx + 12, fy + 20, "-" * 26, COLOR_BORDER)
+
+        vol_pct = self.sound_server.get_volume_pct()
+        is_mute = self.sound_server.is_muted
+        status_txt = f"Volume: {vol_pct}% {'(MUTED)' if is_mute else ''}"
+        self._draw_string(fb, fx + 14, fy + 32, status_txt, COLOR_TEXT_PRIMARY)
+
+        # Volume visual track
+        track_w = 200
+        fill_w = int(track_w * (0.0 if is_mute else (vol_pct / 100.0)))
+        draw_rounded_rect(fb, fx + 14, fy + 48, track_w, 8, radius=3, fill_color=0x002A2E42, screen_w=self.width, screen_h=self.height)
+        if fill_w > 0:
+            draw_rounded_rect(fb, fx + 14, fy + 48, fill_w, 8, radius=3, fill_color=COLOR_ACCENT_GREEN if not is_mute else COLOR_ACCENT_RED, screen_w=self.width, screen_h=self.height)
+
+        # Buttons: [-] [+] [MUTE/UNMUTE]
+        self._draw_button(fb, fx + 14, fy + 64, 34, 22, "[-]", COLOR_BUTTON_BG, COLOR_START_TXT)
+        self._draw_button(fb, fx + 54, fy + 64, 34, 22, "[+]", COLOR_BUTTON_BG, COLOR_START_TXT)
+        mute_lbl = "UNMUTE" if is_mute else "MUTE"
+        mute_col = COLOR_ACCENT_RED if is_mute else COLOR_BUTTON_BG
+        self._draw_button(fb, fx + 94, fy + 64, 120, 22, mute_lbl, mute_col, COLOR_START_TXT)
+
+        # Real-time VU meter bar
+        vu = self.sound_server.get_vu_meter()
+        vu_bars = int(vu * 18)
+        self._draw_string(fb, fx + 14, fy + 98, f"Output VU: [{'=' * vu_bars:<18}]", COLOR_ACCENT_GREEN)
+
+    def _render_net_flyout(self, fb: bytearray):
+        fx = self.width - 240
+        fy = TASKBAR_HEIGHT + 4
+        fw = 230
+        fh = 106
+        draw_drop_shadow(fb, fx, fy, fw, fh, radius=8, alpha=0.5, screen_w=self.width, screen_h=self.height)
+        draw_rounded_rect(fb, fx, fy, fw, fh, radius=8, fill_color=0x0016161E, border_color=COLOR_START_PILL, screen_w=self.width, screen_h=self.height)
+        self._draw_string(fb, fx + 12, fy + 8, "Sovereign Network Center", COLOR_ACCENT_CYAN)
+        self._draw_string(fb, fx + 12, fy + 20, "-" * 26, COLOR_BORDER)
+
+        status_txt = "Status: Online (VirtIO)" if self.network_online else "Status: Airplane Mode"
+        self._draw_string(fb, fx + 14, fy + 32, status_txt, COLOR_ACCENT_GREEN if self.network_online else COLOR_ACCENT_RED)
+
+        btn_txt = "AIRPLANE MODE" if self.network_online else "CONNECT ONLINE"
+        btn_col = COLOR_ACCENT_RED if self.network_online else COLOR_ACCENT_GREEN
+        self._draw_button(fb, fx + 14, fy + 52, 200, 24, btn_txt, btn_col, COLOR_START_TXT)
+        self._draw_string(fb, fx + 14, fy + 84, "Ping: 12ms | Zero-Loss (TLS 1.3)", COLOR_TEXT_MUTED)
 
     def _render_start_menu(self, fb: bytearray):
         mx = 4
@@ -1512,7 +1608,7 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def handle_mouse_down(self, mx: int, my: int) -> Optional[Tuple[str, Any]]:
-        # 1. Start Pill, Games Pill, Wallpaper Pill & YouTube Pill Clicks
+        # 1. Top Taskbar Clicks
         if my < TASKBAR_HEIGHT:
             if 4 <= mx <= 84:
                 self.toggle_start_menu()
@@ -1529,20 +1625,93 @@ class MasterDesktop:
 
             # Window Switcher Pills click
             sw_x = 262
+            max_sw_x = self.width - 440
             for w in self.wm.windows:
                 if w.visible and not w.minimized:
-                    if sw_x <= mx <= sw_x + 68:
+                    if sw_x <= mx <= sw_x + 68 and sw_x + 68 < max_sw_x:
                         self.wm.focus_window(w)
                         return ("switch_window", w)
                     sw_x += 72
+
+            # Sound Tray Button click
+            if self.width - 200 <= mx <= self.width - 110:
+                self.sound_flyout_open = not self.sound_flyout_open
+                self.net_flyout_open = False
+                self.sound_server.play_ui_sound("click")
+                return ("sound_flyout_toggle", None)
+
+            # Internet Tray Button click
+            if self.width - 104 <= mx <= self.width - 8:
+                self.net_flyout_open = not self.net_flyout_open
+                self.sound_flyout_open = False
+                self.sound_server.play_ui_sound("click")
+                return ("net_flyout_toggle", None)
+
             return None
 
-        # 2. Start Menu Item Click
+        # 2. Sound Flyout Card Click Handling
+        if self.sound_flyout_open:
+            fx = self.width - 240
+            fy = TASKBAR_HEIGHT + 4
+            fw = 230
+            fh = 126
+            if fx <= mx <= fx + fw and fy <= my <= fy + fh:
+                # Vol Down [-]
+                if fx + 14 <= mx <= fx + 48 and fy + 64 <= my <= fy + 86:
+                    curr = self.sound_server.get_volume_pct()
+                    new_vol = max(0, curr - 10)
+                    self.sound_server.set_volume_pct(new_vol)
+                    if hasattr(self, "vpu") and self.vpu:
+                        self.vpu.volume = new_vol
+                    if hasattr(self, "youtube_app") and self.youtube_app:
+                        self.youtube_app.volume = new_vol
+                    self.sound_server.play_ui_sound("click")
+                    return ("vol_down", self.sound_server.get_volume_pct())
+                # Vol Up [+]
+                if fx + 54 <= mx <= fx + 88 and fy + 64 <= my <= fy + 86:
+                    curr = self.sound_server.get_volume_pct()
+                    new_vol = min(100, curr + 10)
+                    self.sound_server.set_volume_pct(new_vol)
+                    if hasattr(self, "vpu") and self.vpu:
+                        self.vpu.volume = new_vol
+                    if hasattr(self, "youtube_app") and self.youtube_app:
+                        self.youtube_app.volume = new_vol
+                    self.sound_server.play_ui_sound("click")
+                    return ("vol_up", self.sound_server.get_volume_pct())
+                # Mute Toggle
+                if fx + 94 <= mx <= fx + 214 and fy + 64 <= my <= fy + 86:
+                    self.sound_server.toggle_mute()
+                    muted = self.sound_server.is_muted
+                    if hasattr(self, "vpu") and self.vpu:
+                        self.vpu.set_sound_enabled(not muted)
+                    if hasattr(self, "youtube_app") and self.youtube_app:
+                        self.youtube_app.sound_enabled = not muted
+                    self.sound_server.play_ui_sound("click")
+                    return ("vol_mute", self.sound_server.is_muted)
+                return ("sound_flyout_click", None)
+            else:
+                self.sound_flyout_open = False
+
+        # 3. Internet Flyout Card Click Handling
+        if self.net_flyout_open:
+            fx = self.width - 240
+            fy = TASKBAR_HEIGHT + 4
+            fw = 230
+            fh = 106
+            if fx <= mx <= fx + fw and fy <= my <= fy + fh:
+                if fx + 14 <= mx <= fx + 214 and fy + 52 <= my <= fy + 76:
+                    self.network_online = not self.network_online
+                    self.sound_server.play_ui_sound("notify")
+                    return ("net_toggle", self.network_online)
+                return ("net_flyout_click", None)
+            else:
+                self.net_flyout_open = False
+
+        # 4. Start Menu Item Click
         if self.start_menu_open:
             if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 272:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper", "youtube"]
-                # Check legacy item click (my = 160 was item 6 shell in 18px pitch)
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
@@ -1555,10 +1724,24 @@ class MasterDesktop:
                     return ("menu_select", items_map[rel_item])
             self.start_menu_open = False
 
-        # 3. Window Manager Handling
+        # 5. Window Manager Handling
         res = self.wm.handle_mouse_down(mx, my)
         if res:
+            self.sound_server.play_ui_sound("click")
             return res
+
+        # 6. Desktop Icons Handling (Clicks on Desktop Canvas)
+        evt, icon = self.icons.handle_mouse_down(mx, my)
+        if evt == "launch" and icon:
+            self.sound_server.play_ui_sound("launch")
+            if icon.action_target == "sound_cfg":
+                self.sound_flyout_open = True
+                return ("icon_launch", "sound_cfg")
+            self.launch_or_focus(icon.action_target)
+            return ("icon_launch", icon.icon_id)
+        elif evt == "select" and icon:
+            self.sound_server.play_ui_sound("click")
+            return ("icon_select", icon.icon_id)
 
         return None
 
@@ -1566,6 +1749,7 @@ class MasterDesktop:
         self.wm.handle_mouse_up(mx, my)
 
     def handle_mouse_move(self, mx: int, my: int):
+        self.icons.handle_mouse_move(mx, my)
         self.wm.handle_mouse_move(mx, my)
 
     def handle_key(self, key_char: str):

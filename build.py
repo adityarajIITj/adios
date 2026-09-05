@@ -355,11 +355,11 @@ def run_castle3d():
     except KeyboardInterrupt:
         print("\n[CastleAdiOS 3D] Exited.")
 
-def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clean_wallpaper=False, ram_mb=256, auto_launch_yt=False, custom_yt_url=None):
+def run_desktop(scale=1.0, width=1280, height=720, auto_launch_games=False, clean_wallpaper=False, ram_mb=512, auto_launch_yt=False, custom_yt_url=None):
     print("=====================================================")
-    print("     AdiOS Sovereign Workstation (1024x768 XGA)      ")
+    print("    AdiOS Sovereign Workstation (1280x720 HD 60 FPS) ")
     print("=====================================================")
-    print(f"[AdiOS Desktop] Initializing Workstation Compositor ({width}x{height} @ {scale}x scale, {ram_mb}MB RAM)...")
+    print(f"[AdiOS Desktop] Initializing Workstation Compositor ({width}x{height} @ {scale}x scale, {ram_mb}MB RAM, 60 FPS)...")
     from vm.vm import VM
     from vm.vpu import VideoProcessingUnit
     from vm.display import DisplayWindow
@@ -368,7 +368,7 @@ def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clea
     vm = VM(ram_size=ram_mb * 1024 * 1024)
     vm.vpu = VideoProcessingUnit(vm)
     vm.fb = bytearray(width * height * 4)
-    desktop = MasterDesktop(vm, width=width, height=height)
+    desktop = MasterDesktop(vm, width=width, height=height, ram_capacity_mb=ram_mb)
     if auto_launch_games or "--games" in sys.argv or "--arcade" in sys.argv:
         desktop.launch_or_focus("games")
         print("[AdiOS Desktop] Sovereign 3D Games Arcade auto-launched.")
@@ -403,19 +403,23 @@ def run_desktop(scale=1.0, width=1024, height=768, auto_launch_games=False, clea
     disp.on_mouse_drag_cb = on_mouse_drag
     disp.on_key_cb = lambda k: desktop.handle_key(k)
 
-    print(f"[AdiOS Desktop] {width}x{height} Sovereign Workstation Running. Close window to exit.")
-    last_frame = time.time()
+    print(f"[AdiOS Desktop] {width}x{height} Sovereign Workstation Running at 60 FPS. Close window to exit.")
+    target_dt = 1.0 / 60.0  # 60 FPS cadence
+    last_frame = time.perf_counter()
     try:
         while True:
-            now = time.time()
-            if now - last_frame >= 0.025:  # ~40 FPS
+            now = time.perf_counter()
+            dt = now - last_frame
+            if dt >= target_dt:
                 desktop.step_frame(disp.mouse_x, disp.mouse_y)
                 desktop.render(vm.fb)
                 disp.render_frame()
                 if not disp.update():
                     break
                 last_frame = now
-            time.sleep(0.002)
+            else:
+                sleep_sec = max(0.0005, target_dt - dt - 0.001)
+                time.sleep(sleep_sec)
     except KeyboardInterrupt:
         print("\n[AdiOS Desktop] Closed.")
 
@@ -625,7 +629,7 @@ if __name__ == "__main__":
             idx = sys.argv.index("--yt-url")
             if idx + 1 < len(sys.argv):
                 custom_yt_url = sys.argv[idx + 1]
-        run_desktop(scale=scale, width=1024, height=768, ram_mb=ram_mb, auto_launch_yt=True, custom_yt_url=custom_yt_url)
+        run_desktop(scale=scale, width=1280, height=720, ram_mb=ram_mb, auto_launch_yt=True, custom_yt_url=custom_yt_url)
     elif "--games" in sys.argv or "--arcade" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -633,12 +637,12 @@ if __name__ == "__main__":
             if idx + 1 < len(sys.argv):
                 try: scale = float(sys.argv[idx + 1])
                 except ValueError: scale = 1.0
-        ram_mb = 256
+        ram_mb = 512
         if "--ram" in sys.argv:
             idx = sys.argv.index("--ram")
             if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
                 ram_mb = int(sys.argv[idx + 1])
-        run_desktop(scale=scale, width=1024, height=768, ram_mb=ram_mb, auto_launch_games=True)
+        run_desktop(scale=scale, width=1280, height=720, ram_mb=ram_mb, auto_launch_games=True)
     elif "--desktop" in sys.argv:
         scale = 1.0
         if "--scale" in sys.argv:
@@ -648,7 +652,7 @@ if __name__ == "__main__":
                     scale = float(sys.argv[idx + 1])
                 except ValueError:
                     scale = 1.0
-        ram_mb = 256
+        ram_mb = 512
         if "--ram" in sys.argv:
             idx = sys.argv.index("--ram")
             if idx + 1 < len(sys.argv) and sys.argv[idx + 1].isdigit():
@@ -661,7 +665,7 @@ if __name__ == "__main__":
         auto_launch_yt = ("--youtube" in sys.argv or "--yt" in sys.argv or custom_yt_url is not None)
         auto_launch_games = ("--games" in sys.argv or "--arcade" in sys.argv)
         clean_wallpaper = ("--wallpaper" in sys.argv or "--clean" in sys.argv)
-        width, height = 1024, 768
+        width, height = 1280, 720
         if "--res" in sys.argv:
             idx = sys.argv.index("--res")
             if idx + 1 < len(sys.argv):

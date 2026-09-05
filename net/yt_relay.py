@@ -6,10 +6,10 @@ Bridges real-world internet YouTube streams to the VPU hardware controller:
 - Live YouTube oEmbed & Metadata Resolver (Title, Channel/Author, Views, Thumbnails)
 - Host Network Bridge Integration with Online/Offline Connectivity Detection
 - Curated World Video Catalog (Rick Astley, RISC-V Keynote, Big Buck Bunny, Apollo 11, Lofi Girl)
-- Dynamic 30 FPS Video Stream Generation & Audio-Video PTS Synchronization (44.1 kHz)
-- ISO MP4 Container Demuxer & Progressive Stream Ingestion
+- REAL Video Playback via yt-dlp + ffmpeg Pipeline (30 FPS decoded frames)
+- REAL Audio Playback via ffmpeg WAV extraction (44.1 kHz 16-bit PCM)
+- Offline Fallback: Synthesized Cyber Visualizers (RISC-V Cube, Synthwave, Matrix Rain)
 
-Zero external dependencies. Pure standard library architecture.
 STRICT ZERO EMOJI POLICY ENFORCED.
 """
 
@@ -23,11 +23,22 @@ import shutil
 import tempfile
 import subprocess
 import urllib.parse
+import hashlib
 from typing import Optional, List, Dict, Tuple, Any
 
 from vm.vpu import VideoFrame
 from drivers.net_bridge import get_net_bridge
 from net.mp4_demuxer import MP4Demuxer
+from net.yt_downloader import YouTubeDownloader, STATE_IDLE, STATE_RESOLVING, STATE_DOWNLOADING, STATE_READY, STATE_ERROR
+from net.av_decoder import AVDecoder, DECODER_RUNNING, DECODER_STOPPED, DECODER_ERROR
+
+# Stream pipeline states
+STREAM_IDLE = "IDLE"
+STREAM_DOWNLOADING = "DOWNLOADING"
+STREAM_DECODING = "DECODING"
+STREAM_STREAMING = "STREAMING"
+STREAM_ERROR = "ERROR"
+STREAM_OFFLINE = "OFFLINE"
 
 # Curated World Video Catalog
 WORLD_VIDEOS = [
@@ -300,8 +311,9 @@ def fetch_youtube_frame_snapshots(video_id: str, max_frames: int = 4) -> List[by
 class YouTubeStreamRelay:
     """
     Host-side YouTube / Media stream relay engine.
-    Supplies the VPU with 30 FPS frames and synchronized PCM audio.
-    Supports real-world YouTube URLs, video IDs, and local media streams.
+    Supplies the VPU with 30 FPS REAL video frames and synchronized audio.
+    Uses yt-dlp for stream extraction and ffmpeg for real-time decoding.
+    Falls back to synthesized visualizers when offline or yt-dlp unavailable.
     """
     def __init__(self, channel_idx: int = 0):
         self.catalog = WORLD_VIDEOS
@@ -317,16 +329,46 @@ class YouTubeStreamRelay:
         self.thumbnail_pixels: Optional[bytearray] = None
         self.network_bridge = get_net_bridge()
         
-        # Real photographic video frame cache
+        # Real photographic video frame cache (legacy snapshot fallback)
         self.real_frames: List[bytes] = []
         self.real_frames_cache: Dict[str, List[bytes]] = {}
         
-        # Audio Synthesizer State
+        # Audio Synthesizer State (offline fallback)
         self.sample_rate = 44100
         self.audio_phase = 0.0
         
         # Pre-calculated sine tables for high-speed rendering
         self._sin_table = [math.sin(i * 2.0 * math.pi / 360.0) for i in range(360)]
+
+        # === NEW: Real Video Pipeline ===
+        self.stream_state = STREAM_IDLE
+        self._downloader: Optional[YouTubeDownloader] = None
+        self._decoder: Optional[AVDecoder] = None
+        self._download_progress: float = 0.0
+        self._stream_error_msg: str = ""
+        self._using_real_video: bool = False
+
+    @property
+    def download_progress(self) -> float:
+        """Returns download progress (0.0 - 100.0)."""
+        if self._downloader:
+            return self._downloader.progress_pct
+        return self._download_progress
+
+    @property
+    def is_real_video_active(self) -> bool:
+        """Returns True if real decoded video frames are being streamed."""
+        return self._using_real_video and self._decoder is not None and self._decoder.state == DECODER_RUNNING
+
+    def get_audio_wav_path(self) -> Optional[str]:
+        """Returns path to extracted real audio WAV/media file, or None if unavailable."""
+        if self._decoder and self._decoder.audio_wav_path and os.path.isfile(self._decoder.audio_wav_path):
+            return self._decoder.audio_wav_path
+        if self._downloader and self._downloader.media_path and os.path.isfile(self._downloader.media_path):
+            ext = os.path.splitext(self._downloader.media_path)[1].lower()
+            if ext in (".wav", ".mp3", ".m4a", ".mp4"):
+                return self._downloader.media_path
+        return None
 
     def is_online(self) -> bool:
         """Returns whether internet connectivity is currently established."""
@@ -334,38 +376,45 @@ class YouTubeStreamRelay:
 
     def set_channel(self, idx: int):
         """Switches active streaming channel from catalog."""
+        # Stop any active real video pipeline
+        self._stop_real_pipeline()
+
         self.channel_idx = idx % len(self.catalog)
         self.channel_info = dict(self.catalog[self.channel_idx])
         self.duration_ms = self.channel_info.get("duration_ms", 180000)
         self.active_video_id = self.channel_info["id"]
         self.active_url = self.channel_info.get("url", f"https://youtube.com/watch?v={self.active_video_id}")
         self.real_frames = self.real_frames_cache.get(self.active_video_id, [])
-        if not self.real_frames and self.active_video_id not in ("ch_riscv", "ch_synth", "ch_matrix"):
-            frames = fetch_youtube_frame_snapshots(self.active_video_id)
-            if frames:
-                self.real_frames = frames
-                self.real_frames_cache[self.active_video_id] = frames
+
+        # For catalog entries with real YouTube IDs, try real pipeline
+        if self.active_video_id not in ("ch_riscv", "ch_synth", "ch_matrix"):
+            self._start_real_pipeline(self.active_url)
+        else:
+            self.stream_state = STREAM_OFFLINE
 
     def load_url(self, url_or_id: str) -> bool:
         """
         Loads and resolves any real-world YouTube URL, video ID, or media stream link.
+        Triggers the real yt-dlp + ffmpeg pipeline for actual video/audio playback.
         """
+        # Stop any previous pipeline
+        self._stop_real_pipeline()
+
         vid = extract_youtube_id(url_or_id)
         if vid:
             self.active_video_id = vid
             self.active_url = f"https://www.youtube.com/watch?v={vid}"
-            # Fetch metadata
+            # Fetch metadata from oEmbed (fast, for title/author display)
             meta = fetch_youtube_metadata(vid, timeout=2.0)
+            catalog_match = next((v for v in self.catalog if v["id"] == vid), None)
+            if catalog_match:
+                meta["style"] = catalog_match.get("style", "music")
+            else:
+                meta["style"] = "custom"
             self.channel_info = meta
             self.duration_ms = meta.get("duration_ms", 180000)
-            # Fetch real photographic video frames
-            if vid in self.real_frames_cache:
-                self.real_frames = self.real_frames_cache[vid]
-            else:
-                frames = fetch_youtube_frame_snapshots(vid)
-                self.real_frames = frames
-                if frames:
-                    self.real_frames_cache[vid] = frames
+            # Start real video pipeline
+            self._start_real_pipeline(self.active_url)
             return True
         else:
             # Custom direct HTTP video or generic stream
@@ -380,15 +429,104 @@ class YouTubeStreamRelay:
                 "duration_ms": 300000,
                 "views": "HTTP Stream",
                 "theme_color": (0, 240, 255),
-                "style": "music"
+                "style": "custom"
             }
             self.duration_ms = 300000
             self.real_frames = []
+            # Try real pipeline for direct URLs too
+            self._start_real_pipeline(clean_url)
             return True
 
+    def _start_real_pipeline(self, url: str):
+        """
+        Initiates the real video download + decode pipeline:
+        1. yt-dlp downloads video to temp file
+        2. ffmpeg decodes frames to raw BGRX pixels + extracts audio to WAV
+        """
+        self.stream_state = STREAM_DOWNLOADING
+        self._using_real_video = False
+        self._stream_error_msg = ""
+
+        self._downloader = YouTubeDownloader()
+
+        if not self._downloader.is_available():
+            self.stream_state = STREAM_ERROR
+            self._stream_error_msg = "yt-dlp not available"
+            return
+
+        def on_download_complete(success: bool):
+            if success and self._downloader and self._downloader.media_path:
+                # Update metadata from yt-dlp JSON
+                if self._downloader.metadata:
+                    m = self._downloader.metadata
+                    self.channel_info["title"] = m.get("title", self.channel_info.get("title", "Video"))
+                    self.channel_info["author"] = m.get("author", self.channel_info.get("author", "Unknown"))
+                    if m.get("duration_ms", 0) > 0:
+                        self.duration_ms = m["duration_ms"]
+                    if m.get("views", 0):
+                        v = m["views"]
+                        if isinstance(v, int):
+                            if v >= 1_000_000:
+                                self.channel_info["views"] = f"{v/1_000_000:.1f}M views"
+                            elif v >= 1_000:
+                                self.channel_info["views"] = f"{v/1_000:.1f}K views"
+                            else:
+                                self.channel_info["views"] = f"{v} views"
+
+                # Start decoder
+                self.stream_state = STREAM_DECODING
+                self._decoder = AVDecoder(
+                    media_path=self._downloader.media_path,
+                    width=480, height=270, fps=30
+                )
+
+                if self._decoder.is_available():
+                    self._decoder.start(seek_s=0.0)
+                    self._using_real_video = True
+                    self.stream_state = STREAM_STREAMING
+                    # Update duration from probed media
+                    if self._decoder.duration_s > 0:
+                        self.duration_ms = int(self._decoder.duration_s * 1000)
+                else:
+                    self.stream_state = STREAM_ERROR
+                    self._stream_error_msg = "ffmpeg not available for decode"
+            else:
+                self.stream_state = STREAM_ERROR
+                self._stream_error_msg = self._downloader.error_message if self._downloader else "Download failed"
+
+        self._downloader.download_async(url, on_complete=on_download_complete)
+
+    def _stop_real_pipeline(self):
+        """Stops and cleans up any active real video/audio pipeline."""
+        self._using_real_video = False
+        if self._decoder:
+            self._decoder.cleanup()
+            self._decoder = None
+        if self._downloader:
+            self._downloader.cleanup()
+            self._downloader = None
+        self.stream_state = STREAM_IDLE
+
+    def get_audio_wav_path(self) -> Optional[str]:
+        """Returns path to extracted audio file if available from real media."""
+        if self._decoder and hasattr(self._decoder, "audio_wav_path") and self._decoder.audio_wav_path:
+            if os.path.isfile(self._decoder.audio_wav_path):
+                return self._decoder.audio_wav_path
+        if self._downloader and hasattr(self._downloader, "media_path") and self._downloader.media_path:
+            if os.path.isfile(self._downloader.media_path):
+                return self._downloader.media_path
+        return None
+
+    def cleanup(self):
+        """Full cleanup of all resources. Call on application shutdown."""
+        self._stop_real_pipeline()
+
     def seek(self, pts_ms: int):
-        """Handles seek requests."""
+        """Handles seek requests -- resets both synthesized and real decoders."""
         self.audio_phase = (pts_ms / 1000.0) * 440.0 * 2.0 * math.pi
+        # Seek the real decoder if active
+        if self._decoder and self._using_real_video:
+            self._decoder.seek(pts_ms / 1000.0)
 
     def _overlay_video_playback_hud(self, buf: bytearray, w: int, h: int, t: float, scene_idx: int = 0, n_scenes: int = 1):
         """Layers subtle translucent live playback waveform HUD, dancing spectrum EQ bars, and resolution telemetry onto the real video frame."""
@@ -447,39 +585,66 @@ class YouTubeStreamRelay:
 
     def generate_frame(self, pts_ms: int, width: int = 480, height: int = 270) -> VideoFrame:
         """
-        Synthesizes a live 30 FPS video frame for the active video at timestamp pts_ms.
-        Outputs 32-bit ARGB bytearray matching exact screen geometry.
+        Produces a 30 FPS video frame for the active video at timestamp pts_ms.
+        Priority order:
+          1. REAL decoded frames from ffmpeg pipeline (if streaming)
+          2. Download progress overlay (if downloading)
+          3. Synthesized visualizer fallback (offline/catalog channels)
         """
-        # 1. Check if real photographic video frames are available
+        # === PRIORITY 1: Real decoded video frames from ffmpeg ===
+        if self._using_real_video and self._decoder:
+            raw_frame = self._decoder.get_frame()
+            if raw_frame and len(raw_frame) == width * height * 4:
+                buf = bytearray(raw_frame)
+                t_sec = pts_ms / 1000.0
+                self._overlay_video_playback_hud(buf, width, height, t_sec, 0, 1)
+                return VideoFrame(width, height, pts_ms, bytes(buf))
+            elif raw_frame and len(raw_frame) == 480 * 270 * 4:
+                # Frame matches decoder resolution, may differ from requested
+                buf = bytearray(width * height * 4)
+                copy_h = min(height, 270)
+                src_pitch = 480 * 4
+                dst_pitch = width * 4
+                row_bytes = min(src_pitch, dst_pitch)
+                for y in range(copy_h):
+                    s_off = y * src_pitch
+                    d_off = y * dst_pitch
+                    buf[d_off : d_off + row_bytes] = raw_frame[s_off : s_off + row_bytes]
+                t_sec = pts_ms / 1000.0
+                self._overlay_video_playback_hud(buf, width, height, t_sec, 0, 1)
+                return VideoFrame(width, height, pts_ms, bytes(buf))
+            # Decoder active but no frame ready yet -- show buffering
+            if self._decoder.state == DECODER_RUNNING:
+                return self._render_buffering_frame(pts_ms, width, height)
+
+        # === PRIORITY 2: Download progress overlay ===
+        if self.stream_state == STREAM_DOWNLOADING:
+            return self._render_download_progress_frame(pts_ms, width, height)
+
+        # === PRIORITY 3: Legacy snapshot-based frames ===
         if self.real_frames:
             n_frames = len(self.real_frames)
             t_sec = pts_ms / 1000.0
-            scene_duration = 3.5  # Dynamic scene advancement every 3.5 seconds
+            scene_duration = 3.5
             scene_idx = int(t_sec / scene_duration) % n_frames
-
             raw_data = self.real_frames[scene_idx]
-
-            # Subtle camera pan (Ken Burns drift)
             phase = (t_sec % scene_duration) / scene_duration
             pan_x = int(math.sin(phase * math.pi) * 6.0)
-
             buf = bytearray(width * height * 4)
             copy_h = min(height, 270)
             src_pitch = 480 * 4
             dst_pitch = width * 4
-
             pan_bytes = abs(pan_x) * 4
             row_bytes = min(src_pitch - pan_bytes, dst_pitch)
             src_x_off = pan_bytes if pan_x > 0 else 0
-
             for y in range(copy_h):
                 s_off = y * src_pitch + src_x_off
                 d_off = y * dst_pitch
                 buf[d_off : d_off + row_bytes] = raw_data[s_off : s_off + row_bytes]
-
             self._overlay_video_playback_hud(buf, width, height, t_sec, scene_idx, n_frames)
             return VideoFrame(width, height, pts_ms, bytes(buf))
 
+        # === PRIORITY 4: Synthesized visualizer fallback ===
         sec = pts_ms / 1000.0
         style = self.channel_info.get("style", "riscv")
 
@@ -494,10 +659,106 @@ class YouTubeStreamRelay:
         elif style == "lofi":
             data = self._render_lofi_beats_frame(sec, width, height)
         else:
-            # Default music / animation video visualizer with animated equalizer & HUD
             data = self._render_world_media_frame(sec, width, height)
 
         return VideoFrame(width, height, pts_ms, bytes(data))
+
+    def _render_download_progress_frame(self, pts_ms: int, w: int, h: int) -> VideoFrame:
+        """Renders a download progress overlay while yt-dlp is fetching the video."""
+        buf = bytearray(w * h * 4)
+        cx, cy = w // 2, h // 2
+        t = pts_ms / 1000.0
+
+        # Dark background with subtle animated gradient
+        for y in range(h):
+            grad = int((y / h) * 30)
+            pulse = int(abs(math.sin(t * 2.0)) * 8)
+            for x in range(w):
+                off = (y * w + x) * 4
+                buf[off] = grad + pulse
+                buf[off+1] = grad + 5
+                buf[off+2] = 15 + grad
+                buf[off+3] = 255
+
+        # Progress bar background
+        bar_w = int(w * 0.7)
+        bar_h = 16
+        bar_x = (w - bar_w) // 2
+        bar_y = cy + 20
+        for by in range(bar_h):
+            for bx in range(bar_w):
+                off = ((bar_y + by) * w + (bar_x + bx)) * 4
+                if off + 3 < len(buf):
+                    buf[off] = 50
+                    buf[off+1] = 50
+                    buf[off+2] = 55
+
+        # Filled progress
+        pct = self.download_progress / 100.0
+        fill_w = int(bar_w * pct)
+        for by in range(bar_h):
+            for bx in range(fill_w):
+                off = ((bar_y + by) * w + (bar_x + bx)) * 4
+                if off + 3 < len(buf):
+                    buf[off] = 255  # Cyan
+                    buf[off+1] = 220
+                    buf[off+2] = 0
+
+        # Spinning indicator
+        spin_r = 18
+        angle = t * 4.0
+        for i in range(12):
+            a = angle + i * (math.pi * 2.0 / 12)
+            sx = cx + int(math.cos(a) * spin_r)
+            sy = cy - 20 + int(math.sin(a) * spin_r)
+            brightness = int(80 + (i / 12.0) * 175)
+            if 0 <= sx < w and 0 <= sy < h:
+                for dx in range(-2, 3):
+                    for dy in range(-2, 3):
+                        px, py = sx + dx, sy + dy
+                        if 0 <= px < w and 0 <= py < h and dx*dx + dy*dy <= 4:
+                            off = (py * w + px) * 4
+                            buf[off] = brightness
+                            buf[off+1] = brightness
+                            buf[off+2] = brightness
+
+        return VideoFrame(w, h, pts_ms, bytes(buf))
+
+    def _render_buffering_frame(self, pts_ms: int, w: int, h: int) -> VideoFrame:
+        """Renders a buffering indicator while waiting for decoded frames."""
+        buf = bytearray(w * h * 4)
+        cx, cy = w // 2, h // 2
+        t = pts_ms / 1000.0
+
+        # Dark background
+        for y in range(h):
+            for x in range(w):
+                off = (y * w + x) * 4
+                buf[off] = 12
+                buf[off+1] = 12
+                buf[off+2] = 18
+                buf[off+3] = 255
+
+        # Pulsing ring
+        ring_r = 24
+        ring_thick = 4
+        pulse = 0.5 + 0.5 * math.sin(t * 6.0)
+        for dy in range(-ring_r - ring_thick, ring_r + ring_thick + 1):
+            for dx in range(-ring_r - ring_thick, ring_r + ring_thick + 1):
+                dist = math.sqrt(dx*dx + dy*dy)
+                if ring_r - ring_thick <= dist <= ring_r + ring_thick:
+                    px, py = cx + dx, cy + dy
+                    if 0 <= px < w and 0 <= py < h:
+                        angle = math.atan2(dy, dx)
+                        arc_val = (angle + t * 5.0) % (2 * math.pi)
+                        if arc_val < math.pi * 1.5:
+                            bright = int(120 + 135 * pulse)
+                            off = (py * w + px) * 4
+                            buf[off] = bright
+                            buf[off+1] = int(bright * 0.9)
+                            buf[off+2] = 0
+
+        return VideoFrame(w, h, pts_ms, bytes(buf))
 
     def _render_riscv_core_frame(self, t: float, w: int, h: int) -> bytearray:
         """Channel: Rotating 3D RISC-V Sovereign Holographic Core."""
@@ -806,45 +1067,214 @@ class YouTubeStreamRelay:
                 err += dx
                 y0 += sy
 
-    def generate_audio_pcm(self, duration_sec: float) -> bytes:
+    def generate_audio_pcm(self, duration_sec: float = 4.0) -> bytes:
         """
-        Generates 16-bit 44.1 kHz PCM audio synchronized to current channel/video stream.
-        Features rich polyphonic ambient chord harmonies, sub-bass, and smooth looping envelope.
+        Reconstructed procedural audio synthesis engine.
+        Produces rich, distinctive multi-instrument soundtracks tailored to each channel/genre:
+        - Style 'riscv' / 'tech': Fast cybernetic A-minor arpeggio + 55Hz sub-bass pulse
+        - Style 'synth': 80s Outrun retrowave, detuned brass chords & pumping 8th-note bassline
+        - Style 'matrix': Deep 41Hz dark telemetry drone & crystalline falling code raindrops
+        - Style 'music' (e.g. Rick Astley offline): Baroque organ fugue counterpoint in D minor
+        - Style 'lofi': Warm 70 BPM jazzhop, extended 9th/13th electric piano chords with flutter
+        - Style 'space' / 'animation': Majestic cinematic orchestral brass & swelling celestial pads
+        - Custom URLs: Deterministic hash-based melody, scale, rhythm, and tempo generator
         """
         sample_count = int(duration_sec * self.sample_rate)
         pcm = bytearray(sample_count * 2)
+        two_pi = 2.0 * math.pi
+        style = self.channel_info.get("style", "custom")
+        if self.active_video_id not in [v["id"] for v in WORLD_VIDEOS]:
+            style = "custom"
 
-        chord_progressions = [
-            [261.63, 329.63, 392.00, 523.25],  # C maj7
-            [220.00, 261.63, 329.63, 440.00],  # A min7
-            [174.61, 220.00, 261.63, 349.23],  # F maj7
-            [196.00, 246.94, 293.66, 392.00],  # G dom7
-        ]
-        freqs_count = len(chord_progressions)
+        # Engine 1: Cyber RISC-V / Tech (Channel 0 / Style 'riscv' / 'tech')
+        if style in ("riscv", "tech"):
+            arp_freqs = [110.0, 164.81, 220.0, 261.63, 329.63, 261.63, 220.0, 164.81,
+                         130.81, 164.81, 261.63, 329.63, 392.00, 329.63, 261.63, 196.00]
+            step_len = duration_sec / len(arp_freqs)
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                step_idx = int(t / step_len) % len(arp_freqs)
+                step_t = (t % step_len) / step_len
+                f = arp_freqs[step_idx]
 
-        for i in range(sample_count):
-            t = i / float(self.sample_rate)
-            ch_idx = int((t / max(0.1, duration_sec)) * freqs_count) % freqs_count
-            freqs = chord_progressions[ch_idx]
+                note_env = math.exp(-step_t * 5.0)
+                lead = math.sin(two_pi * f * t) * 0.28 + math.sin(two_pi * f * 2.0 * t) * 0.12
+                sub = math.sin(two_pi * 55.0 * t) * 0.30 * (0.8 + 0.2 * math.cos(two_pi * 2.0 * t))
+                val = lead * note_env + sub
 
-            # Smooth loop envelope at boundaries to prevent clicking
-            env = 1.0
-            loop_t = t / max(0.1, duration_sec)
-            if loop_t < 0.02:
-                env = loop_t / 0.02
-            elif loop_t > 0.98:
-                env = (1.0 - loop_t) / 0.02
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
 
-            val = 0.0
-            for f in freqs:
-                val += math.sin(self.audio_phase * (f / 261.63)) * 0.20
-            # Sub-bass
-            val += math.sin(self.audio_phase * (freqs[0] * 0.5 / 261.63)) * 0.22
-            # Rhythmic pulse
-            pulse = 0.88 + 0.12 * math.sin(t * 8.0 * math.pi)
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
 
-            val_int = int(max(-32767, min(32767, val * env * pulse * 22000)))
-            struct.pack_into("<h", pcm, i * 2, val_int)
-            self.audio_phase += (261.63 * 2.0 * math.pi) / self.sample_rate
+        # Engine 2: 80s Retrowave / Outrun Synth (Channel 1 / Style 'synth')
+        elif style == "synth":
+            chords = [
+                (92.50, 138.59, 185.00, 220.00),  # F#m
+                (73.42, 110.00, 146.83, 185.00),  # D
+                (110.00, 164.81, 220.00, 277.18), # A
+                (82.41, 123.47, 164.81, 207.65)   # E
+            ]
+            bar_len = duration_sec / len(chords)
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                bar_idx = int(t / bar_len) % len(chords)
+                chord = chords[bar_idx]
+                root = chord[0]
+
+                # Pumping 8th-note bass with octave bounce
+                bass_step = int((t % 1.0) * 8.0)
+                bass_f = root * (1.0 if (bass_step % 2 == 0) else 2.0)
+                bass_env = math.exp(-((t * 8.0) % 1.0) * 3.5)
+                bass = math.sin(two_pi * bass_f * t) * 0.35 * bass_env
+
+                # Detuned brass chords
+                pad = 0.0
+                for f in chord:
+                    pad += math.sin(two_pi * f * t) * 0.08
+                    pad += math.sin(two_pi * (f * 1.004) * t) * 0.06
+
+                duck = 0.55 + 0.45 * (math.sin(two_pi * 2.0 * t) ** 2)
+                val = bass + (pad * duck)
+
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
+
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
+
+        # Engine 3: Matrix Dark Sovereign Ambient & Falling Code Drops (Channel 2 / Style 'matrix')
+        elif style == "matrix":
+            drop_times = [0.15, 0.45, 0.9, 1.3, 1.8, 2.2, 2.7, 3.1, 3.6]
+            drop_freqs = [440.0, 523.25, 659.25, 783.99, 880.0, 987.77, 1046.5, 659.25, 523.25]
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                drone = math.sin(two_pi * 41.2 * t) * 0.30 + math.sin(two_pi * 41.6 * t) * 0.15
+
+                chime = 0.0
+                for dt, df in zip(drop_times, drop_freqs):
+                    if dt <= t < dt + 0.35:
+                        d_t = t - dt
+                        d_env = math.exp(-d_t * 14.0)
+                        chime += (math.sin(two_pi * df * t) + 0.3 * math.sin(two_pi * df * 2.0 * t)) * d_env * 0.25
+
+                val = drone + chime
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
+
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
+
+        # Engine 4: Classical Baroque Organ Fugue in D minor (Style 'music' / Rick Astley offline)
+        elif style == "music":
+            f_chords = [
+                (73.42, 110.0, 146.83, 174.61),   # Dm
+                (58.27, 87.31, 116.54, 146.83),   # Bb
+                (49.00, 73.42, 98.00, 116.54),    # Gm
+                (55.00, 82.41, 110.00, 138.59)    # A
+            ]
+            bar_len = duration_sec / len(f_chords)
+            melody = [293.66, 329.63, 349.23, 392.00, 349.23, 329.63, 293.66, 277.18,
+                      293.66, 349.23, 440.00, 392.00, 349.23, 329.63, 277.18, 293.66]
+            m_step = duration_sec / len(melody)
+
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                bar_idx = int(t / bar_len) % len(f_chords)
+                chord = f_chords[bar_idx]
+
+                organ = 0.0
+                for f in chord:
+                    organ += (math.sin(two_pi * f * t) + 0.4 * math.sin(two_pi * f * 2.0 * t) + 0.25 * math.sin(two_pi * f * 3.0 * t)) * 0.07
+
+                m_idx = int(t / m_step) % len(melody)
+                mf = melody[m_idx]
+                mel_env = 0.8 + 0.2 * math.sin(two_pi * (t % m_step) / m_step)
+                mel = (math.sin(two_pi * mf * t) + 0.3 * math.sin(two_pi * mf * 2.0 * t)) * 0.18 * mel_env
+
+                val = organ + mel
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
+
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
+
+        # Engine 5: Peaceful Lo-Fi Chillhop / Piano Beats (Style 'lofi' / Lofi Girl)
+        elif style == "lofi":
+            lofi_chords = [
+                (73.42, 174.61, 220.00, 261.63, 329.63),  # Dm9
+                (49.00, 174.61, 246.94, 329.63, 440.00),  # G13
+                (65.41, 164.81, 196.00, 246.94, 293.66),  # Cmaj9
+                (55.00, 164.81, 196.00, 261.63, 329.63)   # Am9
+            ]
+            bar_len = duration_sec / len(lofi_chords)
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                bar_idx = int(t / bar_len) % len(lofi_chords)
+                chord = lofi_chords[bar_idx]
+                flutter = 1.0 + 0.004 * math.sin(two_pi * 4.5 * t)
+                tremolo = 0.85 + 0.15 * math.sin(two_pi * 3.0 * t)
+
+                piano = 0.0
+                for f in chord:
+                    piano += math.sin(two_pi * f * flutter * t) * 0.08
+                bass = math.sin(two_pi * chord[0] * t) * 0.28
+
+                val = (piano * tremolo) + bass
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
+
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
+
+        # Engine 6: Cinematic Orchestral Brass / Fanfare (Style 'space' / 'animation')
+        elif style in ("space", "animation"):
+            space_chords = [
+                (65.41, 130.81, 196.00, 261.63, 329.63),  # C
+                (98.00, 146.83, 196.00, 246.94, 293.66),  # G
+                (87.31, 130.81, 174.61, 220.00, 261.63),  # F
+                (65.41, 130.81, 196.00, 261.63, 392.00)   # C
+            ]
+            bar_len = duration_sec / len(space_chords)
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                bar_idx = int(t / bar_len) % len(space_chords)
+                chord = space_chords[bar_idx]
+                brass = 0.0
+                for f in chord:
+                    brass += (math.sin(two_pi * f * t) + 0.3 * math.sin(two_pi * f * 2.0 * t)) * 0.08
+                timpani = math.sin(two_pi * 45.0 * t) * math.exp(-((t % 1.0) * 8.0)) * 0.35
+                val = brass + timpani
+
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
+
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
+
+        # Engine 7: Dynamic URL Hash-Based Procedural Generator (For ANY Arbitrary Video URL)
+        else:
+            h = hashlib.sha256(self.active_url.encode("utf-8")).digest()
+            roots = [130.81, 146.83, 155.56, 174.61, 196.00, 207.65, 220.00, 246.94]
+            base_f = roots[h[0] % len(roots)]
+            scale_steps = [0, 2, 4, 7, 9, 12, 14, 16] if (h[1] % 2 == 0) else [0, 3, 5, 7, 10, 12, 15, 17]
+            melody_notes = [base_f * (2.0 ** (scale_steps[h[k] % len(scale_steps)] / 12.0)) for k in range(2, 10)]
+            m_step = duration_sec / len(melody_notes)
+
+            for i in range(sample_count):
+                t = i / self.sample_rate
+                m_idx = int(t / m_step) % len(melody_notes)
+                mf = melody_notes[m_idx]
+                lead_env = math.exp(-((t % m_step) / m_step) * 4.0)
+                lead = (math.sin(two_pi * mf * t) + 0.25 * math.sin(two_pi * mf * 2.0 * t)) * lead_env * 0.28
+                bass = math.sin(two_pi * (base_f * 0.5) * t) * 0.25
+
+                val = lead + bass
+                if t < 0.02: val *= (t / 0.02)
+                elif t > duration_sec - 0.02: val *= ((duration_sec - t) / 0.02)
+
+                val_int = int(max(-32767, min(32767, val * 24000)))
+                struct.pack_into("<h", pcm, i * 2, val_int)
 
         return bytes(pcm)

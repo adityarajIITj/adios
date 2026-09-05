@@ -20,6 +20,7 @@ import threading
 RAM_BASE = 0x80000000
 RAM_SIZE = 64 * 1024 * 1024  # 64 MB Physical RAM (Default)
 RAM_SIZE_256MB = 256 * 1024 * 1024  # 256 MB Physical RAM (Expanded)
+RAM_SIZE_512MB = 512 * 1024 * 1024  # 512 MB Physical RAM (AdiOS v2.0 Stable Sovereign Workstation)
 
 # MMIO Peripherals Map
 VPU_BASE        = 0x30000000  # Video Processing Unit (30 FPS YouTube / Video)

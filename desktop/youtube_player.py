@@ -3,20 +3,20 @@
 AdiOS Sovereign YouTube Desktop Player Application (desktop/youtube_player.py)
 A high-performance 30 FPS windowed media player for the AdiOS Workstation:
 - Native Widescreen Video Viewport with VPU Hardware Controller Integration
-- Live Internet & World YouTube Video Streaming (Rick Astley, RISC-V, Bunny, Apollo, Lofi)
+- REAL YouTube Video Streaming via yt-dlp + ffmpeg Pipeline
+- Live Internet & World YouTube Video Streaming with Download Progress
 - Interactive URL Text Box: Typing, Backspace, Load, Enter keydown routing
 - Real-time Network Status Indicator: [NET: ONLINE] / [NET: OFFLINE]
 - Interactive Transport Bar: Play, Pause, Seek, Volume, and Quick-Select Catalog
 - Telemetry HUD: Realtime FPS, Presentation Timestamp, and Buffer Gauge
 
-Zero external dependencies. Pure RV32IM workstation window architecture.
 STRICT ZERO EMOJI POLICY ENFORCED.
 """
 
 import time
 from typing import Optional, Tuple, Dict, Any
 from vm.vpu import VPU, CMD_PLAY, CMD_PAUSE, CMD_STOP, CMD_SEEK, STATUS_PLAYING
-from net.yt_relay import YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id
+from net.yt_relay import YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id, STREAM_DOWNLOADING, STREAM_STREAMING, STREAM_ERROR, STREAM_DECODING, STREAM_IDLE
 
 
 def get_system_clipboard_text() -> str:
@@ -123,8 +123,10 @@ class YouTubePlayerApp:
         self.scrub_w = 480
         self.scrub_h = 8
         
-        # Host Sound Output State
-        self.sound_enabled = True
+        # Host Sound Output State: Default to MUTED / quiet so desktop boot never auto-blares sound
+        self.sound_enabled = False
+        if hasattr(self.vpu, "sound_enabled"):
+            self.vpu.sound_enabled = False
 
         # Transport Buttons Layout (Row at y = 356, h = 24)
         self.btn_play  = (16, 356, 56, 24)   # Play / Pause
@@ -135,7 +137,7 @@ class YouTubePlayerApp:
         self.btn_sound = (406, 356, 54, 24)  # Sound toggle: [SND:ON] / [MUTED]
         self.btn_qual  = (466, 356, 46, 24)  # Next catalog video
         
-        # Auto-start playback on launch
+        # Auto-start video playback on launch (video runs at 30 FPS, audio stays muted until toggled)
         self.play()
 
     @property
@@ -157,6 +159,7 @@ class YouTubePlayerApp:
         """Pauses playback."""
         self.is_playing = False
         self.vpu.write32(0x30000000, CMD_PAUSE)
+        self.vpu.stop_host_audio()
 
     def toggle_play(self):
         """Toggles play / pause state."""
@@ -175,6 +178,7 @@ class YouTubePlayerApp:
     def select_catalog_video(self, idx: int):
         """Switches to a world catalog video by index."""
         if 0 <= idx < len(WORLD_VIDEOS):
+            self.vpu.stop_host_audio()
             self.active_catalog_idx = idx
             v = WORLD_VIDEOS[idx]
             self.url_text = v["url"]
@@ -190,14 +194,22 @@ class YouTubePlayerApp:
         url = self.url_text.strip()
         if not url:
             return
+        self.vpu.stop_host_audio()
         success = self.relay.load_url(url)
         if success:
             self.vpu.duration_ms = self.relay.duration_ms
             self.vpu.write32(0x30000024, 0)
             self.vpu.write32(0x30000000, CMD_SEEK)
             self.play()
-            self.status_message = f"Stream: {self.relay.channel_info.get('title', 'Video')[:24]}"
+            self.status_message = f"Loading: {self.relay.channel_info.get('title', 'Video')[:24]}"
         self.url_focused = False
+
+    def close(self):
+        """Cleanup resources on application close."""
+        self.pause()
+        self.vpu.stop_host_audio()
+        if hasattr(self.relay, 'cleanup'):
+            self.relay.cleanup()
 
     def cycle_volume(self):
         """Cycles audio volume levels (0%, 30%, 60%, 80%, 100%)."""
@@ -223,6 +235,14 @@ class YouTubePlayerApp:
         self.sound_enabled = not self.sound_enabled
         if hasattr(self.vpu, "set_sound_enabled"):
             self.vpu.set_sound_enabled(self.sound_enabled)
+        try:
+            from audio.sound_server import SoundServer
+            server = SoundServer.get_instance()
+            server.set_muted(not self.sound_enabled)
+            if not self.sound_enabled:
+                server.stop_all()
+        except Exception:
+            pass
         self.status_message = f"Speaker Audio: {'ON (Audible)' if self.sound_enabled else 'MUTED'}"
 
     def handle_key(self, k: str) -> bool:
@@ -339,7 +359,11 @@ class YouTubePlayerApp:
         return rx <= x <= rx + rw and ry <= y <= ry + rh
 
     def step(self, now: Optional[float] = None) -> bool:
-        """Paces video stream frame at 30 FPS."""
+        """Paces video stream frame at 30 FPS and transitions to real audio when extracted."""
+        if self.sound_enabled and self.is_playing and self.relay:
+            real_wav = self.relay.get_audio_wav_path()
+            if real_wav and getattr(self.vpu, "_audio_temp_path", None) != real_wav:
+                self.vpu.play_host_audio()
         return self.vpu.step(now)
 
     def render(self, surface_buffer: bytearray, surf_w: int, surf_h: int):
@@ -450,9 +474,34 @@ class YouTubePlayerApp:
         dur_time_str = f"{dur_s // 60:02d}:{dur_s % 60:02d}"
         time_display = f"{cur_time_str} / {dur_time_str}"
         self._draw_text(surface_buffer, surf_w, 20, 385, time_display, (170, 180, 200))
-        
-        telemetry_txt = f"Frames: {self.vpu.frames_played} | 256MB RAM | {net_text}"
-        self._draw_text(surface_buffer, surf_w, 250, 385, telemetry_txt[:34], (110, 130, 160))
+
+        # Stream status indicator
+        stream_st = getattr(self.relay, 'stream_state', STREAM_IDLE)
+        if stream_st == STREAM_DOWNLOADING:
+            pct = self.relay.download_progress
+            status_txt = f"Downloading: {pct:.0f}%"
+            status_col = (0, 200, 255)
+        elif stream_st == STREAM_DECODING:
+            status_txt = "Decoding..."
+            status_col = (255, 200, 0)
+        elif stream_st == STREAM_STREAMING:
+            is_real = getattr(self.relay, 'is_real_video_active', False)
+            status_txt = "REAL VIDEO" if is_real else "STREAMING"
+            status_col = (0, 255, 120) if is_real else (200, 200, 200)
+        elif stream_st == STREAM_ERROR:
+            err = getattr(self.relay, '_stream_error_msg', 'Error')
+            status_txt = f"ERR: {err[:18]}"
+            status_col = (255, 60, 60)
+        else:
+            status_txt = f"Frames: {self.vpu.frames_played}"
+            status_col = (110, 130, 160)
+
+        telemetry_txt = f"{status_txt} | {net_text}"
+        self._draw_text(surface_buffer, surf_w, 220, 385, telemetry_txt[:38], status_col)
+
+        # Update duration from relay if it changed (yt-dlp resolves real duration)
+        if self.relay.duration_ms > 0 and self.relay.duration_ms != self.vpu.duration_ms:
+            self.vpu.duration_ms = self.relay.duration_ms
 
     def _draw_button(self, buf: bytearray, pitch_w: int, rect: Tuple[int, int, int, int], text: str, color: Tuple[int, int, int, int]):
         rx, ry, rw, rh = rect

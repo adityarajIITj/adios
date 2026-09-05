@@ -99,45 +99,105 @@ class VPU:
         self.relay = None
 
     def play_host_audio(self, pcm_bytes: Optional[bytes] = None):
-        """Starts asynchronous looping audio playback on host speakers."""
+        """Starts asynchronous looping audio playback on host speakers.
+        Priority: Real audio WAV/media from relay > Provided PCM bytes > Synthetic PCM."""
         if not self.sound_enabled:
             return
-        try:
-            import winsound
-            import tempfile
-            import os
-        except ImportError:
-            return
 
+        try:
+            from audio.sound_server import SoundServer
+            server = SoundServer.get_instance()
+            if server.is_muted or server.master_volume <= 0.01:
+                return
+        except Exception:
+            server = None
+
+        # === PRIORITY 1: Real audio WAV or media from relay (actual YouTube audio) ===
+        if self.relay and hasattr(self.relay, 'get_audio_wav_path'):
+            media_path = self.relay.get_audio_wav_path()
+            if media_path and os.path.isfile(media_path):
+                if server:
+                    server.stream_audio_file(media_path, loop=True)
+                    self._host_audio_playing = True
+                    return
+                else:
+                    self._play_wav_direct(media_path)
+                    return
+
+        # === PRIORITY 2: Provided or generated PCM bytes (fallback) ===
         if pcm_bytes is None and self.relay:
             pcm_bytes = self.relay.generate_audio_pcm(duration_sec=4.0)
         if not pcm_bytes:
             return
 
+        if server:
+            server.play_pcm_sound(pcm_bytes, loop=True)
+            self._host_audio_playing = True
+            return
+
         try:
+            import tempfile
+            import os
             wav = self._pcm_to_wav(pcm_bytes, sample_rate=44100, volume_pct=self.volume)
             tmp = tempfile.NamedTemporaryFile(prefix="adios_audio_", suffix=".wav", delete=False)
             tmp.write(wav)
             tmp.close()
 
-            # Clean up previously playing audio
+            # Clean up previously playing audio temp file
             old_path = getattr(self, "_audio_temp_path", None)
-            if old_path:
+            if old_path and old_path != tmp.name:
                 try:
-                    winsound.PlaySound(None, winsound.SND_PURGE)
                     if os.path.exists(old_path):
                         os.remove(old_path)
                 except Exception:
                     pass
 
             self._audio_temp_path = tmp.name
+            import winsound
             winsound.PlaySound(self._audio_temp_path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+            self._host_audio_playing = True
+        except Exception:
+            pass
+
+    def _play_wav_direct(self, wav_path: str):
+        """Plays a WAV or media file directly through SoundServer or winsound."""
+        try:
+            from audio.sound_server import SoundServer
+            server = SoundServer.get_instance()
+            if server and not server.is_muted and server.master_volume > 0.01:
+                server.stream_audio_file(wav_path, loop=True)
+                self._host_audio_playing = True
+                return
+        except Exception:
+            pass
+
+        try:
+            import winsound
+            import os
+
+            old_path = getattr(self, "_audio_temp_path", None)
+            if old_path:
+                try:
+                    winsound.PlaySound(None, winsound.SND_PURGE)
+                    if old_path != wav_path and os.path.exists(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
+
+            self._audio_temp_path = wav_path
+            winsound.PlaySound(wav_path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
             self._host_audio_playing = True
         except Exception:
             pass
 
     def stop_host_audio(self):
         """Silences host speaker audio playback and cleans temporary audio files."""
+        try:
+            from audio.sound_server import SoundServer
+            SoundServer.get_instance().stop_all()
+        except Exception:
+            pass
+
         try:
             import winsound
             import os
@@ -233,7 +293,14 @@ class VPU:
             self.seek_target = val
         elif addr == VPU_VOLUME:
             self.volume = max(0, min(100, val))
-            if self._host_audio_playing:
+            try:
+                from audio.sound_server import SoundServer
+                SoundServer.get_instance().set_volume_pct(self.volume)
+            except Exception:
+                pass
+            if self.volume <= 1:
+                self.stop_host_audio()
+            elif self._host_audio_playing and self.sound_enabled:
                 self.play_host_audio()
         elif addr == VPU_STREAM_TYPE:
             self.stream_type = val
@@ -323,6 +390,11 @@ class VPU:
                     self._current_frame = frame
                     self.frames_played += 1
                     advanced = True
+
+        # Check if real audio has become available and start it
+        if advanced and self.relay and hasattr(self.relay, 'is_real_video_active'):
+            if self.relay.is_real_video_active and not self._host_audio_playing and self.sound_enabled:
+                self.play_host_audio()
 
         return advanced
 

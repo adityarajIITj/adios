@@ -6,6 +6,9 @@ Verifies:
 - Pure Python ISO MP4 box/atom progressive demuxer
 - Real YouTube URL & video ID parser across all standard formats
 - YouTube oEmbed metadata resolution & world video catalog
+- yt-dlp downloader availability and command construction
+- ffmpeg av_decoder initialization and frame buffer management
+- Real video pipeline state machine (IDLE -> DOWNLOADING -> DECODING -> STREAMING)
 - Sovereign YouTube Player interactive keyboard typing, URL loading, and catalog switching
 - VPU 30 FPS frame delivery & PTS audio-video synchronization
 
@@ -21,7 +24,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from drivers.net_bridge import HostNetBridge, get_net_bridge
 from net.mp4_demuxer import MP4Demuxer, MP4Box, MP4Track
-from net.yt_relay import YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id, fetch_youtube_metadata
+from net.yt_relay import (
+    YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id, fetch_youtube_metadata,
+    STREAM_IDLE, STREAM_DOWNLOADING, STREAM_STREAMING, STREAM_ERROR, STREAM_OFFLINE
+)
+from net.yt_downloader import YouTubeDownloader, find_yt_dlp_binary, STATE_IDLE, STATE_READY, STATE_ERROR
+from net.av_decoder import AVDecoder, DECODER_IDLE, DECODER_RUNNING, DECODER_STOPPED, _find_ffmpeg
 from desktop.youtube_player import YouTubePlayerApp
 from vm.vpu import VPU
 
@@ -150,17 +158,94 @@ class TestNetDriverYouTube(unittest.TestCase):
         self.assertEqual(relay.active_video_id, "cwZb2mqId0A")
         self.assertIn("Apollo", relay.channel_info["title"])
         
-        # Generate 30 FPS Video Frame at PTS=1000ms
+        # Stream state should be DOWNLOADING (async pipeline started)
+        self.assertIn(relay.stream_state, [STREAM_DOWNLOADING, STREAM_STREAMING, STREAM_ERROR])
+
+        # Generate 30 FPS Video Frame at PTS=1000ms (will show download progress or fallback)
         frame = relay.generate_frame(pts_ms=1000, width=480, height=240)
         self.assertEqual(frame.width, 480)
         self.assertEqual(frame.height, 240)
         self.assertEqual(frame.pts_ms, 1000)
         self.assertEqual(len(frame.data), 480 * 240 * 4)
 
-        # Generate Audio PCM (0.1s at 44.1 kHz)
+        # Generate Audio PCM (0.1s at 44.1 kHz) - fallback synthesizer
         pcm = relay.generate_audio_pcm(0.1)
         expected_bytes = int(0.1 * 44100) * 2
         self.assertEqual(len(pcm), expected_bytes)
+
+        # Cleanup
+        relay.cleanup()
+        self.assertEqual(relay.stream_state, STREAM_IDLE)
+
+    def test_05a_ytdlp_downloader_availability(self):
+        """Verify yt-dlp binary is discoverable after pip install."""
+        ytdlp_bin = find_yt_dlp_binary()
+        self.assertIsNotNone(ytdlp_bin, "yt-dlp should be available after pip install")
+
+        downloader = YouTubeDownloader()
+        self.assertTrue(downloader.is_available())
+        self.assertEqual(downloader.state, STATE_IDLE)
+        downloader.cleanup()
+
+    def test_05b_ytdlp_command_construction(self):
+        """Verify yt-dlp command line is correctly constructed."""
+        downloader = YouTubeDownloader()
+        if not downloader.is_available():
+            self.skipTest("yt-dlp not available")
+
+        cmd = downloader._build_ytdlp_command(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "/tmp/test_video.mp4"
+        )
+        self.assertIsInstance(cmd, list)
+        self.assertIn("--no-playlist", cmd)
+        self.assertIn("--merge-output-format", cmd)
+        self.assertIn("mp4", cmd)
+        self.assertIn("https://www.youtube.com/watch?v=dQw4w9WgXcQ", cmd)
+        downloader.cleanup()
+
+    def test_05c_av_decoder_init(self):
+        """Verify AVDecoder initializes correctly with expected geometry."""
+        decoder = AVDecoder(
+            media_path="nonexistent.mp4",
+            width=480, height=270, fps=30
+        )
+        self.assertEqual(decoder.width, 480)
+        self.assertEqual(decoder.height, 270)
+        self.assertEqual(decoder.fps, 30)
+        self.assertEqual(decoder.frame_size, 480 * 270 * 4)
+        self.assertEqual(decoder.state, DECODER_IDLE)
+        self.assertEqual(decoder.buffer_count, 0)
+        self.assertIsNone(decoder.get_frame())
+        decoder.cleanup()
+
+    def test_05d_relay_stream_state_machine(self):
+        """Verify relay stream state transitions for synthesized channels."""
+        relay = YouTubeStreamRelay(0)  # RISC-V (synthesized)
+        self.assertEqual(relay.stream_state, STREAM_IDLE)
+
+        # Switch to Matrix (synthesized channel)
+        relay.set_channel(2)
+        self.assertEqual(relay.stream_state, STREAM_OFFLINE)
+        self.assertEqual(relay.active_video_id, "ch_matrix")
+
+        # Switch to catalog YouTube video (real pipeline triggers)
+        relay.set_channel(3)  # Rick Astley
+        self.assertIn(relay.stream_state, [STREAM_DOWNLOADING, STREAM_ERROR])
+
+        relay.cleanup()
+
+    def test_05e_relay_get_audio_wav_path(self):
+        """Verify get_audio_wav_path returns None when no real audio is available."""
+        relay = YouTubeStreamRelay(0)
+        self.assertIsNone(relay.get_audio_wav_path())
+        relay.cleanup()
+
+    def test_05f_relay_seek_with_decoder(self):
+        """Verify seek works without crashing when no decoder is active."""
+        relay = YouTubeStreamRelay(0)
+        relay.seek(5000)  # Should not raise
+        relay.cleanup()
 
     def test_06_youtube_player_interactive_typing_and_load(self):
         """Verify Sovereign YouTube Player keyboard URL typing and catalog switching."""
@@ -197,7 +282,8 @@ class TestNetDriverYouTube(unittest.TestCase):
         app.handle_key("https://www.youtube.com/watch?v=MYxamzOcVbs")
         self.assertEqual(app.url_text, "https://www.youtube.com/watch?v=MYxamzOcVbs")
         app.handle_key("\r")
-        self.assertTrue("Codex" in app.relay.channel_info["title"] or "MYxamzOcVbs" in app.relay.channel_info["title"])
+        # After loading, the relay should have the video ID
+        self.assertEqual(app.relay.active_video_id, "MYxamzOcVbs")
 
         # Test [PASTE] button click
         clicked = app.handle_click(app.rect_paste[0] + 5, app.rect_paste[1] + 5)

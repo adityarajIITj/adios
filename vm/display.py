@@ -34,8 +34,8 @@ RES_XGA = (1024, 768)
 RES_HD  = (1280, 720)
 RES_VGA = (640, 480)
 
-DEFAULT_WIDTH  = 1024
-DEFAULT_HEIGHT = 768
+DEFAULT_WIDTH  = 1280
+DEFAULT_HEIGHT = 720
 
 class DisplayWindow:
     """
@@ -49,7 +49,7 @@ class DisplayWindow:
         height: int = DEFAULT_HEIGHT,
         scale: float = 1.0,
         uart_callback: Optional[Callable[[int], None]] = None,
-        title: str = "AdiOS Sovereign Workstation (1024x768 RV32IM)"
+        title: str = "AdiOS Sovereign Workstation (1280x720 HD 60 FPS)"
     ):
         self.fb = fb_memory
         self.width = width

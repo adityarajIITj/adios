@@ -25,9 +25,10 @@ STRICT ZERO EMOJI POLICY.
 """
 
 from typing import List, Tuple, Optional, Callable, Dict, Any
+from graphics.engine2d import draw_rounded_rect, draw_circle, draw_gradient_v, draw_drop_shadow
 
-DEFAULT_WIDTH  = 1024
-DEFAULT_HEIGHT = 768
+DEFAULT_WIDTH  = 1280
+DEFAULT_HEIGHT = 720
 TASKBAR_HEIGHT = 24
 
 WIDTH  = DEFAULT_WIDTH
@@ -35,18 +36,22 @@ HEIGHT = DEFAULT_HEIGHT
 
 # Tokyo Dark Sovereign Color Palette
 COLOR_DESKTOP_BG = 0x001A1B26
+COLOR_TITLE_ACT_TOP = 0x003D59A1
+COLOR_TITLE_ACT_BOT = 0x001F2335
+COLOR_TITLE_INACT_TOP = 0x0024283B
+COLOR_TITLE_INACT_BOT = 0x0016161E
 COLOR_TITLE_ACT  = 0x007AA2F7
 COLOR_TITLE_INACT= 0x00343B58
 COLOR_TITLE_TXT  = 0x00FFFFFF
 COLOR_BORDER_ACT = 0x007AA2F7
-COLOR_BORDER     = 0x00545C7E
+COLOR_BORDER     = 0x00414868
 COLOR_SHADOW_1   = 0x000F0F14
 COLOR_SHADOW_2   = 0x0009090D
 
-# Titlebar Button Colors
-COLOR_BTN_CLOSE  = 0x00F7768E  # Red
-COLOR_BTN_MAX    = 0x009ECE6A  # Green
-COLOR_BTN_MIN    = 0x00E0AF68  # Amber
+# Titlebar Button Colors (Modern Traffic Lights)
+COLOR_BTN_CLOSE  = 0x00ED6A5E  # Crimson Red
+COLOR_BTN_MAX    = 0x00F4BF4F  # Amber Yellow
+COLOR_BTN_MIN    = 0x0061C554  # Emerald Green
 COLOR_BTN_TXT    = 0x0016161E
 
 CHAR_WIDTH  = 8
@@ -359,81 +364,58 @@ class WindowManager:
         """Draws window drop shadow, window background, titlebar, controls, and client content."""
         wx, wy, ww, wh = win.x, win.y, win.w, win.h
 
-        # 1. Multi-Stage Drop Shadow (if floating)
+        # 1. Multi-Stage Soft Drop Shadow (if floating)
         if not win.maximized:
-            s1_bytes = bytes([COLOR_SHADOW_1 & 0xFF, (COLOR_SHADOW_1 >> 8) & 0xFF, (COLOR_SHADOW_1 >> 16) & 0xFF, 0])
-            for sy in range(wy + 5, min(self.height, wy + wh + 5)):
-                start_x = max(0, wx + 5)
-                end_x   = min(self.width, wx + ww + 5)
-                if start_x < end_x:
-                    fb[(sy * self.width + start_x) * 4 : (sy * self.width + end_x) * 4] = s1_bytes * (end_x - start_x)
+            draw_drop_shadow(fb, wx, wy, ww, wh, radius=10, alpha=0.45, screen_w=self.width, screen_h=self.height)
 
-        # 2. Window Background
-        bg_bytes = bytes([win.bg_color & 0xFF, (win.bg_color >> 8) & 0xFF, (win.bg_color >> 16) & 0xFF, 0])
-        for y in range(wy, min(self.height, wy + wh)):
-            fb[(y * self.width + wx) * 4 : (y * self.width + wx + ww) * 4] = bg_bytes * ww
-
-        # 3. Outer Border (Active Window Glow)
+        # 2. Window Background with Rounded Outer Border
         border_col = COLOR_BORDER_ACT if win.active else COLOR_BORDER
-        b_bytes = bytes([border_col & 0xFF, (border_col >> 8) & 0xFF, (border_col >> 16) & 0xFF, 0])
-        # Top and Bottom border lines
-        fb[(wy * self.width + wx) * 4 : (wy * self.width + wx + ww) * 4] = b_bytes * ww
-        fb[((wy + wh - 1) * self.width + wx) * 4 : ((wy + wh - 1) * self.width + wx + ww) * 4] = b_bytes * ww
-        # Left and Right border lines
-        for y in range(wy, min(self.height, wy + wh)):
-            fb[(y * self.width + wx) * 4 : (y * self.width + wx + 1) * 4] = b_bytes
-            fb[(y * self.width + wx + ww - 1) * 4 : (y * self.width + wx + ww) * 4] = b_bytes
+        draw_rounded_rect(fb, wx, wy, ww, wh, radius=8, fill_color=win.bg_color, border_color=border_col, screen_w=self.width, screen_h=self.height)
 
-        # 4. Titlebar Header Strip (20px high)
-        tb_col = COLOR_TITLE_ACT if win.active else COLOR_TITLE_INACT
-        tb_bytes = bytes([tb_col & 0xFF, (tb_col >> 8) & 0xFF, (tb_col >> 16) & 0xFF, 0])
-        for ty in range(wy + 1, min(self.height, wy + 20)):
-            fb[(ty * self.width + wx + 1) * 4 : (ty * self.width + wx + ww - 1) * 4] = tb_bytes * (ww - 2)
+        # 3. Modern Titlebar Header (Gradient Fill + Top Rounded Corners)
+        tb_top = COLOR_TITLE_ACT_TOP if win.active else COLOR_TITLE_INACT_TOP
+        tb_bot = COLOR_TITLE_ACT_BOT if win.active else COLOR_TITLE_INACT_BOT
+        draw_rounded_rect(fb, wx, wy, ww, 22, radius=8, fill_color=tb_top, border_color=border_col, round_top_only=True, screen_w=self.width, screen_h=self.height)
+        draw_gradient_v(fb, wx + 1, wy + 2, ww - 2, 19, tb_top, tb_bot, screen_w=self.width, screen_h=self.height)
 
-        # 5. Titlebar Text (Truncated to avoid control buttons)
+        # 4. Titlebar Text (Truncated to avoid control buttons)
         title_limit = max(1, (ww - 75) // CHAR_WIDTH)
         display_title = win.title[:title_limit]
-        self._draw_string(fb, wx + 8, wy + 6, display_title, COLOR_TITLE_TXT, font_dict)
+        self._draw_string(fb, wx + 10, wy + 6, display_title, COLOR_TITLE_TXT, font_dict)
 
-        # 6. Titlebar Control Buttons: [_] Minimize, [^] Maximize, [X] Close
+        # 5. Titlebar Control Buttons: Modern Circular Traffic Lights
         if win.can_minimize:
             min_x = wx + ww - 54
-            self._draw_ctrl_button(fb, min_x, wy + 4, 12, 12, COLOR_BTN_MIN, "_", font_dict)
+            self._draw_traffic_light(fb, min_x + 5, wy + 11, COLOR_BTN_MIN, "_", font_dict)
 
         if win.can_maximize:
             max_x = wx + ww - 36
             sym = "v" if win.maximized else "^"
-            self._draw_ctrl_button(fb, max_x, wy + 4, 12, 12, COLOR_BTN_MAX, sym, font_dict)
+            self._draw_traffic_light(fb, max_x + 5, wy + 11, COLOR_BTN_MAX, sym, font_dict)
 
         if win.can_close:
             cls_x = wx + ww - 18
-            self._draw_ctrl_button(fb, cls_x, wy + 4, 12, 12, COLOR_BTN_CLOSE, "X", font_dict)
+            self._draw_traffic_light(fb, cls_x + 5, wy + 11, COLOR_BTN_CLOSE, "x", font_dict)
 
-        # 7. Corner Resize Grip Indicator (Bottom-Right)
+        # 6. Corner Resize Grip Indicator (Bottom-Right)
         if not win.maximized:
             self._draw_resize_grip(fb, wx + ww - 10, wy + wh - 10, border_col)
 
-        # 8. Dispatch Application Client Viewport Rendering Callback
+        # 7. Dispatch Application Client Viewport Rendering Callback
         if win.on_draw_content:
             win.on_draw_content(win, fb, font_dict)
 
-    def _draw_ctrl_button(
+    def _draw_traffic_light(
         self,
         fb: bytearray,
-        bx: int,
-        by: int,
-        bw: int,
-        bh: int,
+        cx: int,
+        cy: int,
         color: int,
         symbol: str,
         font_dict: Dict
     ):
-        """Draws rounded modern control pill button on window titlebar."""
-        c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
-        for y in range(by, min(self.height, by + bh)):
-            fb[(y * self.width + bx) * 4 : (y * self.width + bx + bw) * 4] = c_bytes * bw
-        # Draw central symbol
-        self._draw_string(fb, bx + 2, by + 2, symbol, COLOR_BTN_TXT, font_dict)
+        """Draws smooth circular macOS-style traffic light button on window titlebar."""
+        draw_circle(fb, cx, cy, radius=5, fill_color=color, screen_w=self.width, screen_h=self.height)
 
     def _draw_resize_grip(self, fb: bytearray, gx: int, gy: int, color: int):
         """Draws 3 diagonal dots representing modern window resize handle."""

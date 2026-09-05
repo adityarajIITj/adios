@@ -1,32 +1,31 @@
-# AdiOS (v2.0 Beta Phase 3: Network Drivers & Real Internet YouTube Streaming)
+# AdiOS (v2.0 Stable: Sovereign 720p HD Workstation, Vector Graphics Engine & Sound Server)
 
-**AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 3D vector graphics engine, Type-1 hypervisor, hardware Video Processing Unit (VPU), host network bridge & drivers, and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
+**AdiOS** is a minimalist, high-performance, bare-metal operating system, sovereign graphical desktop environment, 2D vector & 3D software rasterization engine, Type-1 hypervisor, hardware Video Processing Unit (VPU), low-latency audio server, host network bridge & drivers, and in-house systems programming language (**AdiPython**) designed and implemented from first principles for the 32-bit RISC-V (RV32IM) architecture.
 
 Inspired by the sovereign, ring-0, zero-bloat computing philosophy of Terry A. Davis's legendary operating system architecture, AdiOS reimagines sovereign computing within a rigorous modern mathematical, cryptographic, and cyber-engineering framework.
 
-- **Release Status**: `v2.0.0-beta.3 (Phase 3: Network Drivers & Real Internet Streaming)`
+- **Release Status**: `v2.0.0-stable (Sovereign 720p HD Workstation & Media Suite)`
 - **Target Architecture**: RISC-V 32-bit (RV32IM + H-Extension)
-- **Codebase Scale**: **45,000+ Lines of Code across 188 source files**
+- **Codebase Scale**: **48,000+ Lines of Code across 193 source files**
 - **Verification Harness**: **55/55 Automated Subsystems Passing (100% Success)**
-- **Host Network Driver Bridge**: **Native Host Socket Relay, ARP Synthesizer, Live DNS 8.8.8.8 & HTTP/HTTPS Stream Demuxer**
-- **Physical Memory**: **256 MB Physical RAM [0x80000000 - 0x8FFFFFFF] with Dynamic Zone Paging**
+- **Workstation Display**: **Native 1280x720 HD Widescreen at locked 60 FPS, Anti-Aliased Rounded Windows & Traffic Lights**
+- **Physical Memory**: **512 MB Physical RAM [0x80000000 - 0x9FFFFFFF] with High-Capacity Media Queues**
+- **Vector Graphics Engine**: **Procedural 2D rasterizer (`engine2d.py`) with rounded rects, gradient fills, drop shadows, and vector icons**
+- **Interactive Desktop Icons**: **Quick-launch icon grid (System, YouTube, 3D Arcade, AdiFS Files, Shell, Settings) with hover glow and double-click**
+- **System Tray Quick Toggles**: **Interactive Sound Flyout (Volume Slider, Mute, VU Meter) and Internet Flyout (Airplane Mode Toggle)**
+- **Low-Latency Audio Server**: **Polyphonic chiptune synthesis, UI click/notify sounds, and smooth PCM/WAV video streaming**
 - **Video Controller**: **Hardware MMIO VPU (0x30000000) with DMA Frame Blitter & Deterministic 30 FPS Pacing**
-- **Sovereign YouTube Player**: **Real Internet YouTube & World Video Streaming (Interactive URL Typing, Load, [ONLINE] Badge)**
-- **Media Engine**: **Pure Python 3 ISO Base Media File Format (MP4) Container Demuxer & YouTube oEmbed Metadata Resolver**
-- **Workstation Display**: **Native 1024x768 XGA Workstation with Window Snapping, Taskbar & Compositor**
-- **Desktop Customization**: **Sovereign ASCII Art Wallpaper Subsystem with Cyber Grid & Multi-Theme Switcher**
-- **Toolchains & Shell**: **In-OS C99 Compiler Driver (cc), Sovereign Make Engine & POSIX Utilities**
-- **Games & Simulation**: **Sovereign 3D Games Arcade (CastleAdiOS DDA Raycaster & StarFlight Wireframe)**
-- **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly.
+- **Sovereign YouTube Player**: **Real Internet YouTube Video/Audio Streaming (yt-dlp + av_decoder pipe with synthesized fallbacks)**
+- **Dependencies**: None. Pure standard Python 3 simulation harness and direct RV32 bare-metal assembly (`yt-dlp` optional for real YouTube downloading).
 
 <div align="center">
-  <img src="docs/assets/youtube_network_stream.png" alt="AdiOS Sovereign YouTube Player Real Internet Streaming" width="920"/>
-  <p><em>Figure 1: Live Sovereign YouTube Player streaming real-world internet video (Apna College - Complete Masterclass Codex AI Tool) at deterministic 30 FPS in the 1024x768 XGA Workstation with real photographic frame decoding, host PC speaker audio output, [PASTE] URL clipboard ingestion, [SND:ON] audio mute toggling, active Host Network Driver Bridge ([ONLINE]), and 256MB RAM telemetry.</em></p>
+  <img src="docs/assets/workstation_720p_hd.png" alt="AdiOS v2.0 Stable Sovereign Workstation 1280x720 HD" width="920"/>
+  <p><em>Figure 1: Live AdiOS v2.0 Stable Sovereign Workstation running in 1280x720 HD Widescreen at 60 FPS with Desktop Icon Grid, Anti-Aliased Rounded Windows, macOS-style Circular Traffic Lights, Soft Multi-Layer Drop Shadows, and Taskbar Tray with [VOL 80%] and [NET: ON] Quick Toggles.</em></p>
 </div>
 
 <div align="center">
-  <img src="docs/assets/workstation_1024x768.png" alt="AdiOS Sovereign Workstation 1024x768 XGA" width="920"/>
-  <p><em>Figure 2: Live AdiOS Sovereign Workstation (1024x768 XGA) with Sovereign Browser, SovereignSQL Terminal, OpenGL 3D Viewport, POSIX Shell, and Sovereign Wallpaper.</em></p>
+  <img src="docs/assets/youtube_sound_flyout.png" alt="AdiOS Sovereign YouTube Player and Sound Flyout" width="920"/>
+  <p><em>Figure 2: Live Sovereign YouTube Player streaming at 30 FPS alongside the Sound & Audio Master Flyout Card showing volume slider, mute control, and live VU output meter on the 512MB RAM Sovereign Workstation.</em></p>
 </div>
 
 ---
@@ -717,21 +716,28 @@ adios/
 |   `-- adifs.py            # AdiFS contiguous block filesystem driver
 |-- doldoc/                 # DolDoc Hypertext Subsystem
 |   `-- doldoc.py           # Universal hypertext markup parser & renderer
-|-- sound/                  # Audio Subsystems
+|-- audio/                  # Audio Subsystems & Synthesis
+|   |-- sound_server.py     # Low-latency audio server, volume/mute flyout & WAV streamer
 |   `-- tracker.py          # PC Speaker music tracker & synthesizer
+|-- graphics/               # Sovereign Graphics Engines
+|   |-- engine2d.py         # 2D Vector engine: rounded rects, traffic lights, drop shadows, icons
+|   `-- engine3d.py         # 3D Software rasterizer, Matrix4, perspective projection
 |-- vm/                     # In-house hardware simulation layer
-|   |-- vm.py               # 256MB RV32IM CPU core with decode cache
+|   |-- vm.py               # 512MB RV32IM CPU core with decode cache
 |   |-- vpu.py              # Hardware MMIO Video Processing Unit (30 FPS DMA)
-|   `-- display.py          # 1024x768 Framebuffer window & mouse driver
+|   `-- display.py          # 1280x720 HD 60 FPS Framebuffer window & mouse driver
 |-- net/                    # Network transports & streaming
+|   |-- yt_downloader.py    # Background yt-dlp asynchronous download worker & JSON metadata parser
+|   |-- av_decoder.py       # Real-time ffmpeg video pipe (30 FPS BGRX) & audio extraction
 |   |-- mp4_demuxer.py      # ISO Base Media File Format (MP4) container demuxer
 |   |-- slip.py             # Serial Line Internet Protocol
 |   |-- eth.py              # Ethernet II, ARP, IPv4, UDP, TCP
-|   `-- yt_relay.py         # YouTube stream relay, oEmbed & 30 FPS media synthesizer
+|   `-- yt_relay.py         # YouTube stream relay, state machine & 30 FPS media pipeline
 |-- desktop/                # Sovereign Workstation Applications
-|   |-- master_desktop.py   # Unified 1024x768 Compositor & 10 applications
-|   |-- youtube_player.py   # Sovereign YouTube Player (480x270 @ 30 FPS)
-|   `-- window_manager.py   # Z-order, edge-snapping, minimize/maximize
+|   |-- icons.py            # Procedural desktop icon grid & double-click app launcher
+|   |-- master_desktop.py   # Unified 1280x720 HD 60 FPS Compositor & Quick Settings Tray
+|   |-- youtube_player.py   # Sovereign YouTube Player (30 FPS A/V synced)
+|   `-- window_manager.py   # Rounded windows, traffic lights, drop shadows, snapping
 |-- toolchain/              # Toolchain & Assembler
 |   |-- assembler.py        # Two-pass RV32I/M assembler & linker
 |   `-- disasm.py           # RV32IM disassembler
