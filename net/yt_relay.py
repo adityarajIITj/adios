@@ -320,7 +320,7 @@ class YouTubeStreamRelay:
         self.channel_idx = channel_idx % len(self.catalog)
         self.channel_info = dict(self.catalog[self.channel_idx])
         self.duration_ms = self.channel_info.get("duration_ms", 180000)
-        self.fps = 60
+        self.fps = 30
         self.width = 640
         self.height = 360
         
@@ -486,9 +486,10 @@ class YouTubeStreamRelay:
                 dec_h = getattr(self, "height", 360)
                 self._decoder = AVDecoder(
                     media_path=self._downloader.media_path,
-                    width=dec_w, height=dec_h, fps=self.fps,
+                    width=dec_w, height=dec_h, fps=None,
                     duration_s=self.duration_ms / 1000.0
                 )
+                self.fps = getattr(self._decoder, "fps", 30)
 
                 if self._decoder.is_available():
                     self._decoder.start(seek_s=0.0)
@@ -601,33 +602,36 @@ class YouTubeStreamRelay:
         """
         # === PRIORITY 1: Real decoded video frames from ffmpeg ===
         if self._using_real_video and self._decoder:
-            raw_frame = self._decoder.get_frame()
+            pts_s = pts_ms / 1000.0
+            raw_frame = self._decoder.get_frame(pts_s)
             if raw_frame:
                 self._last_real_frame = raw_frame
             elif getattr(self, "_last_real_frame", None):
                 raw_frame = self._last_real_frame
 
-            if raw_frame and len(raw_frame) == width * height * 4:
-                buf = bytearray(raw_frame)
-                t_sec = pts_ms / 1000.0
-                self._overlay_video_playback_hud(buf, width, height, t_sec, 0, 1)
-                return VideoFrame(width, height, pts_ms, bytes(buf))
-            elif raw_frame:
-                # Frame matches decoder resolution, copy rows into requested dimensions
-                buf = bytearray(width * height * 4)
-                dec_w = getattr(self._decoder, "width", 640)
-                dec_h = getattr(self._decoder, "height", 360)
-                src_pitch = dec_w * 4
-                dst_pitch = width * 4
-                row_bytes = min(src_pitch, dst_pitch)
-                copy_h = min(height, dec_h)
-                for y in range(copy_h):
-                    s_off = y * src_pitch
-                    d_off = y * dst_pitch
-                    buf[d_off : d_off + row_bytes] = raw_frame[s_off : s_off + row_bytes]
-                t_sec = pts_ms / 1000.0
-                self._overlay_video_playback_hud(buf, width, height, t_sec, 0, 1)
-                return VideoFrame(width, height, pts_ms, bytes(buf))
+            if raw_frame:
+                req_size = width * height * 4
+                if not hasattr(self, "_frame_work_buf") or len(self._frame_work_buf) != req_size:
+                    self._frame_work_buf = bytearray(req_size)
+                buf = self._frame_work_buf
+
+                if len(raw_frame) == req_size:
+                    buf[:] = raw_frame
+                else:
+                    dec_w = getattr(self._decoder, "width", 640)
+                    dec_h = getattr(self._decoder, "height", 360)
+                    src_pitch = dec_w * 4
+                    dst_pitch = width * 4
+                    row_bytes = min(src_pitch, dst_pitch)
+                    copy_h = min(height, dec_h)
+                    for y in range(copy_h):
+                        s_off = y * src_pitch
+                        d_off = y * dst_pitch
+                        buf[d_off : d_off + row_bytes] = raw_frame[s_off : s_off + row_bytes]
+
+                self._overlay_video_playback_hud(buf, width, height, pts_s, 0, 1)
+                return VideoFrame(width, height, pts_ms, buf)
+
             # Decoder active but no frame ready yet -- show buffering
             if self._decoder.state in (DECODER_RUNNING, DECODER_STARTING):
                 return self._render_buffering_frame(pts_ms, width, height)

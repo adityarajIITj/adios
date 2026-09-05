@@ -308,7 +308,7 @@ class VPU:
     def _execute_cmd(self, cmd: int):
         """Processes VPU hardware command state transitions."""
         self.cmd = cmd
-        now = time.time()
+        now = time.perf_counter()
         
         if cmd == CMD_PLAY:
             if self.status != STATUS_PLAYING:
@@ -353,14 +353,14 @@ class VPU:
 
     def step(self, now: Optional[float] = None) -> bool:
         """
-        Advances video playback by one 30 FPS frame interval (~33.3ms).
+        Advances video playback by one frame interval (~33.3ms for 30 FPS, ~16.6ms for 60 FPS).
         Returns True if a new frame was blitted/advanced.
         """
         if self.status != STATUS_PLAYING:
             return False
 
         if now is None:
-            now = time.time()
+            now = time.perf_counter()
 
         elapsed = now - self._last_frame_time
         if elapsed < self.frame_interval:

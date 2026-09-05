@@ -418,8 +418,9 @@ def run_desktop(scale=1.0, width=1280, height=720, auto_launch_games=False, clea
                     break
                 last_frame = now
             else:
-                sleep_sec = max(0.0005, target_dt - dt - 0.001)
-                time.sleep(sleep_sec)
+                rem = target_dt - dt
+                if rem > 0.003:
+                    time.sleep(rem - 0.002)
     except KeyboardInterrupt:
         print("\n[AdiOS Desktop] Closed.")
 

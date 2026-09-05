@@ -112,17 +112,53 @@ def probe_media_duration(media_path: str) -> float:
         return 0.0
 
 
+def probe_media_fps(media_path: str) -> float:
+    """
+    Uses ffprobe to determine the native video stream framerate.
+    Returns 30.0 if probing fails.
+    """
+    ffprobe = _find_ffprobe()
+    if not ffprobe:
+        return 30.0
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "quiet", "-print_format", "json",
+             "-show_streams", media_path],
+            capture_output=True, text=True, timeout=5.0,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        import json
+        data = json.loads(result.stdout)
+        for s in data.get("streams", []):
+            if s.get("codec_type") == "video":
+                r = s.get("r_frame_rate", "30/1")
+                if "/" in r:
+                    num, den = map(int, r.split("/"))
+                    fps_val = num / den if den > 0 else 30.0
+                else:
+                    fps_val = float(r)
+                if 10.0 <= fps_val <= 65.0:
+                    return fps_val
+    except Exception:
+        pass
+    return 30.0
+
+
 class AVDecoder:
     """
     Real-time audio/video decoder using ffmpeg subprocesses.
     Decodes video frames to raw BGRX pixels and extracts audio to WAV.
     """
 
-    def __init__(self, media_path: str, width: int = 640, height: int = 360, fps: int = 60, duration_s: float = 0.0):
+    def __init__(self, media_path: str, width: int = 640, height: int = 360, fps: Optional[int] = None, duration_s: float = 0.0):
         self.media_path = media_path
         self.width = width
         self.height = height
-        self.fps = fps
+        if fps is None:
+            probed = probe_media_fps(media_path)
+            self.fps = int(round(probed)) if probed > 0 else 30
+        else:
+            self.fps = fps
         self.frame_size = width * height * 4  # BGRX = 4 bytes per pixel
 
         self.state = DECODER_IDLE
@@ -130,8 +166,10 @@ class AVDecoder:
 
         # Video frame ring buffer (thread-safe)
         self._frame_lock = threading.Lock()
-        self._frame_buffer: deque = deque(maxlen=max(120, self.fps * 3))  # 3 seconds buffer
+        self._frame_buffer: deque = deque(maxlen=max(120, int(self.fps * 3)))  # 3 seconds buffer
         self._frames_decoded: int = 0
+        self._last_frame_bytes: Optional[bytes] = None
+        self._last_target_pts_s: float = 0.0
 
         # Video decoder subprocess
         self._video_proc: Optional[subprocess.Popen] = None
@@ -208,24 +246,65 @@ class AVDecoder:
 
     def seek(self, seek_s: float):
         """Seeks to a new position by restarting the decoder."""
+        self._last_frame_bytes = None
+        self._last_target_pts_s = seek_s
         self.start(seek_s=seek_s)
 
-    def get_frame(self) -> Optional[bytes]:
+    def get_frame(self, target_pts_s: Optional[float] = None) -> Optional[bytes]:
         """
-        Pops the next decoded video frame from the buffer.
+        Retrieves the decoded video frame matching target_pts_s (in seconds).
+        If target_pts_s is None, pops the oldest frame FIFO.
         Returns raw BGRX bytes (width * height * 4) or None if empty.
         """
         with self._frame_lock:
+            if target_pts_s is None:
+                if self._frame_buffer:
+                    item = self._frame_buffer.popleft()
+                    self._last_frame_bytes = item[1] if isinstance(item, tuple) else item
+                    return self._last_frame_bytes
+                return self._last_frame_bytes
+
+            # Check for backward seek or loop
+            if target_pts_s < self._last_target_pts_s - 1.5:
+                self._frame_buffer.clear()
+            self._last_target_pts_s = target_pts_s
+
+            frame_dt = 1.0 / float(max(1, self.fps))
+
+            # Discard stale frames lagging behind target presentation time (catch-up)
+            while len(self._frame_buffer) > 1:
+                first = self._frame_buffer[0]
+                pts = first[0] if isinstance(first, tuple) else 0.0
+                if pts < target_pts_s - (frame_dt * 0.5):
+                    second = self._frame_buffer[1]
+                    s_pts = second[0] if isinstance(second, tuple) else 0.0
+                    if s_pts <= target_pts_s + (frame_dt * 0.5):
+                        item = self._frame_buffer.popleft()
+                        self._last_frame_bytes = item[1] if isinstance(item, tuple) else item
+                        continue
+                break
+
             if self._frame_buffer:
-                return self._frame_buffer.popleft()
-            return None
+                first = self._frame_buffer[0]
+                pts = first[0] if isinstance(first, tuple) else 0.0
+                raw = first[1] if isinstance(first, tuple) else first
+                if pts <= target_pts_s + (frame_dt * 0.5):
+                    self._frame_buffer.popleft()
+                    self._last_frame_bytes = raw
+                    return raw
+                else:
+                    # Future frame -- hold last frame to prevent playing ahead of audio
+                    return self._last_frame_bytes or raw
+
+            return self._last_frame_bytes
 
     def peek_frame(self) -> Optional[bytes]:
         """Returns the next frame without removing it from the buffer."""
         with self._frame_lock:
             if self._frame_buffer:
-                return self._frame_buffer[0]
-            return None
+                first = self._frame_buffer[0]
+                return first[1] if isinstance(first, tuple) else first
+            return self._last_frame_bytes
 
     @property
     def buffer_count(self) -> int:
@@ -278,8 +357,9 @@ class AVDecoder:
                 if not raw or len(raw) < self.frame_size:
                     break  # End of stream or error
 
+                pts_s = seek_s + (self._frames_decoded / float(max(1, self.fps)))
                 with self._frame_lock:
-                    self._frame_buffer.append(raw)
+                    self._frame_buffer.append((pts_s, raw))
                     self._frames_decoded += 1
 
                 # Throttle if buffer is getting full (back-pressure)
