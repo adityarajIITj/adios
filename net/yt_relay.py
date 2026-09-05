@@ -320,7 +320,9 @@ class YouTubeStreamRelay:
         self.channel_idx = channel_idx % len(self.catalog)
         self.channel_info = dict(self.catalog[self.channel_idx])
         self.duration_ms = self.channel_info.get("duration_ms", 180000)
-        self.fps = 30
+        self.fps = 60
+        self.width = 640
+        self.height = 360
         
         # Real-world stream metadata
         self.active_video_id = self.channel_info["id"]
@@ -332,6 +334,7 @@ class YouTubeStreamRelay:
         # Real photographic video frame cache (legacy snapshot fallback)
         self.real_frames: List[bytes] = []
         self.real_frames_cache: Dict[str, List[bytes]] = {}
+        self._last_real_frame: Optional[bytes] = None
         
         # Audio Synthesizer State (offline fallback)
         self.sample_rate = 44100
@@ -475,9 +478,12 @@ class YouTubeStreamRelay:
 
                 # Start decoder
                 self.stream_state = STREAM_DECODING
+                dec_w = getattr(self, "width", 640)
+                dec_h = getattr(self, "height", 360)
                 self._decoder = AVDecoder(
                     media_path=self._downloader.media_path,
-                    width=480, height=270, fps=30
+                    width=dec_w, height=dec_h, fps=self.fps,
+                    duration_s=self.duration_ms / 1000.0
                 )
 
                 if self._decoder.is_available():
@@ -542,10 +548,19 @@ class YouTubeStreamRelay:
                     buf[off+1] = buf[off+1] >> 2
                     buf[off+2] = buf[off+2] >> 2
 
-        # 2. Draw 24 dynamic dancing audio spectrum EQ bars reacting in real time
-        for i in range(24):
+        # Retrieve live VU meter level from SoundServer for authentic audio reactivity
+        try:
+            from audio.sound_server import SoundServer
+            vu = SoundServer.get_instance().get_vu_meter()
+        except Exception:
+            vu = 0.5
+        vu_boost = max(0.25, min(1.0, vu * 1.6))
+
+        # 2. Draw dynamic dancing audio spectrum EQ bars reacting in real time
+        num_bars = min(32, max(16, (w - 220) // 11))
+        for i in range(num_bars):
             bx = 16 + i * 11
-            bh = int(6 + abs(math.sin(t * 8.0 + i * 0.45) + 0.5 * math.cos(t * 12.0 + i * 0.2)) * 14)
+            bh = int((5 + abs(math.sin(t * 8.0 + i * 0.45) + 0.5 * math.cos(t * 12.0 + i * 0.2)) * 15) * vu_boost)
             bh = max(3, min(20, bh))
             for dy in range(bh):
                 y = h - 6 - dy
@@ -560,13 +575,15 @@ class YouTubeStreamRelay:
                                 buf[off+1] = 230
                                 buf[off+2] = max(180, 255 - dy * 8)
 
-        # 3. Draw dynamic animated cyan waveform
+        # 3. Draw dynamic animated cyan waveform across right half of HUD
         wave_color = (0, 240, 255, 255)
-        prev_x = 290
+        start_x = max(16 + num_bars * 11 + 16, w - 240)
+        end_x = w - 24
+        prev_x = start_x
         mid_y = bar_y + bar_h // 2
-        prev_y = mid_y + int(math.sin(t * 9.0) * 4)
-        for x in range(296, min(w - 16, 460), 6):
-            wy = mid_y + int(math.sin(t * 9.0 + x * 0.1) * 4 + math.cos(t * 14.0 + x * 0.15) * 3)
+        prev_y = mid_y + int(math.sin(t * 9.0) * 4 * vu_boost)
+        for x in range(start_x + 6, end_x, 6):
+            wy = mid_y + int((math.sin(t * 9.0 + x * 0.1) * 4 + math.cos(t * 14.0 + x * 0.15) * 3) * vu_boost)
             self._draw_line(buf, w, h, prev_x, prev_y, x, wy, wave_color)
             prev_x, prev_y = x, wy
 
@@ -583,9 +600,9 @@ class YouTubeStreamRelay:
                             buf[off+1] = dot_green[1]
                             buf[off+2] = dot_green[0]
 
-    def generate_frame(self, pts_ms: int, width: int = 480, height: int = 270) -> VideoFrame:
+    def generate_frame(self, pts_ms: int, width: int = 640, height: int = 360) -> VideoFrame:
         """
-        Produces a 30 FPS video frame for the active video at timestamp pts_ms.
+        Produces a 60 FPS video frame for the active video at timestamp pts_ms.
         Priority order:
           1. REAL decoded frames from ffmpeg pipeline (if streaming)
           2. Download progress overlay (if downloading)
@@ -594,18 +611,25 @@ class YouTubeStreamRelay:
         # === PRIORITY 1: Real decoded video frames from ffmpeg ===
         if self._using_real_video and self._decoder:
             raw_frame = self._decoder.get_frame()
+            if raw_frame:
+                self._last_real_frame = raw_frame
+            elif getattr(self, "_last_real_frame", None):
+                raw_frame = self._last_real_frame
+
             if raw_frame and len(raw_frame) == width * height * 4:
                 buf = bytearray(raw_frame)
                 t_sec = pts_ms / 1000.0
                 self._overlay_video_playback_hud(buf, width, height, t_sec, 0, 1)
                 return VideoFrame(width, height, pts_ms, bytes(buf))
-            elif raw_frame and len(raw_frame) == 480 * 270 * 4:
-                # Frame matches decoder resolution, may differ from requested
+            elif raw_frame:
+                # Frame matches decoder resolution, copy rows into requested dimensions
                 buf = bytearray(width * height * 4)
-                copy_h = min(height, 270)
-                src_pitch = 480 * 4
+                dec_w = getattr(self._decoder, "width", 640)
+                dec_h = getattr(self._decoder, "height", 360)
+                src_pitch = dec_w * 4
                 dst_pitch = width * 4
                 row_bytes = min(src_pitch, dst_pitch)
+                copy_h = min(height, dec_h)
                 for y in range(copy_h):
                     s_off = y * src_pitch
                     d_off = y * dst_pitch
@@ -614,7 +638,7 @@ class YouTubeStreamRelay:
                 self._overlay_video_playback_hud(buf, width, height, t_sec, 0, 1)
                 return VideoFrame(width, height, pts_ms, bytes(buf))
             # Decoder active but no frame ready yet -- show buffering
-            if self._decoder.state == DECODER_RUNNING:
+            if self._decoder.state in (DECODER_RUNNING, DECODER_STARTING):
                 return self._render_buffering_frame(pts_ms, width, height)
 
         # === PRIORITY 2: Download progress overlay ===
