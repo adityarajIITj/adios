@@ -64,12 +64,12 @@ class VPU:
     Hardware Video Processing Unit (VPU) Controller.
     Decodes and DMA-blits video streams at deterministic 30 FPS.
     """
-    def __init__(self, vm=None, width: int = 480, height: int = 270, fps: int = 30):
+    def __init__(self, vm=None, width: int = 640, height: int = 360, fps: int = 60):
         self.vm = vm
         self.width = width
         self.height = height
         self.fps = fps
-        self.frame_interval = 1.0 / float(fps)  # ~0.0333s (33.3ms for 30 FPS)
+        self.frame_interval = 1.0 / float(fps)  # ~0.0166s (16.6ms for 60 FPS)
         
         # State Registers
         self.cmd = CMD_IDLE
@@ -364,12 +364,25 @@ class VPU:
 
         elapsed = now - self._last_frame_time
         if elapsed < self.frame_interval:
-            return False  # Maintain exact 30 FPS pacing
+            return False  # Maintain exact frame pacing (e.g. 16.6ms for 60 FPS)
 
-        # Advance presentation timestamp
+        # Advance presentation timestamp (sync with hardware audio clock if streaming)
         self._last_frame_time = now
-        calculated_pts = int(self._playback_start_pts + (now - self._playback_start_clock) * 1000)
-        self.current_pts = min(self.duration_ms, calculated_pts)
+        synced_audio = False
+        if self._host_audio_playing:
+            try:
+                import pygame
+                if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+                    mpos = pygame.mixer.music.get_pos()
+                    if mpos >= 0:
+                        self.current_pts = min(self.duration_ms, self._playback_start_pts + mpos)
+                        synced_audio = True
+            except Exception:
+                pass
+
+        if not synced_audio:
+            calculated_pts = int(self._playback_start_pts + (now - self._playback_start_clock) * 1000)
+            self.current_pts = min(self.duration_ms, calculated_pts)
 
         # Loop playback when reaching end of stream
         if self.current_pts >= self.duration_ms:
