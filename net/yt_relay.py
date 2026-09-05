@@ -30,7 +30,7 @@ from vm.vpu import VideoFrame
 from drivers.net_bridge import get_net_bridge
 from net.mp4_demuxer import MP4Demuxer
 from net.yt_downloader import YouTubeDownloader, STATE_IDLE, STATE_RESOLVING, STATE_DOWNLOADING, STATE_READY, STATE_ERROR
-from net.av_decoder import AVDecoder, DECODER_RUNNING, DECODER_STOPPED, DECODER_ERROR
+from net.av_decoder import AVDecoder, DECODER_STARTING, DECODER_RUNNING, DECODER_STOPPED, DECODER_ERROR
 
 # Stream pipeline states
 STREAM_IDLE = "IDLE"
