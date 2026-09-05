@@ -69,6 +69,55 @@ def find_ffmpeg_binary() -> Optional[str]:
     return None
 
 
+def extract_video_id(url_or_id: str) -> Optional[str]:
+    """Extracts 11-char YouTube video ID if present."""
+    import re
+    if not url_or_id:
+        return None
+    url = url_or_id.strip()
+    if re.fullmatch(r"[0-9A-Za-z_-]{11}", url):
+        return url
+    patterns = [
+        r"(?:v=|\/)([0-9A-Za-z_-]{11})(?:[&?]|$)",
+        r"youtu\.be\/([0-9A-Za-z_-]{11})",
+        r"embed\/([0-9A-Za-z_-]{11})",
+        r"shorts\/([0-9A-Za-z_-]{11})",
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+def get_media_cache_dir() -> str:
+    """Returns persistent media cache directory."""
+    candidates = [
+        os.path.join(os.path.expanduser("~"), ".adios_media"),
+        os.path.join(tempfile.gettempdir(), "adios_media_cache"),
+    ]
+    for d in candidates:
+        try:
+            os.makedirs(d, exist_ok=True)
+            return d
+        except Exception:
+            pass
+    return tempfile.gettempdir()
+
+
+def find_in_media_cache(url_or_id: str) -> Optional[str]:
+    """Finds cached video file for a YouTube video URL or ID."""
+    vid = extract_video_id(url_or_id)
+    if not vid:
+        return None
+    cache_dir = get_media_cache_dir()
+    for ext in (".mp4", ".mkv", ".webm"):
+        p = os.path.join(cache_dir, f"{vid}{ext}")
+        if os.path.isfile(p) and os.path.getsize(p) > 1000:
+            return p
+    return None
+
+
 class YouTubeDownloader:
     """
     Background downloader that extracts real YouTube streams via yt-dlp.
@@ -106,6 +155,17 @@ class YouTubeDownloader:
             self.cancel()
             self._thread.join(timeout=5.0)
 
+        # 1. Check persistent media cache first for instant playback
+        cached = find_in_media_cache(url)
+        if cached:
+            self.media_path = cached
+            self.state = STATE_READY
+            self.progress_pct = 100.0
+            if on_complete:
+                t = threading.Thread(target=lambda: on_complete(True), daemon=True)
+                t.start()
+            return
+
         self._cancel_flag.clear()
         self.state = STATE_RESOLVING
         self.progress_pct = 0.0
@@ -122,6 +182,13 @@ class YouTubeDownloader:
 
     def download_sync(self, url: str) -> bool:
         """Synchronous download. Blocks until complete. Returns True on success."""
+        cached = find_in_media_cache(url)
+        if cached:
+            self.media_path = cached
+            self.state = STATE_READY
+            self.progress_pct = 100.0
+            return True
+
         self._cancel_flag.clear()
         self.state = STATE_RESOLVING
         self.progress_pct = 0.0
@@ -135,15 +202,17 @@ class YouTubeDownloader:
         self._cancel_flag.set()
 
     def cleanup(self):
-        """Removes all temporary files created by this downloader."""
+        """Removes temporary files created by this downloader."""
         self.cancel()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=3.0)
         if self.media_path and os.path.exists(self.media_path):
-            try:
-                os.remove(self.media_path)
-            except Exception:
-                pass
+            # Only remove if inside temp directory, preserve persistent media cache
+            if self.media_path.startswith(self.temp_dir):
+                try:
+                    os.remove(self.media_path)
+                except Exception:
+                    pass
             self.media_path = None
         # Try to clean temp dir
         try:
@@ -160,8 +229,8 @@ class YouTubeDownloader:
             cmd = [self._ytdlp_bin]
 
         cmd.extend([
-            # Format selection: best muxed format <=720p for performance
-            "-f", "best[height<=720]/bestvideo[height<=720]+bestaudio/best",
+            # Format selection: H.264 video + AAC audio in MP4, with format 18 fallback
+            "-f", "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/18/bestvideo+bestaudio/best[ext=mp4]/best",
             # Merge to mp4 for compatibility
             "--merge-output-format", "mp4",
             # Output path
@@ -173,8 +242,6 @@ class YouTubeDownloader:
             # Quiet output, progress to stderr
             "--no-warnings",
             "--newline",
-            # Limit download speed to prevent hogging bandwidth (2MB/s)
-            "-r", "2M",
         ])
 
         # If ffmpeg is available, tell yt-dlp where it is
@@ -260,6 +327,18 @@ class YouTubeDownloader:
                         break
 
             if actual_path and os.path.isfile(actual_path) and os.path.getsize(actual_path) > 1000:
+                # Save to persistent cache for instant playback on future launches
+                vid = extract_video_id(url)
+                if vid:
+                    try:
+                        cache_dir = get_media_cache_dir()
+                        cached_dest = os.path.join(cache_dir, f"{vid}.mp4")
+                        if not os.path.exists(cached_dest):
+                            shutil.copy2(actual_path, cached_dest)
+                            actual_path = cached_dest
+                    except Exception:
+                        pass
+
                 self.media_path = actual_path
                 self.progress_pct = 100.0
 
