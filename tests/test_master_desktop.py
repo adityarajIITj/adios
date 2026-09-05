@@ -260,5 +260,34 @@ class TestMasterDesktop(unittest.TestCase):
         yt.handle_click(260, scrub_click_y) # 50% scrub seek
         self.assertGreaterEqual(yt.vpu.current_pts, 0)
 
+    def test_15_background_music_toggle(self):
+        """Verify Taskbar, Sound Flyout, and Start Menu Background Music toggle controls."""
+        # 1. Check initial active state
+        self.assertTrue(self.desktop.is_bgm_active)
+
+        # 2. Click Taskbar [BGM: ON] pill at (290, 10) to toggle OFF
+        res = self.desktop.handle_mouse_down(290, 10)
+        self.assertEqual(res, ("bgm_toggle", False))
+        self.assertFalse(self.desktop.is_bgm_active)
+        self.assertFalse(self.desktop.youtube_app.is_playing)
+
+        # 3. Click Taskbar [BGM: OFF] pill at (290, 10) to toggle ON
+        res = self.desktop.handle_mouse_down(290, 10)
+        self.assertEqual(res, ("bgm_toggle", True))
+        self.assertTrue(self.desktop.is_bgm_active)
+        self.assertTrue(self.desktop.youtube_app.is_playing)
+
+        # 4. Toggle via Sound Flyout
+        self.desktop.handle_mouse_down(self.desktop.width - 150, 10) # Open flyout
+        self.assertTrue(self.desktop.sound_flyout_open)
+        fx = self.desktop.width - 240
+        fy = 24 + 4
+        res = self.desktop.handle_mouse_down(fx + 50, fy + 105) # Click BGM button in flyout
+        self.assertEqual(res, ("bgm_toggle", False))
+        self.assertFalse(self.desktop.is_bgm_active)
+
+        # 5. Render with BGM toggled off
+        self.desktop.render(self.fb)
+
 if __name__ == "__main__":
     unittest.main()
