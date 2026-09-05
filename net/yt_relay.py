@@ -351,6 +351,10 @@ class YouTubeStreamRelay:
         self._stream_error_msg: str = ""
         self._using_real_video: bool = False
 
+        # Auto-connect real pipeline if initialized with a real YouTube channel
+        if self.active_video_id not in ("ch_riscv", "ch_synth", "ch_matrix"):
+            self._start_real_pipeline(self.active_url)
+
     @property
     def download_progress(self) -> float:
         """Returns download progress (0.0 - 100.0)."""
@@ -536,17 +540,14 @@ class YouTubeStreamRelay:
 
     def _overlay_video_playback_hud(self, buf: bytearray, w: int, h: int, t: float, scene_idx: int = 0, n_scenes: int = 1):
         """Layers subtle translucent live playback waveform HUD, dancing spectrum EQ bars, and resolution telemetry onto the real video frame."""
-        # 1. Translucent background bar for bottom HUD
+        # 1. Translucent background bar for bottom HUD (vectorized slice)
         bar_h = 24
         bar_y = h - bar_h - 4
+        bar_w = w - 24
+        bar_bytes = bytes([10, 10, 15, 200]) * bar_w
         for y in range(bar_y, bar_y + bar_h):
-            row = y * w * 4
-            for x in range(12, w - 12):
-                off = row + x * 4
-                if off + 3 < len(buf):
-                    buf[off]   = buf[off] >> 2
-                    buf[off+1] = buf[off+1] >> 2
-                    buf[off+2] = buf[off+2] >> 2
+            off = (y * w + 12) * 4
+            buf[off : off + bar_w * 4] = bar_bytes
 
         # Retrieve live VU meter level from SoundServer for authentic audio reactivity
         try:
@@ -556,24 +557,18 @@ class YouTubeStreamRelay:
             vu = 0.5
         vu_boost = max(0.25, min(1.0, vu * 1.6))
 
-        # 2. Draw dynamic dancing audio spectrum EQ bars reacting in real time
+        # 2. Draw dynamic dancing audio spectrum EQ bars reacting in real time (vectorized row slices)
         num_bars = min(32, max(16, (w - 220) // 11))
+        eq_row = bytes([40, 230, 240, 255]) * 8
         for i in range(num_bars):
             bx = 16 + i * 11
             bh = int((5 + abs(math.sin(t * 8.0 + i * 0.45) + 0.5 * math.cos(t * 12.0 + i * 0.2)) * 15) * vu_boost)
             bh = max(3, min(20, bh))
             for dy in range(bh):
                 y = h - 6 - dy
-                if 0 <= y < h:
-                    row = y * w * 4
-                    for dx in range(8):
-                        px = bx + dx
-                        if px < w:
-                            off = row + px * 4
-                            if off + 3 < len(buf):
-                                buf[off]   = 40
-                                buf[off+1] = 230
-                                buf[off+2] = max(180, 255 - dy * 8)
+                if 0 <= y < h and bx + 8 <= w:
+                    off = (y * w + bx) * 4
+                    buf[off : off + 32] = eq_row
 
         # 3. Draw dynamic animated cyan waveform across right half of HUD
         wave_color = (0, 240, 255, 255)
@@ -589,16 +584,12 @@ class YouTubeStreamRelay:
 
         # 4. Pulsing Playback Indicator (top-right)
         dot_green = (40, 255, 60, 255) if int(t * 2) % 2 == 0 else (20, 160, 40, 255)
-        for dy in range(-3, 4):
-            for dx in range(-3, 4):
-                if dx * dx + dy * dy <= 9:
-                    px, py = w - 18, 14 + dy
-                    if 0 <= px < w and 0 <= py < h:
-                        off = (py * w + (px + dx)) * 4
-                        if off + 3 < len(buf):
-                            buf[off]   = dot_green[2]
-                            buf[off+1] = dot_green[1]
-                            buf[off+2] = dot_green[0]
+        dot_slice = bytes([dot_green[2], dot_green[1], dot_green[0], 255]) * 4
+        for dy in range(-2, 3):
+            py = 14 + dy
+            if 0 <= py < h:
+                off = (py * w + (w - 20)) * 4
+                buf[off : off + 16] = dot_slice
 
     def generate_frame(self, pts_ms: int, width: int = 640, height: int = 360) -> VideoFrame:
         """

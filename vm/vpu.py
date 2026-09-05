@@ -117,6 +117,7 @@ class VPU:
         if self.relay and hasattr(self.relay, 'get_audio_wav_path'):
             media_path = self.relay.get_audio_wav_path()
             if media_path and os.path.isfile(media_path):
+                self._audio_temp_path = media_path
                 if server:
                     server.stream_audio_file(media_path, loop=True)
                     self._host_audio_playing = True
@@ -202,11 +203,12 @@ class VPU:
             winsound.PlaySound(None, winsound.SND_PURGE)
             old_path = getattr(self, "_audio_temp_path", None)
             if old_path:
-                try:
-                    if os.path.exists(old_path):
-                        os.remove(old_path)
-                except Exception:
-                    pass
+                if "adios_audio_" in old_path or "temp" in old_path.lower():
+                    try:
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
+                    except Exception:
+                        pass
                 self._audio_temp_path = None
         except Exception:
             pass

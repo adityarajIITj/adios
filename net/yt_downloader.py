@@ -162,8 +162,10 @@ class YouTubeDownloader:
             self.state = STATE_READY
             self.progress_pct = 100.0
             if on_complete:
-                t = threading.Thread(target=lambda: on_complete(True), daemon=True)
-                t.start()
+                try:
+                    on_complete(True)
+                except Exception:
+                    pass
             return
 
         self._cancel_flag.clear()
