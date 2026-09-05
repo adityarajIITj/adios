@@ -448,36 +448,82 @@ class MasterDesktop:
             off = (cy * self.width + x1) * 4
             fb[off : off + span_len * 4] = line_bytes
 
+    def _get_font_array(self):
+        if not hasattr(self, "_font_array"):
+            arr = [None] * 256
+            q = self.font.get("?", None) if hasattr(self, "font") and self.font else None
+            for i in range(256):
+                if hasattr(self, "font") and self.font:
+                    arr[i] = self.font.get(i, self.font.get(chr(i), q))
+            self._font_array = arr
+            self._font_q = q
+        return self._font_array
+
     def _draw_string(self, fb: bytearray, x: int, y: int, text: str, color: int, clip_rect=None):
         min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
         curr_x = x
+        font_arr = self._get_font_array()
+        q_glyph = self._font_q
 
         for ch in text:
             if curr_x + 8 > max_x:
                 break
-            glyph = self.font.get(ch, self.font.get(ord(ch), self.font.get("?", self.font.get(ord("?"), None))))
+            code = ord(ch)
+            glyph = font_arr[code] if code < 256 else q_glyph
             if glyph:
-                for row in range(8):
-                    py = y + row
-                    if py < min_y or py > max_y:
-                        continue
-                    byte_val = glyph[row]
-                    for col in range(8):
-                        px = curr_x + col
-                        if px < min_x or px > max_x:
+                if min_y <= y and y + 7 <= max_y and min_x <= curr_x and curr_x + 7 <= max_x:
+                    for row in range(8):
+                        byte_val = glyph[row]
+                        if byte_val:
+                            row_off = ((y + row) * self.width + curr_x) * 4
+                            for col in range(8):
+                                if (byte_val >> (7 - col)) & 1:
+                                    off = row_off + col * 4
+                                    fb[off : off + 4] = c_bytes
+                else:
+                    for row in range(8):
+                        py = y + row
+                        if py < min_y or py > max_y:
                             continue
-                        if (byte_val >> (7 - col)) & 1:
-                            off = (py * self.width + px) * 4
-                            fb[off : off + 4] = c_bytes
+                        byte_val = glyph[row]
+                        if byte_val:
+                            row_off = (py * self.width + curr_x) * 4
+                            for col in range(8):
+                                px = curr_x + col
+                                if min_x <= px <= max_x:
+                                    if (byte_val >> (7 - col)) & 1:
+                                        off = row_off + col * 4
+                                        fb[off : off + 4] = c_bytes
             curr_x += 8
 
     def _draw_button(self, fb: bytearray, x: int, y: int, w: int, h: int, text: str, bg_col: int, txt_col: int, clip_rect=None):
-        self._fill_rect(fb, x, y, w, h, bg_col, clip_rect)
-        self._fill_rect(fb, x, y, w, 1, COLOR_BORDER, clip_rect)
-        self._fill_rect(fb, x, y + h - 1, w, 1, COLOR_BORDER, clip_rect)
-        self._fill_rect(fb, x, y, 1, h, COLOR_BORDER, clip_rect)
-        self._fill_rect(fb, x + w - 1, y, 1, h, COLOR_BORDER, clip_rect)
+        min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
+        x1 = max(min_x, max(0, x))
+        y1 = max(min_y, max(0, y))
+        x2 = min(max_x, min(self.width - 1, x + w - 1))
+        y2 = min(max_y, min(self.height - 1, y + h - 1))
+        if x1 > x2 or y1 > y2:
+            return
+
+        bg_bytes = bytes([bg_col & 0xFF, (bg_col >> 8) & 0xFF, (bg_col >> 16) & 0xFF, 0])
+        border_bytes = bytes([COLOR_BORDER & 0xFF, (COLOR_BORDER >> 8) & 0xFF, (COLOR_BORDER >> 16) & 0xFF, 0])
+        span_len = x2 - x1 + 1
+        bg_line = bg_bytes * span_len
+        border_line = border_bytes * span_len
+
+        for cy in range(y1, y2 + 1):
+            off = (cy * self.width + x1) * 4
+            if cy == y or cy == y + h - 1:
+                fb[off : off + span_len * 4] = border_line
+            else:
+                fb[off : off + span_len * 4] = bg_line
+                if x1 == x:
+                    fb[off : off + 4] = border_bytes
+                if x2 == x + w - 1 and span_len > 1:
+                    r_off = (cy * self.width + x2) * 4
+                    fb[r_off : r_off + 4] = border_bytes
+
         tx = x + max(2, (w - len(text) * 8) // 2)
         ty = y + max(2, (h - 8) // 2)
         self._draw_string(fb, tx, ty, text, txt_col, clip_rect)
@@ -1462,30 +1508,38 @@ class MasterDesktop:
 
     def _draw_youtube(self, win: Window, fb: bytearray, font_dict):
         cx, cy, cw, ch = win.client_rect
-        surf = bytearray(cw * ch * 4)
+        req_size = cw * ch * 4
+        if not hasattr(self, "_yt_surface") or len(self._yt_surface) != req_size:
+            self._yt_surface = bytearray(req_size)
+        surf = self._yt_surface
         self.youtube_app.render(surf, cw, ch)
-        for y in range(ch):
-            py = cy + y
-            if 0 <= py < self.height:
-                s_off = y * cw * 4
-                d_off = (py * self.width + cx) * 4
-                fb[d_off : d_off + cw * 4] = surf[s_off : s_off + cw * 4]
+        w_bytes = cw * 4
+        min_py = max(0, cy)
+        max_py = min(self.height, cy + ch)
+        for py in range(min_py, max_py):
+            y = py - cy
+            s_off = y * w_bytes
+            d_off = (py * self.width + cx) * 4
+            fb[d_off : d_off + w_bytes] = surf[s_off : s_off + w_bytes]
 
     def _click_youtube(self, win: Window, rel_x: int, rel_y: int):
         self.youtube_app.handle_click(rel_x, rel_y)
         self.status_message = f"YouTube Player: {self.youtube_app.relay.channel_info['title']} ({'PLAYING' if self.youtube_app.is_playing else 'PAUSED'})"
 
     def render(self, fb: bytearray):
-        # 1. Clear Desktop with deep dark background
-        bg_bytes = bytes([COLOR_DESKTOP_BG & 0xFF, (COLOR_DESKTOP_BG >> 8) & 0xFF, (COLOR_DESKTOP_BG >> 16) & 0xFF, 0])
-        fb[0 : self.width * self.height * 4] = bg_bytes * (self.width * self.height)
-
-        # 1.5. Render Sovereign Desktop ASCII Art Wallpaper & Cyber Grid
-        if self.wallpaper_visible:
-            render_wallpaper_to_framebuffer(fb, self.width, self.height, self.font, style=self.wallpaper_style)
-
-        # 1.8. Render Interactive Desktop Icons Grid (Wallpaper Layer)
-        self.icons.render(fb, self.font, self.width, self.height)
+        # 1. Desktop Background: Fast blit cached wallpaper and icons
+        icons_state = tuple((i.selected, i.hover) for i in self.icons.icons)
+        cache_key = (self.wallpaper_style, self.wallpaper_visible, self.width, self.height, icons_state)
+        if not hasattr(self, "_wallpaper_cache") or getattr(self, "_wallpaper_cache_key", None) != cache_key:
+            cache = bytearray(self.width * self.height * 4)
+            bg_bytes = bytes([COLOR_DESKTOP_BG & 0xFF, (COLOR_DESKTOP_BG >> 8) & 0xFF, (COLOR_DESKTOP_BG >> 16) & 0xFF, 0])
+            cache[:] = bg_bytes * (self.width * self.height)
+            if self.wallpaper_visible:
+                render_wallpaper_to_framebuffer(cache, self.width, self.height, self.font, style=self.wallpaper_style)
+            self.icons.render(cache, self.font, self.width, self.height)
+            self._wallpaper_cache = cache
+            self._wallpaper_cache_key = cache_key
+        fb[:] = self._wallpaper_cache
 
         # 2. Render Window Manager Layer (all visible windows in Z-order)
         self.wm.render_all(fb, self.font)

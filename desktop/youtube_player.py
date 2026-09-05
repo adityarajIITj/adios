@@ -570,31 +570,36 @@ class YouTubePlayerApp:
         self._draw_text(buf, pitch_w, tx, ty, text, (255, 255, 255))
 
     def _fill_rect(self, buf: bytearray, pitch_w: int, x: int, y: int, w: int, h: int, color: Tuple[int, int, int, int]):
+        if w <= 0 or h <= 0:
+            return
         r, g, b, a = color
         max_h = getattr(self, "surf_h", self.height)
         max_w = getattr(self, "surf_w", self.width)
-        for dy in range(h):
-            py = y + dy
-            if 0 <= py < max_h:
-                row_off = (py * pitch_w + x) * 4
-                for dx in range(w):
-                    px = x + dx
-                    if 0 <= px < max_w:
-                        off = row_off + dx * 4
-                        if off + 3 < len(buf):
-                            buf[off]   = b
-                            buf[off+1] = g
-                            buf[off+2] = r
-                            buf[off+3] = a
+        x0 = max(0, x)
+        x1 = min(max_w, x + w)
+        y0 = max(0, y)
+        y1 = min(max_h, y + h)
+        if x0 >= x1 or y0 >= y1:
+            return
+        span = x1 - x0
+        row_slice = bytes([b, g, r, a]) * span
+        row_bytes = span * 4
+        buf_len = len(buf)
+        for py in range(y0, y1):
+            off = (py * pitch_w + x0) * 4
+            if off + row_bytes <= buf_len:
+                buf[off : off + row_bytes] = row_slice
 
     def _stroke_rect(self, buf: bytearray, pitch_w: int, x: int, y: int, w: int, h: int, color: Tuple[int, int, int, int]):
-        r, g, b, a = color
-        for px in range(x, x + w):
-            self._set_pixel(buf, pitch_w, px, y, b, g, r, a)
-            self._set_pixel(buf, pitch_w, px, y + h - 1, b, g, r, a)
-        for py in range(y, y + h):
-            self._set_pixel(buf, pitch_w, x, py, b, g, r, a)
-            self._set_pixel(buf, pitch_w, x + w - 1, py, b, g, r, a)
+        if w <= 0 or h <= 0:
+            return
+        self._fill_rect(buf, pitch_w, x, y, w, 1, color)
+        if h > 1:
+            self._fill_rect(buf, pitch_w, x, y + h - 1, w, 1, color)
+        if h > 2:
+            self._fill_rect(buf, pitch_w, x, y + 1, 1, h - 2, color)
+            if w > 1:
+                self._fill_rect(buf, pitch_w, x + w - 1, y + 1, 1, h - 2, color)
 
     def _set_pixel(self, buf: bytearray, pitch_w: int, x: int, y: int, b: int, g: int, r: int, a: int):
         max_h = getattr(self, "surf_h", self.height)
@@ -602,35 +607,45 @@ class YouTubePlayerApp:
         if 0 <= x < max_w and 0 <= y < max_h:
             off = (y * pitch_w + x) * 4
             if off + 3 < len(buf):
-                buf[off]   = b
-                buf[off+1] = g
-                buf[off+2] = r
-                buf[off+3] = a
+                buf[off : off + 4] = bytes([b, g, r, a])
+
+    def _get_font_array(self):
+        if not hasattr(self, "_font_array"):
+            if not hasattr(self, "font") or self.font is None:
+                from desktop.font import get_default_font
+                self.font = get_default_font()
+            arr = [None] * 256
+            q = self.font.get('?', None)
+            for i in range(256):
+                arr[i] = self.font.get(i, self.font.get(chr(i), q))
+            self._font_array = arr
+            self._font_q = q
+        return self._font_array
 
     def _draw_text(self, buf: bytearray, pitch_w: int, x: int, y: int, text: str, color: Tuple[int, int, int]):
-        """Renders ASCII string using standard 8x8 bitmap font."""
-        if not hasattr(self, "font") or self.font is None:
-            from desktop.font import get_default_font
-            self.font = get_default_font()
+        """Renders ASCII string using fast 8x8 bitmap font rasterization."""
+        font_arr = self._get_font_array()
+        q_glyph = self._font_q
         r, g, b = color
+        px_bytes = bytes([b, g, r, 255])
         curr_x = x
         max_h = getattr(self, "surf_h", self.height)
         max_w = getattr(self, "surf_w", self.width)
+        buf_len = len(buf)
         for ch in text:
             if curr_x + 8 > max_w: break
-            glyph = self.font.get(ch, self.font.get('?'))
+            code = ord(ch)
+            glyph = font_arr[code] if code < 256 else q_glyph
             if glyph:
                 for gy in range(8):
                     py = y + gy
                     if 0 <= py < max_h:
                         row_bits = glyph[gy]
-                        row_off = (py * pitch_w + curr_x) * 4
-                        for gx in range(8):
-                            if (row_bits >> (7 - gx)) & 1:
-                                off = row_off + gx * 4
-                                if off + 3 < len(buf):
-                                    buf[off]   = b
-                                    buf[off+1] = g
-                                    buf[off+2] = r
-                                    buf[off+3] = 255
+                        if row_bits:
+                            row_off = (py * pitch_w + curr_x) * 4
+                            for gx in range(8):
+                                if (row_bits >> (7 - gx)) & 1:
+                                    off = row_off + gx * 4
+                                    if off + 4 <= buf_len:
+                                        buf[off : off + 4] = px_bytes
             curr_x += 8
