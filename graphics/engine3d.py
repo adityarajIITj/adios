@@ -196,12 +196,8 @@ class Engine3D:
     def __init__(self, vm=None, enable_zbuf=False, width: int = WIDTH, height: int = HEIGHT):
         self.vm = vm
         self.enable_zbuf = enable_zbuf
-        if vm and hasattr(vm, "fb") and vm.fb and len(vm.fb) >= 1024 * 768 * 4:
-            self.width = 1024
-            self.height = 768
-        else:
-            self.width = width
-            self.height = height
+        self.width = width
+        self.height = height
         self.half_w = self.width // 2
         self.half_h = self.height // 2
         self.z_buffer = [1e9] * (self.width * self.height)
@@ -230,9 +226,10 @@ class Engine3D:
         b = int((base_color & 0xFF) * factor)
         return (r << 16) | (g << 8) | b
 
-    def render_mesh(self, mesh, pos=None, rot=None, wireframe=False, center_x=None, center_y=None, clip_rect=None, color=None, **kwargs):
+    def render_mesh(self, mesh, pos=None, rot=None, wireframe=False, center_x=None, center_y=None, clip_rect=None, color=None, fb=None, **kwargs):
         """Renders 3D mesh with Euler rotation, backface culling, depth sort, and flat shading."""
-        if not self.vm or not mesh:
+        target_fb = fb if fb is not None else (self.vm.fb if self.vm else None)
+        if not target_fb or not mesh:
             return
 
         if pos is None:
@@ -242,7 +239,6 @@ class Engine3D:
         cx_val = self.half_w if center_x is None else center_x
         cy_val = self.half_h if center_y is None else center_y
 
-        fb = self.vm.fb
         # Precompute rotation trigonometry
         rx, ry, rz = math.radians(rot.x), math.radians(rot.y), math.radians(rot.z)
         cx, sx = math.cos(rx), math.sin(rx)
@@ -310,14 +306,16 @@ class Engine3D:
         # 4. Rasterize faces
         for _, p0, p1, p2, f_col in drawable_faces:
             if wireframe:
-                self.draw_line(p0[0], p0[1], p1[0], p1[1], f_col, clip_rect=clip_rect)
-                self.draw_line(p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect)
-                self.draw_line(p2[0], p2[1], p0[0], p0[1], f_col, clip_rect=clip_rect)
+                self.draw_line(p0[0], p0[1], p1[0], p1[1], f_col, clip_rect=clip_rect, fb=target_fb)
+                self.draw_line(p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect, fb=target_fb)
+                self.draw_line(p2[0], p2[1], p0[0], p0[1], f_col, clip_rect=clip_rect, fb=target_fb)
             else:
-                self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect)
+                self.fill_triangle(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], f_col, clip_rect=clip_rect, fb=target_fb)
 
-    def draw_line(self, x0, y0, x1, y1, color, clip_rect=None):
-        fb = self.vm.fb
+    def draw_line(self, x0, y0, x1, y1, color, clip_rect=None, fb=None):
+        target_fb = fb if fb is not None else (self.vm.fb if self.vm else None)
+        if not target_fb:
+            return
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
         min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
         dx = abs(x1 - x0)
@@ -325,11 +323,13 @@ class Engine3D:
         sx = 1 if x0 < x1 else -1
         sy = 1 if y0 < y1 else -1
         err = dx + dy
+        fb_len = len(target_fb)
 
         while True:
             if min_x <= x0 <= max_x and min_y <= y0 <= max_y and 0 <= x0 < self.width and 0 <= y0 < self.height:
                 off = (y0 * self.width + x0) * 4
-                fb[off:off+4] = c_bytes
+                if off + 4 <= fb_len:
+                    target_fb[off:off+4] = c_bytes
             if x0 == x1 and y0 == y1:
                 break
             e2 = 2 * err
@@ -340,9 +340,11 @@ class Engine3D:
                 err += dx
                 y0 += sy
 
-    def fill_triangle(self, x0, y0, x1, y1, x2, y2, color, clip_rect=None):
+    def fill_triangle(self, x0, y0, x1, y1, x2, y2, color, clip_rect=None, fb=None):
         """Scanline triangle filler."""
-        fb = self.vm.fb
+        target_fb = fb if fb is not None else (self.vm.fb if self.vm else None)
+        if not target_fb:
+            return
         c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
         min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
 
@@ -355,6 +357,7 @@ class Engine3D:
             return # Degenerate flat triangle
 
         total_height = y2 - y0
+        fb_len = len(target_fb)
 
         for i in range(total_height):
             second_half = i > (y1 - y0) or (y1 == y0)
@@ -378,7 +381,9 @@ class Engine3D:
                 if start_x <= end_x:
                     off_start = (curr_y * self.width + start_x) * 4
                     span_len = end_x - start_x + 1
-                    fb[off_start : off_start + span_len * 4] = c_bytes * span_len
+                    row_len = span_len * 4
+                    if off_start + row_len <= fb_len:
+                        target_fb[off_start : off_start + row_len] = c_bytes * span_len
 
     def fill_triangle_depth(self, p0: Tuple[int, int, float], p1: Tuple[int, int, float], p2: Tuple[int, int, float], color: int, clip_rect=None):
         """Perspective-correct scanline triangle filler with 1/z depth testing."""

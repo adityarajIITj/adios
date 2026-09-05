@@ -729,19 +729,20 @@ class MasterDesktop:
 
         # Render 3D Mesh in window client center
         center_x = cx + cw // 2
-        center_y = cy + 26 + (ch - 26) // 2
-        render_clip = (cx + 2, cy + 28, cx + cw - 2, cy + ch - 2)
+        center_y = cy + 26 + (ch - 44) // 2
+        render_clip = (cx + 2, cy + 27, cx + cw - 2, cy + ch - 18)
 
         try:
             self.engine3d.render_mesh(
                 self.current_mesh,
                 rot=self.rot_3d,
-                pos=Vector3(0, 0, 100 / self.zoom_3d),
+                pos=Vector3(0, 0, 115 / self.zoom_3d),
                 wireframe=self.wireframe_3d,
                 color=COLOR_ACCENT_CYAN,
                 center_x=center_x,
                 center_y=center_y,
-                clip_rect=render_clip
+                clip_rect=render_clip,
+                fb=fb
             )
         except Exception:
             pass
