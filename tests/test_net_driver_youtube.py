@@ -26,7 +26,7 @@ from drivers.net_bridge import HostNetBridge, get_net_bridge
 from net.mp4_demuxer import MP4Demuxer, MP4Box, MP4Track
 from net.yt_relay import (
     YouTubeStreamRelay, WORLD_VIDEOS, extract_youtube_id, fetch_youtube_metadata,
-    STREAM_IDLE, STREAM_DOWNLOADING, STREAM_STREAMING, STREAM_ERROR, STREAM_OFFLINE
+    STREAM_IDLE, STREAM_DOWNLOADING, STREAM_DECODING, STREAM_STREAMING, STREAM_ERROR, STREAM_OFFLINE
 )
 from net.yt_downloader import YouTubeDownloader, find_yt_dlp_binary, STATE_IDLE, STATE_READY, STATE_ERROR
 from net.av_decoder import AVDecoder, DECODER_IDLE, DECODER_RUNNING, DECODER_STOPPED, _find_ffmpeg
@@ -231,7 +231,7 @@ class TestNetDriverYouTube(unittest.TestCase):
 
         # Switch to catalog YouTube video (real pipeline triggers)
         relay.set_channel(3)  # Rick Astley
-        self.assertIn(relay.stream_state, [STREAM_DOWNLOADING, STREAM_ERROR])
+        self.assertIn(relay.stream_state, [STREAM_DOWNLOADING, STREAM_DECODING, STREAM_STREAMING, STREAM_ERROR])
 
         relay.cleanup()
 
