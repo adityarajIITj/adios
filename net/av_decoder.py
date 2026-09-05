@@ -118,7 +118,7 @@ class AVDecoder:
     Decodes video frames to raw BGRX pixels and extracts audio to WAV.
     """
 
-    def __init__(self, media_path: str, width: int = 480, height: int = 270, fps: int = 30):
+    def __init__(self, media_path: str, width: int = 640, height: int = 360, fps: int = 60, duration_s: float = 0.0):
         self.media_path = media_path
         self.width = width
         self.height = height
@@ -130,7 +130,7 @@ class AVDecoder:
 
         # Video frame ring buffer (thread-safe)
         self._frame_lock = threading.Lock()
-        self._frame_buffer: deque = deque(maxlen=90)  # 3 seconds at 30fps
+        self._frame_buffer: deque = deque(maxlen=max(120, self.fps * 3))  # 3 seconds buffer
         self._frames_decoded: int = 0
 
         # Video decoder subprocess
@@ -146,7 +146,7 @@ class AVDecoder:
         self._current_seek_s: float = 0.0
 
         # Duration
-        self.duration_s: float = 0.0
+        self.duration_s: float = duration_s
 
     def is_available(self) -> bool:
         """Returns True if ffmpeg is available for decoding."""
@@ -166,11 +166,15 @@ class AVDecoder:
         self._current_seek_s = seek_s
         self.state = DECODER_STARTING
 
-        # Probe duration if not known
+        # Probe duration in background if not known
         if self.duration_s <= 0:
-            self.duration_s = probe_media_duration(self.media_path)
+            def _probe():
+                d = probe_media_duration(self.media_path)
+                if d > 0:
+                    self.duration_s = d
+            threading.Thread(target=_probe, daemon=True, name="av_duration_probe").start()
 
-        # Extract audio to WAV (one-time operation)
+        # Extract audio to WAV (checks cache first)
         if not self._audio_extracted:
             self._extract_audio_wav()
 
@@ -301,16 +305,34 @@ class AVDecoder:
     def _extract_audio_wav(self):
         """
         Extracts the audio track from the media file into a WAV file
-        for playback through winsound.
+        for playback through SoundServer (pygame.mixer). Checks cache first.
         """
         if not self.ffmpeg_bin:
             return
 
+        # 1. Check if companion WAV file already exists alongside media
+        cand_wav = os.path.splitext(self.media_path)[0] + ".wav"
+        if os.path.isfile(cand_wav) and os.path.getsize(cand_wav) > 1000:
+            self.audio_wav_path = cand_wav
+            self._audio_extracted = True
+            return
+
+        # 2. Check user media cache directory
         try:
-            wav_path = os.path.join(
-                os.path.dirname(self.media_path),
-                "audio_track.wav"
-            )
+            from net.yt_downloader import get_media_cache_dir
+            basename = os.path.splitext(os.path.basename(self.media_path))[0]
+            cache_wav = os.path.join(get_media_cache_dir(), f"{basename}.wav")
+            if os.path.isfile(cache_wav) and os.path.getsize(cache_wav) > 1000:
+                self.audio_wav_path = cache_wav
+                self._audio_extracted = True
+                return
+        except Exception:
+            pass
+
+        try:
+            wav_path = cand_wav
+            if not os.path.isabs(wav_path) or not os.path.exists(os.path.dirname(wav_path)):
+                wav_path = os.path.join(tempfile.gettempdir(), "adios_audio_track.wav")
 
             cmd = [
                 self.ffmpeg_bin,
@@ -320,7 +342,7 @@ class AVDecoder:
                 "-vn",  # No video
                 "-acodec", "pcm_s16le",
                 "-ar", "44100",
-                "-ac", "1",  # Mono for winsound compatibility
+                "-ac", "2",  # Stereo for premier sound quality
                 wav_path
             ]
 
@@ -339,11 +361,13 @@ class AVDecoder:
             pass
 
     def cleanup(self):
-        """Stops decoder and removes temporary audio files."""
+        """Stops decoder and cleans temporary audio files while preserving cached media."""
         self.stop()
         if self.audio_wav_path and os.path.exists(self.audio_wav_path):
-            try:
-                os.remove(self.audio_wav_path)
-            except Exception:
-                pass
-            self.audio_wav_path = None
+            # Only remove temporary extract files, never delete persistent cached media
+            if "adios_audio_track" in self.audio_wav_path or "temp" in self.audio_wav_path.lower():
+                try:
+                    os.remove(self.audio_wav_path)
+                except Exception:
+                    pass
+        self.audio_wav_path = None
