@@ -127,6 +127,7 @@ class MasterDesktop:
         self.wallpaper_visible = True
         self.desktop_clean_mode = False
         self.saved_window_states: Dict[str, bool] = {}
+        self.bgm_enabled = True
 
         # Master Subsystem Instances
         self._init_sql_engine()
@@ -305,6 +306,37 @@ class MasterDesktop:
         curr_idx = THEME_KEYS.index(self.wallpaper_style) if self.wallpaper_style in THEME_KEYS else 0
         self.wallpaper_style = THEME_KEYS[(curr_idx + 1) % len(THEME_KEYS)]
         self.status_message = f"Wallpaper Theme switched to [{self.wallpaper_style.upper()}]."
+
+    @property
+    def is_bgm_active(self) -> bool:
+        """Returns True if background music is actively streaming."""
+        if hasattr(self, "youtube_app") and self.youtube_app:
+            return bool(self.youtube_app.is_playing and self.youtube_app.sound_enabled)
+        if hasattr(self, "vpu") and self.vpu:
+            return bool(getattr(self.vpu, "sound_enabled", True) and getattr(self.vpu, "_host_audio_playing", False))
+        return bool(self.bgm_enabled)
+
+    def toggle_background_music(self) -> bool:
+        """Toggles background music (YouTube / procedural audio) on or off."""
+        if self.is_bgm_active:
+            self.bgm_enabled = False
+            if hasattr(self, "youtube_app") and self.youtube_app:
+                self.youtube_app.sound_enabled = False
+                self.youtube_app.pause()
+            if hasattr(self, "vpu") and self.vpu:
+                self.vpu.set_sound_enabled(False)
+                self.vpu.stop_host_audio()
+            self.status_message = "Background Music: PAUSED"
+        else:
+            self.bgm_enabled = True
+            if hasattr(self, "vpu") and self.vpu:
+                self.vpu.set_sound_enabled(True)
+            if hasattr(self, "youtube_app") and self.youtube_app:
+                self.youtube_app.sound_enabled = True
+                self.youtube_app.play()
+            self.status_message = "Background Music: PLAYING"
+        self.sound_server.play_ui_sound("click")
+        return self.bgm_enabled
 
     # --------------------------------------------------------------------------
     # Workstation Windows Setup (1024x768 Canvas)
@@ -1484,8 +1516,15 @@ class MasterDesktop:
         # Dedicated YouTube 60 FPS HD Pill on Taskbar
         self._draw_button(fb, 212, 3, 50, 18, "YT HD", COLOR_YOUTUBE_RED, COLOR_START_TXT)
 
+        # Dedicated Background Music (BGM) Toggle Pill on Taskbar
+        bgm_on = self.is_bgm_active
+        bgm_label = "BGM: ON" if bgm_on else "BGM: OFF"
+        bgm_bg = COLOR_ACCENT_GREEN if bgm_on else COLOR_BUTTON_BG
+        bgm_txt = COLOR_START_TXT if bgm_on else COLOR_ACCENT_RED
+        self._draw_button(fb, 268, 3, 64, 18, bgm_label, bgm_bg, bgm_txt)
+
         # Window Switcher Pills on Taskbar
-        sw_x = 268
+        sw_x = 338
         max_sw_x = self.width - 440
         for w in self.wm.windows:
             if w.visible and not w.minimized:
@@ -1527,7 +1566,7 @@ class MasterDesktop:
         fx = self.width - 240
         fy = TASKBAR_HEIGHT + 4
         fw = 230
-        fh = 126
+        fh = 154
         draw_drop_shadow(fb, fx, fy, fw, fh, radius=8, alpha=0.5, screen_w=self.width, screen_h=self.height)
         draw_rounded_rect(fb, fx, fy, fw, fh, radius=8, fill_color=0x0016161E, border_color=COLOR_START_PILL, screen_w=self.width, screen_h=self.height)
         self._draw_string(fb, fx + 12, fy + 8, "Sound & Audio Master", COLOR_ACCENT_CYAN)
@@ -1552,10 +1591,16 @@ class MasterDesktop:
         mute_col = COLOR_ACCENT_RED if is_mute else COLOR_BUTTON_BG
         self._draw_button(fb, fx + 94, fy + 64, 120, 22, mute_lbl, mute_col, COLOR_START_TXT)
 
+        # Dedicated Background Music Button in Flyout
+        bgm_on = self.is_bgm_active
+        bgm_flyout_label = "BGM: [PAUSE MUSIC]" if bgm_on else "BGM: [RESUME MUSIC]"
+        bgm_flyout_bg = COLOR_ACCENT_PURPLE if bgm_on else COLOR_BUTTON_BG
+        self._draw_button(fb, fx + 14, fy + 94, 200, 22, bgm_flyout_label, bgm_flyout_bg, COLOR_START_TXT)
+
         # Real-time VU meter bar
         vu = self.sound_server.get_vu_meter()
         vu_bars = int(vu * 18)
-        self._draw_string(fb, fx + 14, fy + 98, f"Output VU: [{'=' * vu_bars:<18}]", COLOR_ACCENT_GREEN)
+        self._draw_string(fb, fx + 14, fy + 126, f"Output VU: [{'=' * vu_bars:<18}]", COLOR_ACCENT_GREEN)
 
     def _render_net_flyout(self, fb: bytearray):
         fx = self.width - 240
@@ -1579,7 +1624,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 272
+        mh = 292
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1605,12 +1650,13 @@ class MasterDesktop:
             ("8. Paint Studio & Calculator", "paint"),
             ("9. Sovereign 3D Games Arcade", "games"),
             ("10. Toggle Wallpaper Theme", "wallpaper"),
-            ("11. Sovereign YouTube (60 FPS HD)", "youtube")
+            ("11. Sovereign YouTube (60 FPS HD)", "youtube"),
+            ("12. Toggle Background Music", "bgm")
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid == "games" else (COLOR_ACCENT_CYAN if wid == "wallpaper" else COLOR_TEXT_PRIMARY))
+            color = COLOR_ACCENT_GREEN if wid == "bgm" else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid == "games" else (COLOR_ACCENT_CYAN if wid == "wallpaper" else COLOR_TEXT_PRIMARY)))
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
@@ -1632,9 +1678,12 @@ class MasterDesktop:
             if 212 <= mx <= 264:
                 self.launch_or_focus("youtube")
                 return ("menu_select", "youtube")
+            if 268 <= mx <= 332:
+                self.toggle_background_music()
+                return ("bgm_toggle", self.bgm_enabled)
 
             # Window Switcher Pills click
-            sw_x = 262
+            sw_x = 338
             max_sw_x = self.width - 440
             for w in self.wm.windows:
                 if w.visible and not w.minimized:
@@ -1664,7 +1713,7 @@ class MasterDesktop:
             fx = self.width - 240
             fy = TASKBAR_HEIGHT + 4
             fw = 230
-            fh = 126
+            fh = 154
             if fx <= mx <= fx + fw and fy <= my <= fy + fh:
                 # Vol Down [-]
                 if fx + 14 <= mx <= fx + 48 and fy + 64 <= my <= fy + 86:
@@ -1698,6 +1747,10 @@ class MasterDesktop:
                         self.youtube_app.sound_enabled = not muted
                     self.sound_server.play_ui_sound("click")
                     return ("vol_mute", self.sound_server.is_muted)
+                # Dedicated BGM Toggle Button in Flyout
+                if fx + 14 <= mx <= fx + 214 and fy + 94 <= my <= fy + 116:
+                    self.toggle_background_music()
+                    return ("bgm_toggle", self.bgm_enabled)
                 return ("sound_flyout_click", None)
             else:
                 self.sound_flyout_open = False
@@ -1719,19 +1772,24 @@ class MasterDesktop:
 
         # 4. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 272:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 292:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
-                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper", "youtube"]
+                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper", "youtube", "bgm"]
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
                 if 0 <= rel_item < len(items_map):
-                    if items_map[rel_item] == "wallpaper":
+                    action_id = items_map[rel_item]
+                    if action_id == "wallpaper":
                         self.cycle_wallpaper_theme()
                         self.start_menu_open = False
                         return ("wallpaper_theme", self.wallpaper_style)
-                    self.launch_or_focus(items_map[rel_item])
-                    return ("menu_select", items_map[rel_item])
+                    elif action_id == "bgm":
+                        self.toggle_background_music()
+                        self.start_menu_open = False
+                        return ("bgm_toggle", self.bgm_enabled)
+                    self.launch_or_focus(action_id)
+                    return ("menu_select", action_id)
             self.start_menu_open = False
 
         # 5. Window Manager Handling
