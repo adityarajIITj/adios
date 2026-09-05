@@ -79,65 +79,101 @@ class YouTubePlayerApp:
     Sovereign YouTube 30 FPS Windowed Player Application.
     Supports live network streaming, interactive URL input, and world video catalog.
     """
-    def __init__(self, vpu: Optional[VPU] = None):
-        self.width = 520
-        self.height = 420
-        self.title = "Sovereign YouTube Player (30 FPS)"
-        
+    def __init__(self, vpu: Optional[VPU] = None, initial_channel: Optional[int] = None):
+        # Determine geometry from vpu or default to 640x360 @ 60 FPS HD
+        target_w = vpu.width if vpu is not None else 640
+        target_h = vpu.height if vpu is not None else 360
+        target_fps = vpu.fps if vpu is not None else 60
+
+        self.is_hd = (target_w >= 600)
+
         # Connect or initialize VPU and stream relay
-        self.relay = YouTubeStreamRelay(0)
+        init_idx = initial_channel if initial_channel is not None else (3 if self.is_hd else 0)
+        self.relay = YouTubeStreamRelay(init_idx)
         if vpu is not None:
             self.vpu = vpu
-            self.vpu.width = 480
-            self.vpu.height = 240
-            self.vpu.fps = 30
             self.vpu.relay = self.relay
         else:
-            self.vpu = VPU(width=480, height=240, fps=30)
+            self.vpu = VPU(width=target_w, height=target_h, fps=target_fps)
             self.vpu.relay = self.relay
+
+        if self.is_hd:
+            self.width = 680
+            self.height = 490
+            self.title = "Sovereign YouTube Player (60 FPS HD)"
+            self.video_x = 20
+            self.video_y = 52
+            self.video_w = 640
+            self.video_h = 360
+            self.scrub_x = 20
+            self.scrub_y = 420
+            self.scrub_w = 640
+            self.scrub_h = 8
+            self.btn_y = 438
+            self.btn_h = 26
+
+            # Top Header Rectangles
+            self.rect_brand = (10, 10, 126, 24)
+            self.rect_url   = (144, 10, 310, 24)
+            self.rect_paste = (462, 10, 56, 24)
+            self.rect_load  = (524, 10, 56, 24)
+            self.rect_net   = (588, 10, 80, 24)
+
+            # Transport Buttons Layout (Row at y = 438, h = 26)
+            self.btn_play  = (16, 438, 56, 26)   # Play / Pause
+            self.btn_ch1   = (78, 438, 86, 26)   # Rick Astley (channel 3)
+            self.btn_ch2   = (170, 438, 92, 26)  # Bunny 60FPS (channel 5)
+            self.btn_ch3   = (268, 438, 86, 26)  # Lofi Beats (channel 7)
+            self.btn_cyber = (360, 438, 76, 26)  # Cyber 3D (channel 0)
+            self.btn_vol   = (442, 438, 68, 26)  # Volume
+            self.btn_sound = (516, 438, 68, 26)  # Sound toggle: [SND:ON] / [MUTED]
+            self.btn_qual  = (590, 438, 78, 26)  # [60 FPS HD]
+        else:
+            self.width = 520
+            self.height = 420
+            self.title = "Sovereign YouTube Player (30 FPS)"
+            self.video_x = 20
+            self.video_y = 65
+            self.video_w = 480
+            self.video_h = 270
+            self.scrub_x = 20
+            self.scrub_y = 338
+            self.scrub_w = 480
+            self.scrub_h = 8
+            self.btn_y = 356
+            self.btn_h = 24
+
+            # Top Header Rectangles
+            self.rect_brand = (6, 10, 114, 22)
+            self.rect_url   = (124, 10, 210, 22)
+            self.rect_paste = (338, 10, 48, 22)
+            self.rect_load  = (390, 10, 48, 22)
+            self.rect_net   = (442, 10, 70, 22)
+
+            # Transport Buttons Layout (Row at y = 356, h = 24)
+            self.btn_play  = (16, 356, 56, 24)   # Play / Pause
+            self.btn_ch1   = (78, 356, 76, 24)   # Channel 0: RISC-V 3D
+            self.btn_ch2   = (160, 356, 76, 24)  # Channel 1: Synthwave
+            self.btn_ch3   = (242, 356, 76, 24)  # Channel 2: Matrix
+            self.btn_cyber = (242, 356, 76, 24)
+            self.btn_vol   = (324, 356, 76, 24)  # Volume cycle
+            self.btn_sound = (406, 356, 54, 24)  # Sound toggle: [SND:ON] / [MUTED]
+            self.btn_qual  = (466, 356, 46, 24)  # Next catalog video
 
         # Player UI State
         self.url_text = self.relay.active_url
         self.url_focused = False
         self.is_playing = False
         self.volume = 80
-        self.active_catalog_idx = 0
+        self.active_catalog_idx = init_idx
         self.status_message = "Ready"
-        
-        # Geometry layout
-        self.video_x = 20
-        self.video_y = 65
-        self.video_w = 480
-        self.video_h = 270
-        
-        # Top Header Rectangles
-        self.rect_brand = (6, 10, 114, 22)
-        self.rect_url   = (124, 10, 210, 22)
-        self.rect_paste = (338, 10, 48, 22)
-        self.rect_load  = (390, 10, 48, 22)
-        self.rect_net   = (442, 10, 70, 22)
-        
-        # Progress Scrub Bar Layout
-        self.scrub_x = 20
-        self.scrub_y = 338
-        self.scrub_w = 480
-        self.scrub_h = 8
-        
-        # Host Sound Output State: Default to MUTED / quiet so desktop boot never auto-blares sound
-        self.sound_enabled = False
-        if hasattr(self.vpu, "sound_enabled"):
-            self.vpu.sound_enabled = False
 
-        # Transport Buttons Layout (Row at y = 356, h = 24)
-        self.btn_play  = (16, 356, 56, 24)   # Play / Pause
-        self.btn_ch1   = (78, 356, 76, 24)   # Channel 0: RISC-V 3D
-        self.btn_ch2   = (160, 356, 76, 24)  # Channel 1: Synthwave
-        self.btn_ch3   = (242, 356, 76, 24)  # Channel 2: Matrix
-        self.btn_vol   = (324, 356, 76, 24)  # Volume cycle
-        self.btn_sound = (406, 356, 54, 24)  # Sound toggle: [SND:ON] / [MUTED]
-        self.btn_qual  = (466, 356, 46, 24)  # Next catalog video
-        
-        # Auto-start video playback on launch (video runs at 30 FPS, audio stays muted until toggled)
+        # Host Sound Output State: Default to Audible in HD mode, quiet in 480 legacy test mode
+        self.sound_enabled = True if self.is_hd else False
+        if hasattr(self.vpu, "sound_enabled"):
+            self.vpu.sound_enabled = self.sound_enabled
+
+        # Auto-start video playback on launch
         self.play()
 
     @property
@@ -326,13 +362,19 @@ class YouTubePlayerApp:
 
         # 5. Check Channel Selectors
         if self._in_rect(local_x, local_y, self.btn_ch1):
-            self.select_catalog_video(0)  # RISC-V 3D
+            target_ch = 3 if self.is_hd else 0  # Rick Astley in HD, RISC-V in 480
+            self.select_catalog_video(target_ch)
             return True
         if self._in_rect(local_x, local_y, self.btn_ch2):
-            self.select_catalog_video(1)  # Synthwave
+            target_ch = 5 if self.is_hd else 1  # Big Buck Bunny in HD, Synthwave in 480
+            self.select_catalog_video(target_ch)
             return True
         if self._in_rect(local_x, local_y, self.btn_ch3):
-            self.select_catalog_video(2)  # Matrix
+            target_ch = 7 if self.is_hd else 2  # Lofi Beats in HD, Matrix in 480
+            self.select_catalog_video(target_ch)
+            return True
+        if hasattr(self, "btn_cyber") and self._in_rect(local_x, local_y, self.btn_cyber):
+            self.select_catalog_video(0)  # RISC-V Cyber 3D
             return True
 
         # 6. Check Volume Toggle
@@ -359,7 +401,7 @@ class YouTubePlayerApp:
         return rx <= x <= rx + rw and ry <= y <= ry + rh
 
     def step(self, now: Optional[float] = None) -> bool:
-        """Paces video stream frame at 30 FPS and transitions to real audio when extracted."""
+        """Paces video stream frame at target FPS and transitions to real audio when extracted."""
         if self.sound_enabled and self.is_playing and self.relay:
             real_wav = self.relay.get_audio_wav_path()
             if real_wav and getattr(self.vpu, "_audio_temp_path", None) != real_wav:
@@ -413,8 +455,8 @@ class YouTubePlayerApp:
         title = ch_info.get("title", "Sovereign Video")
         author = ch_info.get("author", "AdiOS")
         views = ch_info.get("views", "1.2M")
-        meta_str = f"{title[:28]} | {author[:16]} | {views}"
-        self._draw_text(surface_buffer, surf_w, 18, 34, meta_str[:58], (200, 210, 230))
+        meta_str = f"{title[:34]} | {author[:18]} | {views}"
+        self._draw_text(surface_buffer, surf_w, 18, 36 if self.is_hd else 34, meta_str[:70], (200, 210, 230))
 
         # 3. Video Viewport Framebuffer DMA Blit
         self._stroke_rect(surface_buffer, surf_w, self.video_x - 1, self.video_y - 1,
@@ -424,9 +466,10 @@ class YouTubePlayerApp:
         self.vpu.dma_blit_to_surface(surface_buffer, surf_w, surf_h, self.video_x, self.video_y)
 
         # Video HUD badges (top right of video)
-        fps_badge = "480x270 @ 30 FPS"
-        self._fill_rect(surface_buffer, surf_w, self.video_x + self.video_w - 145, self.video_y + 8, 138, 18, (10, 10, 15, 200))
-        self._draw_text(surface_buffer, surf_w, self.video_x + self.video_w - 140, self.video_y + 13, fps_badge, (0, 255, 220))
+        fps_badge = f"{self.video_w}x{self.video_h} @ {self.vpu.fps} FPS{' HD' if self.is_hd else ''}"
+        badge_w = 158 if self.is_hd else 138
+        self._fill_rect(surface_buffer, surf_w, self.video_x + self.video_w - badge_w - 6, self.video_y + 8, badge_w, 18, (10, 10, 15, 200))
+        self._draw_text(surface_buffer, surf_w, self.video_x + self.video_w - badge_w - 2, self.video_y + 13, fps_badge, (0, 255, 220))
 
         # 4. Scrub Bar
         self._fill_rect(surface_buffer, surf_w, self.scrub_x, self.scrub_y, self.scrub_w, self.scrub_h, (40, 44, 55, 255))
@@ -440,7 +483,7 @@ class YouTubePlayerApp:
         knob_x = min(self.scrub_x + self.scrub_w - 4, self.scrub_x + play_w)
         self._fill_rect(surface_buffer, surf_w, knob_x - 3, self.scrub_y - 2, 7, self.scrub_h + 4, (255, 255, 255, 255))
 
-        # 5. Transport Controls Bar (y = 356)
+        # 5. Transport Controls Bar
         play_lbl = "PAUSE" if self.is_playing else "PLAY"
         btn_col = (200, 30, 30, 255) if self.is_playing else (40, 160, 80, 255)
         self._draw_button(surface_buffer, surf_w, self.btn_play, play_lbl, btn_col)
@@ -451,29 +494,42 @@ class YouTubePlayerApp:
         self._draw_button(surface_buffer, surf_w, self.btn_sound, snd_lbl, snd_col)
 
         # Channel & World Video Selectors
-        c1_col = (0, 120, 180, 255) if self.active_catalog_idx == 0 else (45, 50, 65, 255)
-        c2_col = (180, 30, 120, 255) if self.active_catalog_idx == 1 else (45, 50, 65, 255)
-        c3_col = (30, 140, 50, 255) if self.active_catalog_idx == 2 else (45, 50, 65, 255)
-        self._draw_button(surface_buffer, surf_w, self.btn_ch1, "RISC-V", c1_col)
-        self._draw_button(surface_buffer, surf_w, self.btn_ch2, "SYNTH", c2_col)
-        self._draw_button(surface_buffer, surf_w, self.btn_ch3, "MATRIX", c3_col)
+        if self.is_hd:
+            c1_col = (220, 30, 30, 255) if self.active_catalog_idx == 3 else (45, 50, 65, 255)
+            c2_col = (120, 200, 40, 255) if self.active_catalog_idx == 5 else (45, 50, 65, 255)
+            c3_col = (200, 80, 160, 255) if self.active_catalog_idx == 7 else (45, 50, 65, 255)
+            cy_col = (0, 140, 200, 255) if self.active_catalog_idx == 0 else (45, 50, 65, 255)
+            self._draw_button(surface_buffer, surf_w, self.btn_ch1, "RICK", c1_col)
+            self._draw_button(surface_buffer, surf_w, self.btn_ch2, "BUNNY 60F", c2_col)
+            self._draw_button(surface_buffer, surf_w, self.btn_ch3, "LOFI", c3_col)
+            if hasattr(self, "btn_cyber"):
+                self._draw_button(surface_buffer, surf_w, self.btn_cyber, "CYBER 3D", cy_col)
+            qual_lbl = "60 FPS"
+        else:
+            c1_col = (0, 120, 180, 255) if self.active_catalog_idx == 0 else (45, 50, 65, 255)
+            c2_col = (180, 30, 120, 255) if self.active_catalog_idx == 1 else (45, 50, 65, 255)
+            c3_col = (30, 140, 50, 255) if self.active_catalog_idx == 2 else (45, 50, 65, 255)
+            self._draw_button(surface_buffer, surf_w, self.btn_ch1, "RISC-V", c1_col)
+            self._draw_button(surface_buffer, surf_w, self.btn_ch2, "SYNTH", c2_col)
+            self._draw_button(surface_buffer, surf_w, self.btn_ch3, "MATRIX", c3_col)
+            cat_title = self.relay.channel_info.get("title", "MORE")
+            qual_lbl = "MORE" if self.active_catalog_idx < 3 else cat_title[:5].upper()
 
         # Volume control
         vol_str = f"VOL:{self.volume}%"
         self._draw_button(surface_buffer, surf_w, self.btn_vol, vol_str, (45, 50, 65, 255))
 
         # World Video Quick Selector button
-        cat_title = self.relay.channel_info.get("title", "MORE")
-        qual_lbl = "MORE" if self.active_catalog_idx < 3 else cat_title[:5].upper()
         self._draw_button(surface_buffer, surf_w, self.btn_qual, qual_lbl, (140, 40, 100, 255))
 
-        # 6. Time & Telemetry Line (y = 385)
+        # 6. Time & Telemetry Line
         pts_s = self.vpu.current_pts // 1000
         dur_s = self.vpu.duration_ms // 1000
         cur_time_str = f"{pts_s // 60:02d}:{pts_s % 60:02d}"
         dur_time_str = f"{dur_s // 60:02d}:{dur_s % 60:02d}"
         time_display = f"{cur_time_str} / {dur_time_str}"
-        self._draw_text(surface_buffer, surf_w, 20, 385, time_display, (170, 180, 200))
+        telem_y = self.btn_y + self.btn_h + 5
+        self._draw_text(surface_buffer, surf_w, 20, telem_y, time_display, (170, 180, 200))
 
         # Stream status indicator
         stream_st = getattr(self.relay, 'stream_state', STREAM_IDLE)
@@ -482,11 +538,11 @@ class YouTubePlayerApp:
             status_txt = f"Downloading: {pct:.0f}%"
             status_col = (0, 200, 255)
         elif stream_st == STREAM_DECODING:
-            status_txt = "Decoding..."
+            status_txt = "Decoding 60FPS..."
             status_col = (255, 200, 0)
         elif stream_st == STREAM_STREAMING:
             is_real = getattr(self.relay, 'is_real_video_active', False)
-            status_txt = "REAL VIDEO" if is_real else "STREAMING"
+            status_txt = "REAL VIDEO 60FPS" if is_real else "STREAMING 60FPS"
             status_col = (0, 255, 120) if is_real else (200, 200, 200)
         elif stream_st == STREAM_ERROR:
             err = getattr(self.relay, '_stream_error_msg', 'Error')
@@ -497,7 +553,7 @@ class YouTubePlayerApp:
             status_col = (110, 130, 160)
 
         telemetry_txt = f"{status_txt} | {net_text}"
-        self._draw_text(surface_buffer, surf_w, 220, 385, telemetry_txt[:38], status_col)
+        self._draw_text(surface_buffer, surf_w, 240 if self.is_hd else 220, telem_y, telemetry_txt[:38], status_col)
 
         # Update duration from relay if it changed (yt-dlp resolves real duration)
         if self.relay.duration_ms > 0 and self.relay.duration_ms != self.vpu.duration_ms:
