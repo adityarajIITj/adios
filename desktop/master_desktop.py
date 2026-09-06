@@ -35,6 +35,7 @@ from .code_studio import CodeStudio
 from .file_explorer import FileExplorer
 from .scene3d_studio import Scene3DStudio
 from .notepad import NotepadApp
+from .browser import WebKitBrowserApp
 from graphics.engine3d import Engine3D, Vector3, create_cube, create_temple_pyramid
 from browser.layout_engine import HTMLParser, CSSStyleSheet, LayoutEngine
 from db.engine import SovereignDB
@@ -356,7 +357,7 @@ class MasterDesktop:
         right_x = left_margin + win_w + 16
         bot_y = TASKBAR_HEIGHT + win_h + 16
 
-        # 1. Sovereign Web Browser Window
+        # 1. Sovereign Web Browser Window (HTML/CSS Box Model)
         self.win_browser = Window("browser", "Sovereign Browser (HTML/CSS Box Model)", left_margin, TASKBAR_HEIGHT + 8, win_w, win_h)
         self.win_browser.on_draw_content = self._draw_browser
         self.win_browser.on_click_content = self._click_browser
@@ -456,6 +457,18 @@ class MasterDesktop:
         self.win_notepad = NotepadApp(win_id="notepad", x=left_margin + 50, y=TASKBAR_HEIGHT + 40, w=min(580, self.width - left_margin - 40), h=min(450, self.height - TASKBAR_HEIGHT - 50))
         self.win_notepad.visible = False
         self.wm.add_window(self.win_notepad)
+
+        # 15. Sovereign WebKit Modern Web Browser (Safari Core)
+        self.win_webkit = WebKitBrowserApp(
+            win_id="webkit",
+            x=left_margin + 30,
+            y=TASKBAR_HEIGHT + 25,
+            w=min(780, self.width - left_margin - 30),
+            h=min(540, self.height - TASKBAR_HEIGHT - 35),
+            lazy_start=True
+        )
+        self.win_webkit.visible = False
+        self.wm.add_window(self.win_webkit)
 
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
@@ -1500,6 +1513,8 @@ class MasterDesktop:
             if w.win_id == win_id:
                 w.visible = True
                 w.minimized = False
+                if hasattr(w, "_ensure_worker") and callable(w._ensure_worker):
+                    w._ensure_worker()
                 self.wm.focus_window(w)
                 self.status_message = f"Active window: {w.title}"
                 self.start_menu_open = False
@@ -1737,7 +1752,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 378
+        mh = 398
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1768,6 +1783,7 @@ class MasterDesktop:
             ("13. AdiOS Code Studio (IDE)", "studio"),
             ("14. 3D Spatial Scene Studio", "scene3d"),
             ("15. AdiOS Notepad (Text)", "notepad"),
+            ("16. WebKit Modern Web Browser", "webkit"),
         ]
 
         for idx, (label, wid) in enumerate(items):
@@ -1909,14 +1925,14 @@ class MasterDesktop:
 
         # 4. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 378:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 398:
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
-                    "paint", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad"
+                    "paint", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit"
                 ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
@@ -1984,6 +2000,9 @@ class MasterDesktop:
                     elif cmd.lower() in ("studio", "code", "ide", "py"):
                         self.launch_or_focus("studio")
                         self.shell_history.append("[AdiOS Code Studio] Launching Sovereign Code Studio...")
+                    elif cmd.lower() in ("webkit", "web", "surf", "safari", "browse"):
+                        self.launch_or_focus("webkit")
+                        self.shell_history.append("[AdiOS WebKit] Launching Modern Safari-Core Web Browser...")
                     else:
                         try:
                             out = self.shell.eval(cmd)
