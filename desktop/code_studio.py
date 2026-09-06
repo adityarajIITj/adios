@@ -96,6 +96,7 @@ class CodeStudio(Window):
         self.cursor_line: int = 0
         self.cursor_col: int = 0
         self.scroll_line: int = 0
+        self.font_scale: int = 1
         
         # Execution State
         self.output_logs: List[str] = [
@@ -162,32 +163,40 @@ class CodeStudio(Window):
             self._draw_text(fb, tab_x + 9, y + 8, name, txt_col, font_dict)
             tab_x += tab_w + 6
 
-        # Action Buttons on right side: [Run], [T-Cube], [T-Bench], [T-Web]
+        # Action Buttons on right side: [Zoom], [Load Template], [Run]
         btn_run_x = x + w - 75
         self._fill_rect(fb, btn_run_x, y + 4, 65, h - 8, pal.accent_primary)
         self._draw_text(fb, btn_run_x + 12, y + 8, "[Run]", 0x000F172A if pal.name == "Arctic Minimal" else 0x00FFFFFF, font_dict)
 
-        btn_t_x = btn_run_x - 130
-        self._fill_rect(fb, btn_t_x, y + 4, 120, h - 8, pal.btn_bg)
-        self._draw_rect_outline(fb, btn_t_x, y + 4, 120, h - 8, pal.btn_border)
+        btn_t_x = btn_run_x - 125
+        self._fill_rect(fb, btn_t_x, y + 4, 115, h - 8, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_t_x, y + 4, 115, h - 8, pal.btn_border)
         self._draw_text(fb, btn_t_x + 8, y + 8, "Load Template", pal.text_primary, font_dict)
 
+        btn_z_x = btn_t_x - 70
+        self._fill_rect(fb, btn_z_x, y + 4, 62, h - 8, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_z_x, y + 4, 62, h - 8, pal.btn_border)
+        zoom_lbl = f"Zoom:{self.font_scale}x"
+        self._draw_text(fb, btn_z_x + 6, y + 8, zoom_lbl, pal.text_muted, font_dict)
+
     def _render_editor(self, fb: bytearray, x: int, y: int, w: int, h: int, pal: Any, font_dict: Dict):
-        """Renders code editor with line number gutter and syntax tokenization."""
+        """Renders code editor with line number gutter, syntax tokenization, and bottom status bar."""
+        status_bar_h = 20
+        canvas_h = h - status_bar_h
         gutter_w = 44
         
         # Gutter background & hairline divider
-        self._fill_rect(fb, x, y, gutter_w, h, pal.gutter_bg)
-        self._draw_vline(fb, x + gutter_w, y, h, pal.card_border)
+        self._fill_rect(fb, x, y, gutter_w, canvas_h, pal.gutter_bg)
+        self._draw_vline(fb, x + gutter_w, y, canvas_h, pal.card_border)
 
         # Editor code canvas
         code_x = x + gutter_w + 10
         code_w = w - gutter_w - 10
-        self._fill_rect(fb, x + gutter_w + 1, y, code_w + 9, h, pal.win_bg)
+        self._fill_rect(fb, x + gutter_w + 1, y, code_w + 9, canvas_h, pal.win_bg)
 
-        # Calculate visible lines
-        line_h = 16
-        visible_count = h // line_h
+        # Calculate visible lines based on scale
+        line_h = 16 * self.font_scale
+        visible_count = canvas_h // line_h
 
         for idx in range(visible_count):
             line_idx = self.scroll_line + idx
@@ -208,6 +217,13 @@ class CodeStudio(Window):
             # Render line tokens
             raw_line = self.lines[line_idx]
             self._render_highlighted_line(fb, code_x, line_y, raw_line, pal, font_dict)
+
+        # Bottom Editor Status Bar
+        sb_y = y + canvas_h
+        self._fill_rect(fb, x, sb_y, w, status_bar_h, pal.gutter_bg)
+        self._draw_hline(fb, x, sb_y, w, pal.card_border)
+        stat_txt = f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | UTF-8 | Python 3 | {len(self.lines)} lines"
+        self._draw_text(fb, x + 12, sb_y + 6, stat_txt, pal.text_muted, font_dict)
 
     def _render_highlighted_line(self, fb: bytearray, x: int, y: int, line: str, pal: Any, font_dict: Dict):
         """Tokenizes line and applies minimalist syntax coloring."""
@@ -332,7 +348,7 @@ class CodeStudio(Window):
             cw = self.client_rect[2]
             if rel_x >= cw - 75:
                 self.run_code()
-            elif cw - 205 <= rel_x < cw - 75:
+            elif cw - 190 <= rel_x < cw - 75:
                 # Cycle template
                 keys = list(TEMPLATES.keys())
                 curr_idx = 0
@@ -341,6 +357,9 @@ class CodeStudio(Window):
                         curr_idx = (i + 1) % len(keys)
                         break
                 self.load_template(keys[curr_idx])
+            elif cw - 265 <= rel_x < cw - 190:
+                # Toggle Zoom
+                self.font_scale = 2 if self.font_scale == 1 else 1
             return
 
         # Output tab clear button
