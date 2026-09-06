@@ -44,7 +44,8 @@ def main():
 
     # Initialize Sovereign Master Desktop Compositor
     desktop = MasterDesktop(vm=vm, width=WIDTH, height=HEIGHT, ram_capacity_mb=1024)
-    desktop.sound_server.start()
+    if hasattr(desktop, "sound_server") and hasattr(desktop.sound_server, "start"):
+        desktop.sound_server.start()
 
     running = True
     last_mouse_pos = (WIDTH // 2, HEIGHT // 2)

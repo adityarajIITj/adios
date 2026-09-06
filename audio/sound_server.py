@@ -64,6 +64,10 @@ class SoundServer:
         except Exception:
             self._has_pygame = False
 
+    def start(self):
+        """Starts the sound server (no-op if already initialized)."""
+        pass
+
     def _init_ui_sounds(self):
         """Pre-synthesizes clean, low-latency UI sound effects into memory."""
         if not self._has_pygame:
