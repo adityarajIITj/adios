@@ -368,22 +368,40 @@ class WindowManager:
         if not win.maximized and win.active:
             draw_drop_shadow(fb, wx, wy, ww, wh, radius=8, alpha=0.35, screen_w=self.width, screen_h=self.height)
 
-        # 2. Window Background with Rounded Outer Border
-        border_col = COLOR_BORDER_ACT if win.active else COLOR_BORDER
-        draw_rounded_rect(fb, wx, wy, ww, wh, radius=8, fill_color=win.bg_color, border_color=border_col, screen_w=self.width, screen_h=self.height)
+        # 2. Window Background with Refined Hairline Border
+        try:
+            from .theme import ThemeManager
+            pal = ThemeManager.get_instance().palette
+            border_col = pal.accent_primary if win.active else pal.win_border
+            win_bg = pal.win_bg if win.bg_color == 0x001F2335 else win.bg_color
+            tb_bg = pal.win_title_active if win.active else pal.win_title_inactive
+            tb_txt = pal.win_title_text
+            divider_col = pal.card_border
+        except Exception:
+            border_col = COLOR_BORDER_ACT if win.active else COLOR_BORDER
+            win_bg = win.bg_color
+            tb_bg = COLOR_TITLE_ACT if win.active else COLOR_TITLE_INACT
+            tb_txt = COLOR_TITLE_TXT
+            divider_col = COLOR_BORDER
 
-        # 3. Modern Titlebar Header (Gradient Fill + Top Rounded Corners)
-        tb_top = COLOR_TITLE_ACT_TOP if win.active else COLOR_TITLE_INACT_TOP
-        tb_bot = COLOR_TITLE_ACT_BOT if win.active else COLOR_TITLE_INACT_BOT
-        draw_rounded_rect(fb, wx, wy, ww, 22, radius=8, fill_color=tb_top, border_color=border_col, round_top_only=True, screen_w=self.width, screen_h=self.height)
-        draw_gradient_v(fb, wx + 1, wy + 2, ww - 2, 19, tb_top, tb_bot, screen_w=self.width, screen_h=self.height)
+        draw_rounded_rect(fb, wx, wy, ww, wh, radius=6, fill_color=win_bg, border_color=border_col, screen_w=self.width, screen_h=self.height)
 
-        # 4. Titlebar Text (Truncated to avoid control buttons)
+        # 3. Minimalist Modern Titlebar (Subtle flat glass with clean hairline separator)
+        draw_rounded_rect(fb, wx, wy, ww, 22, radius=6, fill_color=tb_bg, border_color=border_col, round_top_only=True, screen_w=self.width, screen_h=self.height)
+        
+        # Hairline titlebar divider
+        c_div = bytes([divider_col & 0xFF, (divider_col >> 8) & 0xFF, (divider_col >> 16) & 0xFF, 0])
+        div_y = wy + 21
+        if 0 <= div_y < self.height:
+            for dx in range(wx + 1, min(self.width, wx + ww - 1)):
+                fb[(div_y * self.width + dx) * 4 : (div_y * self.width + dx + 1) * 4] = c_div
+
+        # 4. Titlebar Text
         title_limit = max(1, (ww - 75) // CHAR_WIDTH)
         display_title = win.title[:title_limit]
-        self._draw_string(fb, wx + 10, wy + 6, display_title, COLOR_TITLE_TXT, font_dict)
+        self._draw_string(fb, wx + 10, wy + 6, display_title, tb_txt, font_dict)
 
-        # 5. Titlebar Control Buttons: Modern Circular Traffic Lights
+        # 5. Titlebar Control Buttons: Minimalist Circular Traffic Lights
         if win.can_minimize:
             min_x = wx + ww - 54
             self._draw_traffic_light(fb, min_x + 5, wy + 11, COLOR_BTN_MIN, "_", font_dict)
