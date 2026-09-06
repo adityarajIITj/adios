@@ -55,6 +55,7 @@ class DesktopIconManager:
     def _setup_default_icons(self):
         default_items = [
             ("studio",   "Studio IDE", "computer", "studio",   0x0038BDF8),
+            ("notepad",  "Notepad",    "notepad",  "notepad",  0x00CBD5E1),
             ("youtube",  "YouTube",    "youtube",  "youtube",  0x00F7768E),
             ("files",    "AdioFiles",  "explorer", "files",    0x0094A3B8),
             ("scene3d",  "3D Scene",   "games",    "scene3d",  0x000EA5E9),

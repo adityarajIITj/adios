@@ -34,6 +34,7 @@ from .theme import ThemeManager
 from .code_studio import CodeStudio
 from .file_explorer import FileExplorer
 from .scene3d_studio import Scene3DStudio
+from .notepad import NotepadApp
 from graphics.engine3d import Engine3D, Vector3, create_cube, create_temple_pyramid
 from browser.layout_engine import HTMLParser, CSSStyleSheet, LayoutEngine
 from db.engine import SovereignDB
@@ -451,23 +452,23 @@ class MasterDesktop:
         self.win_scene3d.visible = False
         self.wm.add_window(self.win_scene3d)
 
+        # 14. AdiOS Notepad Application (Floating)
+        self.win_notepad = NotepadApp(win_id="notepad", x=left_margin + 50, y=TASKBAR_HEIGHT + 40, w=min(580, self.width - left_margin - 40), h=min(450, self.height - TASKBAR_HEIGHT - 50))
+        self.win_notepad.visible = False
+        self.wm.add_window(self.win_notepad)
+
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
 
     def _on_explorer_open_file(self, file_path: str):
         """Callback invoked when user opens a file in FileExplorer."""
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in (".py", ".ap", ".s", ".c", ".txt", ".md", ".json"):
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    code = f.read()
-                self.win_studio.lines = code.splitlines() if code else [""]
-                self.win_studio.cursor_line = 0
-                self.win_studio.scroll_line = 0
-                self.win_studio.title = f"AdiOS Code Studio - {os.path.basename(file_path)}"
-                self.launch_or_focus("studio")
-            except Exception as e:
-                self.status_message = f"Error opening file: {e}"
+        if ext in (".txt", ".md", ".log"):
+            self.win_notepad.open_file(file_path)
+            self.launch_or_focus("notepad")
+        elif ext in (".py", ".ap", ".s", ".c", ".json"):
+            self.win_studio.open_buffer(file_path)
+            self.launch_or_focus("studio")
         elif ext in (".wav", ".mp4", ".webm"):
             self.launch_or_focus("youtube")
 
@@ -1736,7 +1737,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 356
+        mh = 378
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1766,6 +1767,7 @@ class MasterDesktop:
             ("12. Toggle Background Music", "bgm"),
             ("13. AdiOS Code Studio (IDE)", "studio"),
             ("14. 3D Spatial Scene Studio", "scene3d"),
+            ("15. AdiOS Notepad (Text)", "notepad"),
         ]
 
         for idx, (label, wid) in enumerate(items):
@@ -1907,14 +1909,14 @@ class MasterDesktop:
 
         # 4. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 356:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 378:
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
-                    "paint", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d"
+                    "paint", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad"
                 ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
@@ -1976,6 +1978,12 @@ class MasterDesktop:
                     if cmd.lower() in ("games", "game", "castle", "flight", "arcade", "play"):
                         self.launch_or_focus("games")
                         self.shell_history.append("[AdiOS Games Arcade] Launching Sovereign 3D Games...")
+                    elif cmd.lower() in ("notepad", "notes", "write", "nano", "edit"):
+                        self.launch_or_focus("notepad")
+                        self.shell_history.append("[AdiOS Notepad] Launching Sovereign Notepad...")
+                    elif cmd.lower() in ("studio", "code", "ide", "py"):
+                        self.launch_or_focus("studio")
+                        self.shell_history.append("[AdiOS Code Studio] Launching Sovereign Code Studio...")
                     else:
                         try:
                             out = self.shell.eval(cmd)
@@ -2053,6 +2061,9 @@ class MasterDesktop:
         elif active_win.win_id == "youtube":
             if hasattr(self, "youtube_app"):
                 self.youtube_app.handle_key(key_char)
+
+        elif hasattr(active_win, "handle_key") and callable(active_win.handle_key):
+            active_win.handle_key(key_char)
 
 if __name__ == "__main__":
     desktop = MasterDesktop()

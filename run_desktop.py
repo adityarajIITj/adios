@@ -64,6 +64,20 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE and pygame.key.get_mods() & pygame.KMOD_SHIFT:
                     running = False
+                elif event.key == pygame.K_BACKSPACE:
+                    desktop.handle_key("\b")
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    desktop.handle_key("\n")
+                elif event.key == pygame.K_TAB:
+                    desktop.handle_key("\t")
+                elif event.key == pygame.K_UP:
+                    desktop.handle_key("KEY_UP")
+                elif event.key == pygame.K_DOWN:
+                    desktop.handle_key("KEY_DOWN")
+                elif event.key == pygame.K_LEFT:
+                    desktop.handle_key("KEY_LEFT")
+                elif event.key == pygame.K_RIGHT:
+                    desktop.handle_key("KEY_RIGHT")
                 elif event.unicode:
                     desktop.handle_key(event.unicode)
 
