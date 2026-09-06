@@ -18,6 +18,7 @@ from desktop.theme import ThemeManager, THEMES, PALETTE_NORDIC_SLATE, PALETTE_MO
 from desktop.code_studio import CodeStudio, TEMPLATES, TAB_EDITOR, TAB_OUTPUT, TAB_PACKAGES
 from desktop.file_explorer import FileExplorer, FileEntry
 from desktop.scene3d_studio import Scene3DStudio, create_octahedron, create_hex_prism, create_monolith
+from desktop.notepad import NotepadApp
 from desktop.master_desktop import MasterDesktop
 
 class TestV3ThemeEngine(unittest.TestCase):
@@ -61,7 +62,40 @@ class TestV3CodeStudio(unittest.TestCase):
     def test_initial_state(self):
         self.assertEqual(self.studio.active_tab, TAB_EDITOR)
         self.assertTrue(len(self.studio.lines) > 0)
-        self.assertIn("project_point", "\n".join(self.studio.lines))
+        self.assertIn("AdiOS Sovereign Code Studio", "\n".join(self.studio.lines))
+
+    def test_interactive_keyboard_editing(self):
+        self.studio.new_buffer()
+        self.assertEqual(self.studio.lines, ["# Sovereign Python Script", ""])
+        for ch in "val = 42":
+            self.studio.handle_key(ch)
+        self.assertEqual(self.studio.lines[1], "val = 42")
+        self.studio.handle_key("\n")
+        self.assertEqual(len(self.studio.lines), 3)
+        self.studio.handle_key("\b")
+        self.assertEqual(len(self.studio.lines), 2)
+
+    def test_auto_indentation_on_colon(self):
+        self.studio.new_buffer()
+        for ch in "def foo():":
+            self.studio.handle_key(ch)
+        self.studio.handle_key("\n")
+        self.assertEqual(self.studio.lines[2], "    ")
+        self.assertEqual(self.studio.cursor_col, 4)
+
+    def test_buffer_save_and_open(self):
+        test_path = "workspace/test_script.py"
+        self.studio.lines = ["print('AdiOS Test')", "x = 100"]
+        self.studio.save_buffer(test_path)
+        self.assertTrue(os.path.exists(test_path))
+
+        new_studio = CodeStudio()
+        new_studio.open_buffer(test_path)
+        self.assertEqual(new_studio.lines, ["print('AdiOS Test')", "x = 100"])
+        try:
+            os.remove(test_path)
+        except Exception:
+            pass
 
     def test_template_loading(self):
         self.studio.load_template("benchmark")
@@ -103,6 +137,55 @@ class TestV3CodeStudio(unittest.TestCase):
         # Test scroll paging
         self.studio.pkg_scroll_idx = 10
         self.assertEqual(self.studio.pkg_scroll_idx, 10)
+
+class TestV3Notepad(unittest.TestCase):
+    def setUp(self):
+        self.notepad = NotepadApp()
+
+    def test_initial_notepad_state(self):
+        self.assertTrue(len(self.notepad.lines) > 0)
+        self.assertTrue(self.notepad.word_count > 0)
+        self.assertTrue(self.notepad.char_count > 0)
+        self.assertTrue(self.notepad.show_line_numbers)
+
+    def test_notepad_typing_and_editing(self):
+        self.notepad.new_file()
+        self.assertEqual(self.notepad.lines, [""])
+        for ch in "AdiOS Sovereign Note":
+            self.notepad.handle_key(ch)
+        self.assertEqual(self.notepad.lines[0], "AdiOS Sovereign Note")
+        self.assertEqual(self.notepad.word_count, 3)
+
+        self.notepad.handle_key("\n")
+        self.assertEqual(len(self.notepad.lines), 2)
+        for ch in "Second line":
+            self.notepad.handle_key(ch)
+        self.assertEqual(self.notepad.lines[1], "Second line")
+
+        # Backspace test
+        self.notepad.handle_key("\b")
+        self.assertEqual(self.notepad.lines[1], "Second lin")
+
+    def test_notepad_save_and_open(self):
+        test_file = "test_note.txt"
+        self.notepad.lines = ["Title: Sovereign Note", "Body: Testing save."]
+        self.notepad.save_file(test_file)
+        self.assertTrue(os.path.exists(test_file))
+
+        np2 = NotepadApp()
+        np2.open_file(test_file)
+        self.assertEqual(np2.lines, ["Title: Sovereign Note", "Body: Testing save."])
+        try:
+            os.remove(test_file)
+        except Exception:
+            pass
+
+    def test_notepad_rendering(self):
+        fb = bytearray(1280 * 720 * 4)
+        self.notepad.on_draw_content(self.notepad, fb, {})
+        cx, cy, cw, ch = self.notepad.client_rect
+        sample_off = ((cy + 40) * 1280 + (cx + 50)) * 4
+        self.assertTrue(any(fb[sample_off:sample_off+4]))
 
 class TestV3FileExplorer(unittest.TestCase):
     def setUp(self):
@@ -192,6 +275,7 @@ class TestV3MasterDesktopIntegration(unittest.TestCase):
         self.assertIsNotNone(self.desktop.win_studio)
         self.assertIsNotNone(self.desktop.win_file_explorer)
         self.assertIsNotNone(self.desktop.win_scene3d)
+        self.assertIsNotNone(self.desktop.win_notepad)
 
     def test_app_launch_or_focus(self):
         self.desktop.launch_or_focus("studio")
@@ -203,6 +287,18 @@ class TestV3MasterDesktopIntegration(unittest.TestCase):
 
         self.desktop.launch_or_focus("scene3d")
         self.assertTrue(self.desktop.win_scene3d.visible)
+
+        self.desktop.launch_or_focus("notepad")
+        self.assertTrue(self.desktop.win_notepad.visible)
+        self.assertFalse(self.desktop.win_notepad.minimized)
+
+    def test_notepad_key_routing(self):
+        self.desktop.launch_or_focus("notepad")
+        self.desktop.win_notepad.new_file()
+        self.desktop.handle_key("A")
+        self.desktop.handle_key("d")
+        self.desktop.handle_key("i")
+        self.assertEqual(self.desktop.win_notepad.lines[0], "Adi")
 
     def test_taskbar_window_minimize_and_restore(self):
         # Find active window and its taskbar pill coordinate
