@@ -1509,6 +1509,14 @@ class MasterDesktop:
         self.start_menu_open = not self.start_menu_open
 
     def launch_or_focus(self, win_id: str):
+        if win_id in ("webkit", "browser"):
+            try:
+                from desktop.native_browser import NativeBrowserManager
+                NativeBrowserManager.get_instance().launch()
+                self.status_message = "Sovereign Web Browser active [Hardware Accelerated 60-144 FPS]"
+            except Exception as e:
+                self.status_message = f"Browser notice: {str(e)[:40]}"
+
         for w in self.wm.windows:
             if w.win_id == win_id:
                 w.visible = True

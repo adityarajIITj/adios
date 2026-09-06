@@ -486,12 +486,10 @@ class WebKitBrowserApp(Window):
         full_bg = 0x003D59A1 if self.is_fullscreen else COLOR_BTN_BG
         self._draw_btn(fb, screen_w, full_x, by, full_w, bh, full_txt, full_bg, COLOR_BTN_TXT, clip, font_dict)
 
-        # Engine Pill: [WebKit/Safari]
-        pill_w = 120
+        # Engine Pill: [GPU 144FPS]
+        pill_w = 110
         pill_x = full_x - pill_w - 6
-        self._fill_rect(fb, screen_w, pill_x, by, pill_w, bh, COLOR_PILL_BG, clip)
-        self._stroke_rect(fb, screen_w, pill_x, by, pill_w, bh, COLOR_PILL_TXT, clip)
-        self._draw_text(fb, screen_w, pill_x + 8, by + 7, "WebKit 26.5 Core", COLOR_PILL_TXT, clip, font_dict)
+        self._draw_btn(fb, screen_w, pill_x, by, pill_w, bh, "GPU 144FPS", 0x001B2B34, COLOR_ACCENT_CYAN, clip, font_dict)
 
         # Go Button
         go_w = 34
@@ -660,9 +658,17 @@ class WebKitBrowserApp(Window):
                 self.toggle_fullscreen(screen_w, screen_h)
                 return
 
-            pill_w = 120
+            pill_w = 110
             go_w = 34
             pill_x = full_x - pill_w - 6
+            if pill_x <= rel_x <= pill_x + pill_w:
+                try:
+                    from desktop.native_browser import NativeBrowserManager
+                    NativeBrowserManager.get_instance().launch(self.current_url)
+                except Exception:
+                    pass
+                return
+
             go_x = pill_x - go_w - 6
             if go_x <= rel_x <= go_x + go_w:
                 self._submit_omnibar()
