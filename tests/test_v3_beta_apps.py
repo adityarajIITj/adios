@@ -90,6 +90,20 @@ class TestV3CodeStudio(unittest.TestCase):
         logs = "\n".join(self.studio.pkg_logs)
         self.assertIn("pip", logs.lower())
 
+    def test_font_scale_toggle(self):
+        self.assertEqual(self.studio.font_scale, 1)
+        self.studio.font_scale = 2
+        self.assertEqual(self.studio.font_scale, 2)
+
+    def test_package_catalog_inspection(self):
+        self.assertTrue(len(self.studio.installed_packages) > 0)
+        self.studio.packages_view_mode = "installed"
+        self.studio.refresh_installed_packages()
+        self.assertTrue(len(self.studio.installed_packages) > 0)
+        # Test scroll paging
+        self.studio.pkg_scroll_idx = 10
+        self.assertEqual(self.studio.pkg_scroll_idx, 10)
+
 class TestV3FileExplorer(unittest.TestCase):
     def setUp(self):
         self.explorer = FileExplorer()
@@ -98,6 +112,15 @@ class TestV3FileExplorer(unittest.TestCase):
         self.assertTrue(len(self.explorer.entries) > 0)
         has_dirs = any(e.is_dir for e in self.explorer.entries)
         self.assertTrue(has_dirs)
+
+    def test_search_filtering(self):
+        self.explorer.set_search_filter("py")
+        self.assertTrue(len(self.explorer.entries) > 0)
+        for e in self.explorer.entries:
+            self.assertIn("py", e.name.lower())
+        # Clear filter
+        self.explorer.set_search_filter("")
+        self.assertEqual(self.explorer.search_query, "")
 
     def test_navigation(self):
         orig_dir = self.explorer.current_dir
@@ -145,6 +168,13 @@ class TestV3Scene3DStudio(unittest.TestCase):
         self.assertEqual(len(monolith.vertices), 8)
         self.assertEqual(len(monolith.faces), 12)
 
+    def test_camera_zoom_controls(self):
+        initial_zoom = self.studio.zoom
+        self.studio.zoom_in()
+        self.assertLess(self.studio.zoom, initial_zoom)
+        self.studio.zoom_out()
+        self.assertEqual(self.studio.zoom, initial_zoom)
+
     def test_viewport_rendering_with_clipping(self):
         fb = bytearray(1280 * 720 * 4)
         self.studio.current_model_key = "octahedron"
@@ -173,6 +203,27 @@ class TestV3MasterDesktopIntegration(unittest.TestCase):
 
         self.desktop.launch_or_focus("scene3d")
         self.assertTrue(self.desktop.win_scene3d.visible)
+
+    def test_taskbar_window_minimize_and_restore(self):
+        # Find active window and its taskbar pill coordinate
+        active_win = self.desktop.wm.windows[-1]
+        active_win.visible = True
+        active_win.minimized = False
+        self.desktop.wm.focus_window(active_win)
+
+        visible_windows = [w for w in self.desktop.wm.windows if w.visible]
+        active_idx = visible_windows.index(active_win)
+        active_pill_x = 338 + active_idx * 72 + 10
+
+        # Click pill of active window -> minimizes it
+        res = self.desktop.handle_mouse_down(active_pill_x, 10)
+        self.assertEqual(res[0], "minimize_window")
+        self.assertTrue(active_win.minimized)
+
+        # Click pill of minimized window -> restores it
+        res2 = self.desktop.handle_mouse_down(active_pill_x, 10)
+        self.assertEqual(res2[0], "restore_window")
+        self.assertFalse(active_win.minimized)
 
     def test_taskbar_theme_toggle_click(self):
         init_theme = ThemeManager.get_instance().current_key
