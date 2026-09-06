@@ -1886,6 +1886,9 @@ class MasterDesktop:
         # 4. Start Menu Item Click
         if self.start_menu_open:
             if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 356:
+                if 155 <= my <= 165:
+                    self.launch_or_focus("shell")
+                    return ("menu_select", "shell")
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",

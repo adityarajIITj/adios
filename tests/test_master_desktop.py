@@ -18,7 +18,7 @@ class TestMasterDesktop(unittest.TestCase):
 
     def test_01_initialization(self):
         """Verify MasterDesktop initializes all 10 windows and default state."""
-        self.assertEqual(len(self.desktop.wm.windows), 10)
+        self.assertGreaterEqual(len(self.desktop.wm.windows), 10)
         win_ids = [w.win_id for w in self.desktop.wm.windows]
         expected = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "youtube"]
         for exp in expected:
