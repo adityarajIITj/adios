@@ -17,6 +17,7 @@ Strict Zero Emoji Policy.
 """
 
 import os
+import time
 from typing import List, Optional, Tuple, Dict, Any
 
 from .window_manager import Window, CHAR_WIDTH, CHAR_HEIGHT
@@ -64,6 +65,7 @@ class NotepadApp(Window):
         self.undo_stack: List[Tuple[List[str], int, int]] = []
         self.redo_stack: List[Tuple[List[str], int, int]] = []
         self.select_all_active: bool = False
+        self.last_key_time: float = time.time()
 
         self.on_draw_content = self._render_content
         self.on_click_content = self._handle_click
@@ -246,6 +248,69 @@ class NotepadApp(Window):
         self.dirty = True
         self._ensure_cursor_visible()
 
+    def duplicate_line(self):
+        """Duplicates current line directly below and shifts cursor down."""
+        self._push_undo()
+        self.lines.insert(self.cursor_line + 1, self.lines[self.cursor_line])
+        self.cursor_line += 1
+        self.dirty = True
+        self._ensure_cursor_visible()
+
+    def delete_forward(self):
+        """Deletes character directly under cursor or merges next line."""
+        if not self.lines:
+            return
+        line = self.lines[self.cursor_line]
+        if self.cursor_col < len(line):
+            self._push_undo()
+            self.lines[self.cursor_line] = line[:self.cursor_col] + line[self.cursor_col + 1:]
+            self.dirty = True
+        elif self.cursor_line < len(self.lines) - 1:
+            self._push_undo()
+            next_line = self.lines[self.cursor_line + 1]
+            self.lines[self.cursor_line] = line + next_line
+            del self.lines[self.cursor_line + 1]
+            self.dirty = True
+        self._ensure_cursor_visible()
+
+    def move_cursor_home(self):
+        """Moves cursor to start of indentation or column 0."""
+        line = self.lines[self.cursor_line]
+        first_non_ws = len(line) - len(line.lstrip(' '))
+        if self.cursor_col == first_non_ws:
+            self.cursor_col = 0
+        else:
+            self.cursor_col = first_non_ws
+        self._ensure_cursor_visible()
+
+    def move_cursor_end(self):
+        """Moves cursor to end of current line."""
+        self.cursor_col = len(self.lines[self.cursor_line])
+        self._ensure_cursor_visible()
+
+    def page_up(self):
+        """Scrolls cursor and view up by one page."""
+        jump = 16
+        self.cursor_line = max(0, self.cursor_line - jump)
+        self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+        self._ensure_cursor_visible()
+
+    def page_down(self):
+        """Scrolls cursor and view down by one page."""
+        jump = 16
+        self.cursor_line = min(len(self.lines) - 1, self.cursor_line + jump)
+        self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+        self._ensure_cursor_visible()
+
+    def scroll_up(self, count: int = 3):
+        """Smoothly scrolls notepad viewport upwards."""
+        self.scroll_line = max(0, self.scroll_line - count)
+
+    def scroll_down(self, count: int = 3):
+        """Smoothly scrolls notepad viewport downwards."""
+        max_scroll = max(0, len(self.lines) - 1)
+        self.scroll_line = min(max_scroll, self.scroll_line + count)
+
     # --------------------------------------------------------------------------
     # Document Operations
     # --------------------------------------------------------------------------
@@ -316,6 +381,8 @@ class NotepadApp(Window):
 
     def handle_key(self, key_char: str):
         """Processes keystrokes for text editing, shortcuts, and navigation."""
+        self.last_key_time = time.time()
+
         if not self.lines:
             self.lines = [""]
 
@@ -348,12 +415,45 @@ class NotepadApp(Window):
             self.save_file()
             return
 
+        if key_char in ("CTRL_D", "\x04"):
+            self.duplicate_line()
+            return
+
         if key_char in ("CTRL_BACKSPACE", "\x7f"):
             self._delete_word_backward()
             return
 
         if key_char == "CTRL_ENTER":
             self.handle_key("\n")
+            return
+
+        # Navigation & Editing Keys
+        if key_char in ("DELETE", "\x1b[3~"):
+            self.delete_forward()
+            return
+
+        if key_char in ("HOME", "\x1b[H", "\x1b[1~"):
+            self.move_cursor_home()
+            return
+
+        if key_char in ("END", "\x1b[F", "\x1b[4~"):
+            self.move_cursor_end()
+            return
+
+        if key_char in ("PAGE_UP", "\x1b[5~"):
+            self.page_up()
+            return
+
+        if key_char in ("PAGE_DOWN", "\x1b[6~"):
+            self.page_down()
+            return
+
+        if key_char == "SCROLL_UP":
+            self.scroll_up(3)
+            return
+
+        if key_char == "SCROLL_DOWN":
+            self.scroll_down(3)
             return
 
         # If select all is active, non-shortcut keys operate on entire selection
@@ -549,8 +649,10 @@ class NotepadApp(Window):
             text_color = pal.text_highlight if self.select_all_active else pal.text_primary
             self._draw_text(fb, text_x, line_y, raw_line[:text_w // CHAR_WIDTH], text_color, font_dict)
 
-            # Render Cursor Bar (if not in select-all mode)
-            if not self.select_all_active and line_idx == self.cursor_line:
+            # Render Cursor Bar (with smooth blink rate when idle, solid while typing)
+            is_typing = (time.time() - getattr(self, "last_key_time", 0) < 0.8)
+            blink_on = is_typing or ((int(time.time() * 2.2) % 2) == 0)
+            if not self.select_all_active and line_idx == self.cursor_line and blink_on:
                 cur_x = text_x + self.cursor_col * CHAR_WIDTH
                 if text_x <= cur_x <= cx + cw - 4:
                     self._fill_rect(fb, cur_x, line_y, 2, 13, pal.accent_primary)

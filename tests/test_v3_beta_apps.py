@@ -184,6 +184,64 @@ class TestV3CodeStudio(unittest.TestCase):
         self.studio.handle_key("CTRL_S")
         self.assertTrue(os.path.exists(self.studio.filepath))
 
+    def test_code_studio_smooth_editing_features(self):
+        # 1. Bracket auto-closing and step-over
+        self.studio.new_buffer()
+        self.studio.handle_key("(")
+        self.assertEqual(self.studio.lines[1], "()")
+        self.assertEqual(self.studio.cursor_col, 1)
+
+        # Backspace deletes bracket pair
+        self.studio.handle_key("\b")
+        self.assertEqual(self.studio.lines[1], "")
+        self.assertEqual(self.studio.cursor_col, 0)
+
+        # Step-over closing bracket
+        self.studio.handle_key("(")
+        self.studio.handle_key(")")
+        self.assertEqual(self.studio.lines[1], "()")
+        self.assertEqual(self.studio.cursor_col, 2)
+
+        # 2. Line duplication (Ctrl+D)
+        self.studio.lines = ["x = 10", "y = 20"]
+        self.studio.cursor_line = 0
+        self.studio.handle_key("CTRL_D")
+        self.assertEqual(len(self.studio.lines), 3)
+        self.assertEqual(self.studio.lines[1], "x = 10")
+
+        # 3. Comment toggle (Ctrl+/)
+        self.studio.cursor_line = 0
+        self.studio.handle_key("CTRL_SLASH")
+        self.assertEqual(self.studio.lines[0], "# x = 10")
+        self.studio.handle_key("CTRL_SLASH")
+        self.assertEqual(self.studio.lines[0], "x = 10")
+
+        # 4. Navigation: Home & End
+        self.studio.lines = ["    value = 100"]
+        self.studio.cursor_line = 0
+        self.studio.cursor_col = 0
+        self.studio.handle_key("END")
+        self.assertEqual(self.studio.cursor_col, 15)
+        self.studio.handle_key("HOME")
+        self.assertEqual(self.studio.cursor_col, 4)
+        self.studio.handle_key("HOME")
+        self.assertEqual(self.studio.cursor_col, 0)
+
+        # 5. Forward delete
+        self.studio.handle_key("DELETE")
+        self.assertEqual(self.studio.lines[0], "   value = 100")
+
+        # 6. Unindent (Shift+Tab)
+        self.studio.handle_key("SHIFT_TAB")
+        self.assertEqual(self.studio.lines[0], "value = 100")
+
+        # 7. Scrolling
+        self.studio.scroll_line = 0
+        self.studio.handle_key("SCROLL_DOWN")
+        self.assertGreaterEqual(self.studio.scroll_line, 0)
+        self.studio.handle_key("SCROLL_UP")
+        self.assertEqual(self.studio.scroll_line, 0)
+
 class TestV3Notepad(unittest.TestCase):
     def setUp(self):
         self.notepad = NotepadApp()
@@ -272,6 +330,31 @@ class TestV3Notepad(unittest.TestCase):
         # 9. Save shortcut (Ctrl+S)
         self.notepad.handle_key("CTRL_S")
         self.assertTrue(os.path.exists(self.notepad.filename))
+
+    def test_notepad_smooth_navigation_and_duplication(self):
+        self.notepad.lines = ["line alpha", "line beta"]
+        self.notepad.cursor_line = 0
+        self.notepad.cursor_col = 0
+
+        # Duplicate line (Ctrl+D)
+        self.notepad.handle_key("CTRL_D")
+        self.assertEqual(len(self.notepad.lines), 3)
+        self.assertEqual(self.notepad.lines[1], "line alpha")
+
+        # Home and End
+        self.notepad.handle_key("END")
+        self.assertEqual(self.notepad.cursor_col, len("line alpha"))
+        self.notepad.handle_key("HOME")
+        self.assertEqual(self.notepad.cursor_col, 0)
+
+        # Forward delete
+        self.notepad.handle_key("DELETE")
+        self.assertEqual(self.notepad.lines[1], "ine alpha")
+
+        # Scrolling
+        self.notepad.handle_key("SCROLL_DOWN")
+        self.notepad.handle_key("SCROLL_UP")
+        self.assertEqual(self.notepad.scroll_line, 0)
 
     def test_notepad_rendering(self):
         fb = bytearray(1280 * 720 * 4)

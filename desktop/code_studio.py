@@ -114,6 +114,7 @@ class CodeStudio(Window):
         self.undo_stack: List[Tuple[List[str], int, int]] = []
         self.redo_stack: List[Tuple[List[str], int, int]] = []
         self.select_all_active: bool = False
+        self.last_key_time: float = time.time()
         
         # Execution State
         self.output_logs: List[str] = [
@@ -251,8 +252,10 @@ class CodeStudio(Window):
             raw_line = self.lines[line_idx]
             self._render_highlighted_line(fb, code_x, line_y, raw_line, pal, font_dict)
 
-            # Render active cursor bar
-            if not self.select_all_active and line_idx == self.cursor_line and self.active_tab == TAB_EDITOR:
+            # Render active cursor bar (solid while typing, gentle blink when idle)
+            is_typing = (time.time() - getattr(self, "last_key_time", 0) < 0.8)
+            blink_on = is_typing or ((int(time.time() * 2.2) % 2) == 0)
+            if not self.select_all_active and line_idx == self.cursor_line and self.active_tab == TAB_EDITOR and blink_on:
                 cur_x = code_x + self.cursor_col * CHAR_WIDTH * self.font_scale
                 if code_x <= cur_x <= x + w - 4:
                     self._fill_rect(fb, cur_x, line_y - 1, 2, line_h - 2, pal.accent_primary)
@@ -279,10 +282,18 @@ class CodeStudio(Window):
             self._render_tokens(fb, curr_x, y, line, pal, font_dict)
 
     def _render_tokens(self, fb: bytearray, x: int, y: int, text: str, pal: Any, font_dict: Dict):
-        """Renders non-comment code tokens."""
+        """Renders non-comment code tokens with rich Python syntax classification."""
         import re
-        keywords = {"def", "class", "import", "from", "return", "if", "elif", "else", "for", "while", "in", "try", "except", "as"}
-        builtins = {"print", "len", "range", "enumerate", "int", "float", "str", "list", "dict", "set"}
+        keywords = {
+            "def", "class", "import", "from", "return", "if", "elif", "else", "for", "while",
+            "in", "is", "not", "and", "or", "try", "except", "finally", "with", "as", "pass",
+            "break", "continue", "yield", "lambda", "global", "nonlocal", "async", "await"
+        }
+        builtins = {
+            "print", "len", "range", "enumerate", "int", "float", "str", "list", "dict", "set",
+            "bool", "tuple", "type", "open", "sum", "min", "max", "abs", "round", "zip", "map",
+            "filter", "self", "True", "False", "None"
+        }
         
         tokens = re.findall(r'(\b\w+\b|\"[^\"]*\"|\'[^\']*\'|[^\w\s]|\s+)', text)
         curr_x = x
@@ -474,6 +485,7 @@ class CodeStudio(Window):
 
         # Editor canvas click to position cursor
         if self.active_tab == TAB_EDITOR and rel_y > 28:
+            self.select_all_active = False
             canvas_y = 28
             line_h = 16 * self.font_scale
             gutter_w = 44
@@ -669,6 +681,95 @@ class CodeStudio(Window):
         self.cursor_col = i
         self._ensure_cursor_visible()
 
+    def duplicate_line(self):
+        """Duplicates current line directly below and shifts cursor down."""
+        self._push_undo()
+        self.lines.insert(self.cursor_line + 1, self.lines[self.cursor_line])
+        self.cursor_line += 1
+        self._ensure_cursor_visible()
+
+    def toggle_comment(self):
+        """Toggles Python line comment (# ) on active line."""
+        self._push_undo()
+        line = self.lines[self.cursor_line]
+        stripped = line.lstrip(' ')
+        indent = len(line) - len(stripped)
+        if stripped.startswith('# '):
+            self.lines[self.cursor_line] = line[:indent] + stripped[2:]
+            self.cursor_col = max(indent, self.cursor_col - 2)
+        elif stripped.startswith('#'):
+            self.lines[self.cursor_line] = line[:indent] + stripped[1:]
+            self.cursor_col = max(indent, self.cursor_col - 1)
+        else:
+            self.lines[self.cursor_line] = line[:indent] + '# ' + stripped
+            self.cursor_col += 2
+        self._ensure_cursor_visible()
+
+    def unindent_line(self):
+        """Removes up to 4 spaces of leading indentation from current line."""
+        line = self.lines[self.cursor_line]
+        spaces = 0
+        while spaces < 4 and spaces < len(line) and line[spaces] == ' ':
+            spaces += 1
+        if spaces > 0:
+            self._push_undo()
+            self.lines[self.cursor_line] = line[spaces:]
+            self.cursor_col = max(0, self.cursor_col - spaces)
+            self._ensure_cursor_visible()
+
+    def delete_forward(self):
+        """Deletes character directly under cursor or merges next line."""
+        if not self.lines:
+            return
+        line = self.lines[self.cursor_line]
+        if self.cursor_col < len(line):
+            self._push_undo()
+            self.lines[self.cursor_line] = line[:self.cursor_col] + line[self.cursor_col + 1:]
+        elif self.cursor_line < len(self.lines) - 1:
+            self._push_undo()
+            next_line = self.lines[self.cursor_line + 1]
+            self.lines[self.cursor_line] = line + next_line
+            del self.lines[self.cursor_line + 1]
+        self._ensure_cursor_visible()
+
+    def move_cursor_home(self):
+        """Moves cursor to start of indentation or column 0."""
+        line = self.lines[self.cursor_line]
+        first_non_ws = len(line) - len(line.lstrip(' '))
+        if self.cursor_col == first_non_ws:
+            self.cursor_col = 0
+        else:
+            self.cursor_col = first_non_ws
+        self._ensure_cursor_visible()
+
+    def move_cursor_end(self):
+        """Moves cursor to end of current line."""
+        self.cursor_col = len(self.lines[self.cursor_line])
+        self._ensure_cursor_visible()
+
+    def page_up(self):
+        """Scrolls cursor and view up by one page."""
+        jump = 16
+        self.cursor_line = max(0, self.cursor_line - jump)
+        self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+        self._ensure_cursor_visible()
+
+    def page_down(self):
+        """Scrolls cursor and view down by one page."""
+        jump = 16
+        self.cursor_line = min(len(self.lines) - 1, self.cursor_line + jump)
+        self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+        self._ensure_cursor_visible()
+
+    def scroll_up(self, count: int = 3):
+        """Smoothly scrolls editor buffer viewport upwards."""
+        self.scroll_line = max(0, self.scroll_line - count)
+
+    def scroll_down(self, count: int = 3):
+        """Smoothly scrolls editor buffer viewport downwards."""
+        max_scroll = max(0, len(self.lines) - 1)
+        self.scroll_line = min(max_scroll, self.scroll_line + count)
+
     def new_buffer(self):
         """Clears buffer to a clean, empty script ready for coding."""
         self._push_undo()
@@ -711,6 +812,8 @@ class CodeStudio(Window):
 
     def handle_key(self, key_char: str):
         """Processes keystrokes for direct in-buffer code editing, shortcuts, and terminal input."""
+        self.last_key_time = time.time()
+
         if self.active_tab != TAB_EDITOR:
             if self.active_tab == TAB_PACKAGES:
                 if key_char in ("\r", "\n"):
@@ -751,12 +854,53 @@ class CodeStudio(Window):
             self.save_buffer()
             return
 
+        if key_char in ("CTRL_D", "\x04"):
+            self.duplicate_line()
+            return
+
+        if key_char in ("CTRL_SLASH", "\x1f"):
+            self.toggle_comment()
+            return
+
         if key_char in ("CTRL_BACKSPACE", "\x7f"):
             self._delete_word_backward()
             return
 
         if key_char == "CTRL_ENTER":
             self.run_code()
+            return
+
+        # Navigation & Editing Keys
+        if key_char in ("DELETE", "\x1b[3~"):
+            self.delete_forward()
+            return
+
+        if key_char in ("HOME", "\x1b[H", "\x1b[1~"):
+            self.move_cursor_home()
+            return
+
+        if key_char in ("END", "\x1b[F", "\x1b[4~"):
+            self.move_cursor_end()
+            return
+
+        if key_char in ("PAGE_UP", "\x1b[5~"):
+            self.page_up()
+            return
+
+        if key_char in ("PAGE_DOWN", "\x1b[6~"):
+            self.page_down()
+            return
+
+        if key_char == "SCROLL_UP":
+            self.scroll_up(3)
+            return
+
+        if key_char == "SCROLL_DOWN":
+            self.scroll_down(3)
+            return
+
+        if key_char == "SHIFT_TAB":
+            self.unindent_line()
             return
 
         if not self.lines:
@@ -794,7 +938,39 @@ class CodeStudio(Window):
                 self._ensure_cursor_visible()
                 return
 
-        # 1. Newline (Enter) with Auto-Indentation
+        # Smart Bracket & Quote Auto-Closing and Step-Over
+        if key_char in ("(", "[", "{"):
+            pair = {"(": ")", "[": "]", "{": "}"}[key_char]
+            self._push_undo()
+            line = self.lines[self.cursor_line]
+            self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + pair + line[self.cursor_col:]
+            self.cursor_col += 1
+            self._ensure_cursor_visible()
+            return
+
+        if key_char in (")", "]", "}"):
+            line = self.lines[self.cursor_line]
+            if self.cursor_col < len(line) and line[self.cursor_col] == key_char:
+                self.cursor_col += 1
+                self._ensure_cursor_visible()
+                return
+
+        if key_char in ('"', "'"):
+            line = self.lines[self.cursor_line]
+            if self.cursor_col < len(line) and line[self.cursor_col] == key_char:
+                self.cursor_col += 1
+                self._ensure_cursor_visible()
+                return
+            char_after = line[self.cursor_col] if self.cursor_col < len(line) else ""
+            char_before = line[self.cursor_col - 1] if self.cursor_col > 0 else ""
+            if (not char_before.isalnum()) and (char_after in ("", " ", ")", "]", "}", ",", ":")):
+                self._push_undo()
+                self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + key_char + line[self.cursor_col:]
+                self.cursor_col += 1
+                self._ensure_cursor_visible()
+                return
+
+        # 1. Newline (Enter) with Auto-Indentation and Pair Expansion
         if key_char in ("\r", "\n"):
             self._push_undo()
             line = self.lines[self.cursor_line]
@@ -802,10 +978,23 @@ class CodeStudio(Window):
             right = line[self.cursor_col:]
             
             leading_spaces = len(left) - len(left.lstrip(' '))
-            if left.rstrip().endswith(":"):
-                leading_spaces += 4
+            extra_indent = 4 if left.rstrip().endswith(":") else 0
             
-            indent_str = " " * leading_spaces
+            # Smart expansion between brace pairs { | }
+            if (left.rstrip().endswith("{") and right.lstrip().startswith("}")) or \
+               (left.rstrip().endswith("(") and right.lstrip().startswith(")")) or \
+               (left.rstrip().endswith("[") and right.lstrip().startswith("]")):
+                indent_inner = " " * (leading_spaces + 4)
+                indent_outer = " " * leading_spaces
+                self.lines[self.cursor_line] = left
+                self.lines.insert(self.cursor_line + 1, indent_inner)
+                self.lines.insert(self.cursor_line + 2, indent_outer + right)
+                self.cursor_line += 1
+                self.cursor_col = len(indent_inner)
+                self._ensure_cursor_visible()
+                return
+
+            indent_str = " " * (leading_spaces + extra_indent)
             self.lines[self.cursor_line] = left
             self.lines.insert(self.cursor_line + 1, indent_str + right)
             self.cursor_line += 1
@@ -813,12 +1002,15 @@ class CodeStudio(Window):
             self._ensure_cursor_visible()
             return
 
-        # 2. Backspace
+        # 2. Backspace (with bracket pair deletion and 4-space unindent)
         if key_char in ("\b", "\x08"):
             line = self.lines[self.cursor_line]
             if self.cursor_col > 0:
                 self._push_undo()
-                if line[:self.cursor_col].endswith("    ") and self.cursor_col >= 4:
+                if self.cursor_col < len(line) and line[self.cursor_col - 1 : self.cursor_col + 1] in ("()", "[]", "{}", "''", '""'):
+                    self.lines[self.cursor_line] = line[:self.cursor_col - 1] + line[self.cursor_col + 1:]
+                    self.cursor_col -= 1
+                elif line[:self.cursor_col].endswith("    ") and self.cursor_col >= 4:
                     self.lines[self.cursor_line] = line[:self.cursor_col - 4] + line[self.cursor_col:]
                     self.cursor_col -= 4
                 else:

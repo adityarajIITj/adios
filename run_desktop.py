@@ -55,9 +55,18 @@ def main():
             elif event.type == pygame.MOUSEMOTION:
                 last_mouse_pos = event.pos
                 desktop.handle_mouse_move(event.pos[0], event.pos[1])
+            elif event.type == pygame.MOUSEWHEEL:
+                if event.y > 0:
+                    desktop.handle_key("SCROLL_UP")
+                elif event.y < 0:
+                    desktop.handle_key("SCROLL_DOWN")
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     desktop.handle_mouse_down(event.pos[0], event.pos[1])
+                elif event.button == 4:
+                    desktop.handle_key("SCROLL_UP")
+                elif event.button == 5:
+                    desktop.handle_key("SCROLL_DOWN")
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     desktop.handle_mouse_up(event.pos[0], event.pos[1])
@@ -81,10 +90,26 @@ def main():
                     desktop.handle_key("CTRL_Y")
                 elif ctrl_held and event.key == pygame.K_s:
                     desktop.handle_key("CTRL_S")
+                elif ctrl_held and event.key == pygame.K_d:
+                    desktop.handle_key("CTRL_D")
+                elif ctrl_held and event.key in (pygame.K_SLASH, pygame.K_KP_DIVIDE):
+                    desktop.handle_key("CTRL_SLASH")
                 elif ctrl_held and event.key == pygame.K_BACKSPACE:
                     desktop.handle_key("CTRL_BACKSPACE")
                 elif ctrl_held and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     desktop.handle_key("CTRL_ENTER")
+                elif event.key == pygame.K_DELETE:
+                    desktop.handle_key("DELETE")
+                elif event.key == pygame.K_HOME:
+                    desktop.handle_key("HOME")
+                elif event.key == pygame.K_END:
+                    desktop.handle_key("END")
+                elif event.key == pygame.K_PAGEUP:
+                    desktop.handle_key("PAGE_UP")
+                elif event.key == pygame.K_PAGEDOWN:
+                    desktop.handle_key("PAGE_DOWN")
+                elif event.key == pygame.K_TAB and mods & pygame.KMOD_SHIFT:
+                    desktop.handle_key("SHIFT_TAB")
                 elif event.key == pygame.K_BACKSPACE:
                     desktop.handle_key("\b")
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
