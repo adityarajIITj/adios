@@ -1625,13 +1625,21 @@ class MasterDesktop:
         # Window Switcher Pills on Taskbar
         sw_x = 338
         max_sw_x = self.width - 440
+        dot_col = COLOR_ACCENT_CYAN
+        dot_bytes = bytes([dot_col & 0xFF, (dot_col >> 8) & 0xFF, (dot_col >> 16) & 0xFF, 0])
         for w in self.wm.windows:
-            if w.visible and not w.minimized:
+            if w.visible:
                 if sw_x + 68 < max_sw_x:
-                    bg_col = COLOR_TITLE_ACT if w.active else COLOR_BUTTON_BG
-                    txt_col = COLOR_START_TXT if w.active else COLOR_BUTTON_TXT
-                    short_title = w.title[:8]
+                    is_active = (w.active and not w.minimized)
+                    bg_col = COLOR_TITLE_ACT if is_active else COLOR_BUTTON_BG
+                    txt_col = COLOR_START_TXT if is_active else (COLOR_TEXT_MUTED if w.minimized else COLOR_BUTTON_TXT)
+                    short_title = f"_{w.title[:7]}" if w.minimized else w.title[:8]
                     self._draw_button(fb, sw_x, 3, 68, 18, short_title, bg_col, txt_col)
+                    # Running indicator line below window pill
+                    if not w.minimized:
+                        ind_y = 21
+                        off_start = (ind_y * self.width + sw_x + 26) * 4
+                        fb[off_start : off_start + 16 * 4] = dot_bytes * 16
                     sw_x += 72
 
         # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
@@ -1790,12 +1798,26 @@ class MasterDesktop:
 
             # Window Switcher Pills click
             sw_x = 338
-            max_sw_x = self.width - 550
+            max_sw_x = self.width - 440
             for w in self.wm.windows:
-                if w.visible and not w.minimized:
+                if w.visible:
                     if sw_x <= mx <= sw_x + 68 and sw_x + 68 < max_sw_x:
-                        self.wm.focus_window(w)
-                        return ("switch_window", w)
+                        if w.minimized:
+                            w.minimized = False
+                            self.wm.focus_window(w)
+                            self.sound_server.play_ui_sound("click")
+                            self.status_message = f"Window '{w.title}' restored."
+                            return ("restore_window", w)
+                        elif w.active:
+                            w.minimized = True
+                            self.sound_server.play_ui_sound("click")
+                            self.status_message = f"Window '{w.title}' minimized."
+                            return ("minimize_window", w)
+                        else:
+                            self.wm.focus_window(w)
+                            self.sound_server.play_ui_sound("click")
+                            self.status_message = f"Focused window '{w.title}'."
+                            return ("switch_window", w)
                     sw_x += 72
 
             # Theme Switcher Button click
