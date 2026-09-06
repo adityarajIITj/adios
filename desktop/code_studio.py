@@ -114,6 +114,10 @@ class CodeStudio(Window):
         ]
         self.is_installing: bool = False
         self.pkg_process: Optional[subprocess.Popen] = None
+        self.packages_view_mode: str = "logs"  # "logs" or "installed"
+        self.installed_packages: List[Tuple[str, str]] = []
+        self.pkg_scroll_idx: int = 0
+        self.refresh_installed_packages()
         
         # Register window content callbacks
         self.on_draw_content = self._render_content
@@ -288,8 +292,24 @@ class CodeStudio(Window):
             self._draw_text(fb, x + 12, line_y, log[:w // CHAR_WIDTH - 3], col, font_dict)
             line_y += 15
 
+    def refresh_installed_packages(self):
+        """Scans installed Python distributions via importlib.metadata."""
+        pkgs = []
+        try:
+            import importlib.metadata
+            for dist in importlib.metadata.distributions():
+                name = dist.metadata.get("Name") or dist.name
+                ver = dist.version
+                if name:
+                    pkgs.append((name, ver))
+        except Exception as e:
+            pkgs.append(("error", str(e)))
+        pkgs.sort(key=lambda p: p[0].lower())
+        self.installed_packages = pkgs
+        self.pkg_scroll_idx = 0
+
     def _render_packages(self, fb: bytearray, x: int, y: int, w: int, h: int, pal: Any, font_dict: Dict):
-        """Renders online package manager with live install input and logs."""
+        """Renders online package manager with live install input, logs, and installed package catalog."""
         self._fill_rect(fb, x, y, w, h, pal.win_bg)
 
         # Search/Input bar area
@@ -298,40 +318,91 @@ class CodeStudio(Window):
         self._draw_hline(fb, x, y + input_bar_h - 1, w, pal.card_border)
 
         # Input box
-        in_x, in_y, in_w, in_h = x + 12, y + 6, 260, 24
+        in_x, in_y, in_w, in_h = x + 12, y + 6, 190, 24
         self._fill_rect(fb, in_x, in_y, in_w, in_h, pal.win_bg)
         self._draw_rect_outline(fb, in_x, in_y, in_w, in_h, pal.accent_primary if self.is_installing else pal.card_border)
         display_in = self.pkg_input if self.pkg_input else "Type package name..."
         in_col = pal.text_primary if self.pkg_input else pal.text_muted
-        self._draw_text(fb, in_x + 8, in_y + 7, display_in, in_col, font_dict)
+        self._draw_text(fb, in_x + 8, in_y + 7, display_in[:23], in_col, font_dict)
 
         # [Install] Button
-        btn_inst_x = in_x + in_w + 8
-        self._fill_rect(fb, btn_inst_x, in_y, 80, in_h, pal.accent_primary)
-        self._draw_text(fb, btn_inst_x + 12, in_y + 7, "Install", 0x000F172A if pal.name == "Arctic Minimal" else 0x00FFFFFF, font_dict)
+        btn_inst_x = in_x + in_w + 6
+        self._fill_rect(fb, btn_inst_x, in_y, 62, in_h, pal.accent_primary)
+        self._draw_text(fb, btn_inst_x + 8, in_y + 7, "Install", 0x000F172A if pal.name == "Arctic Minimal" else 0x00FFFFFF, font_dict)
 
-        # Quick-Install Shortcuts
-        quick_pkgs = ["cowsay", "requests", "numpy"]
-        qk_x = btn_inst_x + 95
-        self._draw_text(fb, qk_x, in_y + 7, "Quick:", pal.text_muted, font_dict)
-        qk_x += 48
-        for qp in quick_pkgs:
-            qw = len(qp) * CHAR_WIDTH + 14
-            self._fill_rect(fb, qk_x, in_y, qw, in_h, pal.btn_bg)
-            self._draw_rect_outline(fb, qk_x, in_y, qw, in_h, pal.btn_border)
-            self._draw_text(fb, qk_x + 7, in_y + 7, qp, pal.text_primary, font_dict)
-            qk_x += qw + 6
+        # View Mode Switcher: [Logs] / [Installed]
+        mode_x = btn_inst_x + 70
+        is_logs = (self.packages_view_mode == "logs")
+        self._fill_rect(fb, mode_x, in_y, 48, in_h, pal.accent_primary if is_logs else pal.btn_bg)
+        self._draw_rect_outline(fb, mode_x, in_y, 48, in_h, pal.btn_border)
+        self._draw_text(fb, mode_x + 8, in_y + 7, "Logs", 0x000F172A if (is_logs and pal.name == "Arctic Minimal") else (0x00FFFFFF if is_logs else pal.text_primary), font_dict)
 
-        # Package Log Console
-        log_y = y + input_bar_h + 10
-        self._fill_rect(fb, x + 12, log_y, w - 24, h - input_bar_h - 20, pal.gutter_bg)
-        self._draw_rect_outline(fb, x + 12, log_y, w - 24, h - input_bar_h - 20, pal.card_border)
+        is_inst = (self.packages_view_mode == "installed")
+        inst_label = f"Catalog ({len(self.installed_packages)})"
+        inst_w = len(inst_label) * CHAR_WIDTH + 14
+        self._fill_rect(fb, mode_x + 53, in_y, inst_w, in_h, pal.accent_primary if is_inst else pal.btn_bg)
+        self._draw_rect_outline(fb, mode_x + 53, in_y, inst_w, in_h, pal.btn_border)
+        self._draw_text(fb, mode_x + 60, in_y + 7, inst_label, 0x000F172A if (is_inst and pal.name == "Arctic Minimal") else (0x00FFFFFF if is_inst else pal.text_primary), font_dict)
 
-        curr_log_y = log_y + 10
-        for log in self.pkg_logs[-22:]:
-            col = pal.accent_primary if "Successfully installed" in log else (0x00F87171 if "ERROR" in log else pal.text_primary)
-            self._draw_text(fb, x + 20, curr_log_y, log[:(w - 40) // CHAR_WIDTH], col, font_dict)
-            curr_log_y += 15
+        content_y = y + input_bar_h + 8
+        content_h = h - input_bar_h - 16
+
+        if is_logs:
+            # Quick-Install Shortcuts
+            qk_x = mode_x + 58 + inst_w
+            self._draw_text(fb, qk_x, in_y + 7, "Quick:", pal.text_muted, font_dict)
+            qk_x += 44
+            for qp in ["cowsay", "requests"]:
+                qw = len(qp) * CHAR_WIDTH + 10
+                self._fill_rect(fb, qk_x, in_y, qw, in_h, pal.btn_bg)
+                self._draw_rect_outline(fb, qk_x, in_y, qw, in_h, pal.btn_border)
+                self._draw_text(fb, qk_x + 5, in_y + 7, qp, pal.text_primary, font_dict)
+                qk_x += qw + 4
+
+            # Package Log Console
+            self._fill_rect(fb, x + 12, content_y, w - 24, content_h, pal.gutter_bg)
+            self._draw_rect_outline(fb, x + 12, content_y, w - 24, content_h, pal.card_border)
+            curr_log_y = content_y + 8
+            for log in self.pkg_logs[-22:]:
+                col = pal.accent_primary if "Successfully installed" in log else (0x00F87171 if "ERROR" in log else pal.text_primary)
+                self._draw_text(fb, x + 20, curr_log_y, log[:(w - 40) // CHAR_WIDTH], col, font_dict)
+                curr_log_y += 15
+        else:
+            # Installed Packages Table View
+            self._fill_rect(fb, x + 12, content_y, w - 24, content_h, pal.gutter_bg)
+            self._draw_rect_outline(fb, x + 12, content_y, w - 24, content_h, pal.card_border)
+
+            # Table Header
+            hdr_y = content_y + 6
+            self._draw_text(fb, x + 24, hdr_y, "PACKAGE NAME", pal.text_muted, font_dict)
+            self._draw_text(fb, x + 320, hdr_y, "INSTALLED VERSION", pal.text_muted, font_dict)
+
+            # Up / Down Scroll Buttons
+            btn_up_x = x + w - 75
+            self._fill_rect(fb, btn_up_x, hdr_y - 2, 24, 18, pal.btn_bg)
+            self._draw_rect_outline(fb, btn_up_x, hdr_y - 2, 24, 18, pal.btn_border)
+            self._draw_text(fb, btn_up_x + 5, hdr_y + 1, "Up", pal.text_primary, font_dict)
+
+            btn_dn_x = btn_up_x + 28
+            self._fill_rect(fb, btn_dn_x, hdr_y - 2, 24, 18, pal.btn_bg)
+            self._draw_rect_outline(fb, btn_dn_x, hdr_y - 2, 24, 18, pal.btn_border)
+            self._draw_text(fb, btn_dn_x + 5, hdr_y + 1, "Dn", pal.text_primary, font_dict)
+
+            self._draw_hline(fb, x + 14, hdr_y + 18, w - 28, pal.card_border)
+
+            # Table Rows
+            row_y = hdr_y + 24
+            visible_rows = self.installed_packages[self.pkg_scroll_idx:self.pkg_scroll_idx + 18]
+            for pname, pver in visible_rows:
+                self._draw_text(fb, x + 24, row_y, str(pname)[:32], pal.text_primary, font_dict)
+                self._draw_text(fb, x + 320, row_y, f"v{pver}"[:20], pal.accent_primary, font_dict)
+                row_y += 16
+
+            # Bottom Status Bar in Installed Table
+            stat_y = content_y + content_h - 20
+            self._draw_hline(fb, x + 14, stat_y - 4, w - 28, pal.card_border)
+            info_str = f"Catalog: {len(self.installed_packages)} packages installed | Offset: {self.pkg_scroll_idx + 1}-{min(len(self.installed_packages), self.pkg_scroll_idx + 18)}"
+            self._draw_text(fb, x + 24, stat_y, info_str, pal.text_muted, font_dict)
 
     def _handle_click(self, win: Window, rel_x: int, rel_y: int):
         """Handles user mouse clicks across tabs and actions."""
@@ -370,19 +441,37 @@ class CodeStudio(Window):
                 self.output_logs.append("Output logs cleared.")
             return
 
-        # Packages tab install & quick buttons
-        if self.active_tab == TAB_PACKAGES and 28 <= rel_y <= 64:
-            # Install button
-            if 280 <= rel_x <= 360:
-                if self.pkg_input:
-                    self.install_package(self.pkg_input.strip())
-            # Quick install cowsay
-            elif 416 <= rel_x <= 480:
-                self.install_package("cowsay")
-            elif 486 <= rel_x <= 560:
-                self.install_package("requests")
-            elif 566 <= rel_x <= 630:
-                self.install_package("numpy")
+        # Packages tab clicks
+        if self.active_tab == TAB_PACKAGES:
+            if 28 <= rel_y <= 64:
+                # Install button
+                if 208 <= rel_x <= 270:
+                    if self.pkg_input:
+                        self.install_package(self.pkg_input.strip())
+                    return
+                # Logs mode button
+                if 278 <= rel_x <= 326:
+                    self.packages_view_mode = "logs"
+                    return
+                # Catalog mode button
+                inst_w = len(f"Catalog ({len(self.installed_packages)})") * CHAR_WIDTH + 14
+                if 331 <= rel_x <= 331 + inst_w:
+                    self.packages_view_mode = "installed"
+                    self.refresh_installed_packages()
+                    return
+                # Quick install shortcuts when in logs mode
+                if self.packages_view_mode == "logs":
+                    qk_x = 331 + inst_w + 50
+                    if qk_x <= rel_x <= qk_x + 50:
+                        self.install_package("cowsay")
+                    elif qk_x + 54 <= rel_x <= qk_x + 115:
+                        self.install_package("requests")
+            elif self.packages_view_mode == "installed" and rel_y > 64:
+                cw = self.client_rect[2]
+                if cw - 75 <= rel_x <= cw - 51 and 68 <= rel_y <= 90:
+                    self.pkg_scroll_idx = max(0, self.pkg_scroll_idx - 10)
+                elif cw - 47 <= rel_x <= cw - 23 and 68 <= rel_y <= 90:
+                    self.pkg_scroll_idx = min(max(0, len(self.installed_packages) - 18), self.pkg_scroll_idx + 10)
 
     def load_template(self, name: str):
         """Loads a pre-built code template into editor buffer."""
@@ -460,6 +549,7 @@ class CodeStudio(Window):
                 proc.wait()
                 if proc.returncode == 0:
                     self.pkg_logs.append(f"[pip] Successfully installed '{pkg_name}'. Ready to import!")
+                    self.refresh_installed_packages()
                 else:
                     self.pkg_logs.append(f"[pip] Installation failed with exit code {proc.returncode}")
             except Exception as e:
