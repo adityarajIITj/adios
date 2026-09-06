@@ -186,9 +186,9 @@ class Scene3DStudio(Window):
 
         # 6. Overlay Telemetry Badge (Bottom-Left)
         badge_y = view_y + view_h - 24
-        self._fill_rect(fb, cx + 8, badge_y, 220, 18, pal.card_bg)
-        self._draw_rect_outline(fb, cx + 8, badge_y, 220, 18, pal.card_border)
-        info_txt = f"Model: {self.current_model_key.title()} | {len(mesh.faces)} Polys"
+        self._fill_rect(fb, cx + 8, badge_y, 270, 18, pal.card_bg)
+        self._draw_rect_outline(fb, cx + 8, badge_y, 270, 18, pal.card_border)
+        info_txt = f"Model: {self.current_model_key.title()} | {len(mesh.faces)} Polys | Zoom: {int(self.zoom)}"
         self._draw_text(fb, cx + 14, badge_y + 5, info_txt, pal.text_muted, font_dict)
 
     def _render_toolbar(self, fb: bytearray, x: int, y: int, w: int, h: int, pal: Any, font_dict: Dict):
@@ -210,11 +210,23 @@ class Scene3DStudio(Window):
             self._draw_text(fb, curr_x + 7, y + 9, label, txt_col, font_dict)
             curr_x += bw + 5
 
-        # Mode Buttons on right: [Wireframe], [Auto-Rot]
+        # Mode Buttons on right: [Z-], [Z+], [Wireframe], [Auto-Rot]
+        btn_zm_w = 26
+        btn_zm_x = x + w - 240
+        self._fill_rect(fb, btn_zm_x, y + 5, btn_zm_w, h - 10, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_zm_x, y + 5, btn_zm_w, h - 10, pal.btn_border)
+        self._draw_text(fb, btn_zm_x + 5, y + 9, "Z-", pal.text_primary, font_dict)
+
+        btn_zp_w = 26
+        btn_zp_x = btn_zm_x + btn_zm_w + 4
+        self._fill_rect(fb, btn_zp_x, y + 5, btn_zp_w, h - 10, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_zp_x, y + 5, btn_zp_w, h - 10, pal.btn_border)
+        self._draw_text(fb, btn_zp_x + 5, y + 9, "Z+", pal.text_primary, font_dict)
+
         btn_wire_w = 75
-        btn_wire_x = x + w - btn_wire_w - 95
+        btn_wire_x = btn_zp_x + btn_zp_w + 6
         wire_bg = pal.accent_primary if self.wireframe_mode else pal.btn_bg
-        wire_txt = 0x00FFFFFF if self.wireframe_mode else pal.text_primary
+        wire_txt = 0x000F172A if (self.wireframe_mode and pal.name == "Arctic Minimal") else (0x00FFFFFF if self.wireframe_mode else pal.text_primary)
         self._fill_rect(fb, btn_wire_x, y + 5, btn_wire_w, h - 10, wire_bg)
         self._draw_rect_outline(fb, btn_wire_x, y + 5, btn_wire_w, h - 10, pal.btn_border)
         self._draw_text(fb, btn_wire_x + 8, y + 9, "Wireframe", wire_txt, font_dict)
@@ -222,13 +234,21 @@ class Scene3DStudio(Window):
         btn_rot_w = 85
         btn_rot_x = x + w - btn_rot_w - 6
         rot_bg = pal.accent_primary if self.auto_rotate else pal.btn_bg
-        rot_txt = 0x00FFFFFF if self.auto_rotate else pal.text_primary
+        rot_txt = 0x000F172A if (self.auto_rotate and pal.name == "Arctic Minimal") else (0x00FFFFFF if self.auto_rotate else pal.text_primary)
         self._fill_rect(fb, btn_rot_x, y + 5, btn_rot_w, h - 10, rot_bg)
         self._draw_rect_outline(fb, btn_rot_x, y + 5, btn_rot_w, h - 10, pal.btn_border)
         self._draw_text(fb, btn_rot_x + 8, y + 9, "Auto Rotate", rot_txt, font_dict)
 
+    def zoom_in(self, delta: float = 25.0):
+        """Decreases camera distance to zoom in."""
+        self.zoom = max(80.0, self.zoom - delta)
+
+    def zoom_out(self, delta: float = 25.0):
+        """Increases camera distance to zoom out."""
+        self.zoom = min(450.0, self.zoom + delta)
+
     def _handle_click(self, win: Window, rel_x: int, rel_y: int):
-        """Handles model selection and render mode toggles."""
+        """Handles model selection, zoom, and render mode toggles."""
         if rel_y <= 32:
             # Model buttons
             btn_models = [("Cube", "cube"), ("Pyramid", "pyramid"), ("Octa", "octahedron"), ("Prism", "prism"), ("Monolith", "monolith")]
@@ -240,13 +260,25 @@ class Scene3DStudio(Window):
                     return
                 curr_x += bw + 5
 
-            # Wireframe toggle
             cw = self.client_rect[2]
-            if cw - 170 <= rel_x <= cw - 95:
+            # Z- button
+            btn_zm_x = cw - 240
+            if btn_zm_x <= rel_x <= btn_zm_x + 26:
+                self.zoom_out()
+                return
+            # Z+ button
+            btn_zp_x = btn_zm_x + 30
+            if btn_zp_x <= rel_x <= btn_zp_x + 26:
+                self.zoom_in()
+                return
+            # Wireframe toggle
+            btn_wire_x = btn_zp_x + 32
+            if btn_wire_x <= rel_x <= btn_wire_x + 75:
                 self.wireframe_mode = not self.wireframe_mode
                 return
             # Auto-rotate toggle
-            if cw - 91 <= rel_x <= cw - 6:
+            btn_rot_x = cw - 91
+            if btn_rot_x <= rel_x <= cw - 6:
                 self.auto_rotate = not self.auto_rotate
                 return
         else:
