@@ -91,14 +91,22 @@ class FileExplorer(Window):
         self.entries: List[FileEntry] = []
         self.selected_idx: int = -1
         self.scroll_idx: int = 0
+        self.search_query: str = ""
         self.status_msg: str = "Ready."
 
         self.refresh_directory()
         self.on_draw_content = self._render_content
         self.on_click_content = self._handle_click
 
+    def set_search_filter(self, query: str):
+        """Sets active search filter and refreshes listing."""
+        self.search_query = query.strip()
+        self.selected_idx = -1
+        self.scroll_idx = 0
+        self.refresh_directory()
+
     def refresh_directory(self):
-        """Scans current_dir and populates FileEntry list."""
+        """Scans current_dir and populates FileEntry list with search filtering."""
         self.entries.clear()
         try:
             items = os.listdir(self.current_dir)
@@ -119,8 +127,15 @@ class FileExplorer(Window):
 
             dirs.sort(key=lambda e: e.name.lower())
             files.sort(key=lambda e: e.name.lower())
-            self.entries = dirs + files
-            self.status_msg = f"{len(dirs)} folders, {len(files)} files in '{os.path.basename(self.current_dir) or self.current_dir}'"
+            all_entries = dirs + files
+
+            if self.search_query:
+                q = self.search_query.lower()
+                self.entries = [e for e in all_entries if q in e.name.lower()]
+                self.status_msg = f"Search '{self.search_query}': {len(self.entries)} items found"
+            else:
+                self.entries = all_entries
+                self.status_msg = f"{len(dirs)} folders, {len(files)} files in '{os.path.basename(self.current_dir) or self.current_dir}'"
         except Exception as e:
             self.status_msg = f"Error reading directory: {e}"
 
