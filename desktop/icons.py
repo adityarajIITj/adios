@@ -54,17 +54,18 @@ class DesktopIconManager:
 
     def _setup_default_icons(self):
         default_items = [
-            ("sysinfo",  "System",     "computer", "browser",  0x007AA2F7),
+            ("studio",   "Studio IDE", "computer", "studio",   0x0038BDF8),
             ("youtube",  "YouTube",    "youtube",  "youtube",  0x00F7768E),
-            ("games",    "3D Arcade",  "games",    "games",    0x00BB9AF7),
-            ("explorer", "AdiFS Files","explorer", "explorer", 0x00E0AF68),
+            ("files",    "AdioFiles",  "explorer", "files",    0x0094A3B8),
+            ("scene3d",  "3D Scene",   "games",    "scene3d",  0x000EA5E9),
             ("shell",    "Cyber Shell","shell",    "shell",    0x009ECE6A),
+            ("sysinfo",  "System",     "computer", "browser",  0x007AA2F7),
             ("settings", "Audio/Set",  "settings", "sound_cfg",0x0073DACA),
         ]
 
         start_x = 24
-        start_y = 38
-        spacing_y = 82
+        start_y = 36
+        spacing_y = 78
 
         for idx, (iid, label, itype, target, accent) in enumerate(default_items):
             iy = start_y + idx * spacing_y

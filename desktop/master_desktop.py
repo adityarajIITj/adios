@@ -20,6 +20,7 @@ Zero external dependencies. Pure bare-metal RV32IM simulated architecture.
 STRICT ZERO EMOJI POLICY.
 """
 
+import os
 import math
 import time
 from typing import Dict, List, Tuple, Optional, Any
@@ -29,6 +30,10 @@ from .window_manager import (
     DEFAULT_WIDTH, DEFAULT_HEIGHT, CHAR_WIDTH, CHAR_HEIGHT
 )
 from .font import get_default_font
+from .theme import ThemeManager
+from .code_studio import CodeStudio
+from .file_explorer import FileExplorer
+from .scene3d_studio import Scene3DStudio
 from graphics.engine3d import Engine3D, Vector3, create_cube, create_temple_pyramid
 from browser.layout_engine import HTMLParser, CSSStyleSheet, LayoutEngine
 from db.engine import SovereignDB
@@ -424,8 +429,47 @@ class MasterDesktop:
         self.win_youtube.on_click_content = self._click_youtube
         self.wm.add_window(self.win_youtube)
 
+        # 11. AdiOS Code Studio IDE (Floating)
+        self.win_studio = CodeStudio(win_id="studio", x=left_margin + 20, y=TASKBAR_HEIGHT + 20, w=min(760, self.width - left_margin - 30), h=min(540, self.height - TASKBAR_HEIGHT - 40))
+        self.win_studio.visible = False
+        self.wm.add_window(self.win_studio)
+
+        # 12. AdiOS File Explorer (Floating)
+        self.win_file_explorer = FileExplorer(
+            win_id="files",
+            x=left_margin + 40,
+            y=TASKBAR_HEIGHT + 35,
+            w=min(740, self.width - left_margin - 40),
+            h=min(480, self.height - TASKBAR_HEIGHT - 50),
+            on_open_file=self._on_explorer_open_file
+        )
+        self.win_file_explorer.visible = False
+        self.wm.add_window(self.win_file_explorer)
+
+        # 13. Interactive 3D Scene Studio (Floating)
+        self.win_scene3d = Scene3DStudio(win_id="scene3d", x=left_margin + 60, y=TASKBAR_HEIGHT + 50, w=min(640, self.width - left_margin - 50), h=min(490, self.height - TASKBAR_HEIGHT - 60))
+        self.win_scene3d.visible = False
+        self.wm.add_window(self.win_scene3d)
+
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
+
+    def _on_explorer_open_file(self, file_path: str):
+        """Callback invoked when user opens a file in FileExplorer."""
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in (".py", ".ap", ".s", ".c", ".txt", ".md", ".json"):
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    code = f.read()
+                self.win_studio.lines = code.splitlines() if code else [""]
+                self.win_studio.cursor_line = 0
+                self.win_studio.scroll_line = 0
+                self.win_studio.title = f"AdiOS Code Studio - {os.path.basename(file_path)}"
+                self.launch_or_focus("studio")
+            except Exception as e:
+                self.status_message = f"Error opening file: {e}"
+        elif ext in (".wav", ".mp4", ".webm"):
+            self.launch_or_focus("youtube")
 
     # --------------------------------------------------------------------------
     # Drawing Primitives with Scissor Clipping
@@ -1592,7 +1636,12 @@ class MasterDesktop:
 
         # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
         telemetry = f"SMP: {self.hart_loads[0]}% | RAM: {self.ram_used_mb:.1f}MB/{self.ram_capacity_mb}MB | 60 FPS"
-        self._draw_string(fb, self.width - 430, 7, telemetry, COLOR_ACCENT_GREEN)
+        self._draw_string(fb, self.width - 550, 7, telemetry, COLOR_ACCENT_GREEN)
+
+        # Theme Switcher Quick Toggle Button
+        theme_key = ThemeManager.get_instance().current_key.upper()
+        theme_lbl = f"THEME: {theme_key}"
+        self._draw_button(fb, self.width - 325, 3, 115, 18, theme_lbl, COLOR_BUTTON_BG, COLOR_ACCENT_CYAN)
 
         # Sound Quick Toggle Button (Tray)
         vol_pct = self.sound_server.get_volume_pct()
@@ -1679,7 +1728,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 292
+        mh = 356
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1699,19 +1748,21 @@ class MasterDesktop:
             ("2. SovereignSQL Terminal", "sql"),
             ("3. Lisp Bytecode REPL", "lisp"),
             ("4. OpenGL 3D Viewport", "gl"),
-            ("5. Sovereign File Explorer", "explorer"),
+            ("5. AdiOS File Explorer", "files"),
             ("6. Network & Crypto Monitor", "netmon"),
             ("7. POSIX Sovereign Shell", "shell"),
             ("8. Paint Studio & Calculator", "paint"),
             ("9. Sovereign 3D Games Arcade", "games"),
             ("10. Toggle Wallpaper Theme", "wallpaper"),
             ("11. Sovereign YouTube (60 FPS HD)", "youtube"),
-            ("12. Toggle Background Music", "bgm")
+            ("12. Toggle Background Music", "bgm"),
+            ("13. AdiOS Code Studio (IDE)", "studio"),
+            ("14. 3D Spatial Scene Studio", "scene3d"),
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_ACCENT_GREEN if wid == "bgm" else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid == "games" else (COLOR_ACCENT_CYAN if wid == "wallpaper" else COLOR_TEXT_PRIMARY)))
+            color = COLOR_ACCENT_GREEN if wid == "bgm" else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
@@ -1739,7 +1790,7 @@ class MasterDesktop:
 
             # Window Switcher Pills click
             sw_x = 338
-            max_sw_x = self.width - 440
+            max_sw_x = self.width - 550
             for w in self.wm.windows:
                 if w.visible and not w.minimized:
                     if sw_x <= mx <= sw_x + 68 and sw_x + 68 < max_sw_x:
@@ -1747,21 +1798,28 @@ class MasterDesktop:
                         return ("switch_window", w)
                     sw_x += 72
 
+            # Theme Switcher Button click
+            if self.width - 325 <= mx <= self.width - 210:
+                new_theme = ThemeManager.get_instance().next_theme()
+                self.sound_server.play_ui_sound("click")
+                self.status_message = f"Theme switched to [{ThemeManager.get_instance().palette.name}]."
+                return ("theme_change", new_theme)
+
             # Sound Tray Button click
             if self.width - 200 <= mx <= self.width - 110:
                 self.sound_flyout_open = not self.sound_flyout_open
                 self.net_flyout_open = False
                 self.sound_server.play_ui_sound("click")
-                return ("sound_flyout_toggle", None)
+                return ("sound_tray_click", self.sound_flyout_open)
 
             # Internet Tray Button click
             if self.width - 104 <= mx <= self.width - 8:
                 self.net_flyout_open = not self.net_flyout_open
                 self.sound_flyout_open = False
                 self.sound_server.play_ui_sound("click")
-                return ("net_flyout_toggle", None)
+                return ("net_tray_click", self.net_flyout_open)
 
-            return None
+            return ("taskbar_click", None)
 
         # 2. Sound Flyout Card Click Handling
         if self.sound_flyout_open:
@@ -1827,12 +1885,12 @@ class MasterDesktop:
 
         # 4. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 292:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 356:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
-                items_map = ["browser", "sql", "lisp", "gl", "explorer", "netmon", "shell", "paint", "games", "wallpaper", "youtube", "bgm"]
-                if 155 <= my <= 165:
-                    self.launch_or_focus("shell")
-                    return ("menu_select", "shell")
+                items_map = [
+                    "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
+                    "paint", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d"
+                ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
                     if action_id == "wallpaper":
