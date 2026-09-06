@@ -372,6 +372,14 @@ def draw_procedural_icon(
         for px in range(sx0 + 7, sx0 + 11):
             blend_pixel(fb, px, sy0 + 6, 158, 206, 106, 1.0, screen_w, screen_h)
 
+    elif icon_type in ("notes", "notepad"):
+        pw, ph = size - 14, size - 12
+        px0, py0 = cx - pw // 2, cy - ph // 2
+        draw_rounded_rect(fb, px0, py0, pw, ph, radius=2, fill_color=0x00F1F5F9, border_color=0x0094A3B8, screen_w=screen_w, screen_h=screen_h)
+        for ly in range(py0 + 5, py0 + ph - 4, 4):
+            for lx in range(px0 + 4, px0 + pw - 4):
+                blend_pixel(fb, lx, ly, 100, 116, 139, 0.7, screen_w, screen_h)
+
     elif icon_type == "settings":
         draw_circle(fb, cx, cy, 6, 0x007AA2F7, border_color=0x00C0CAF5, screen_w=screen_w, screen_h=screen_h)
         draw_circle(fb, cx, cy, 2, 0x001E1E2E, screen_w=screen_w, screen_h=screen_h)
