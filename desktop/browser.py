@@ -93,6 +93,7 @@ class WebKitWorker(threading.Thread):
         self.error_message: Optional[str] = None
         self.engine_active: bool = False
         self.running: bool = True
+        self.video_active: bool = False
 
     def run(self):
         try:
@@ -125,11 +126,13 @@ class WebKitWorker(threading.Thread):
             self._do_navigate(page, self.initial_url)
             self._capture_frame(page)
 
-            # Event & Render Loop
+            # Event & Render Loop: Adaptive event-driven loop (0% idle CPU)
+            last_media_check = 0.0
             while self.running:
                 try:
-                    # Process queued commands
-                    cmd, args = self.cmd_queue.get(timeout=0.04)
+                    # When video is playing, poll at 30 FPS. When idle, sleep up to 0.4s to conserve CPU.
+                    poll_timeout = 0.033 if self.video_active else 0.40
+                    cmd, args = self.cmd_queue.get(timeout=poll_timeout)
                     if cmd == "navigate":
                         self._do_navigate(page, args)
                         self._capture_frame(page)
@@ -148,7 +151,8 @@ class WebKitWorker(threading.Thread):
                     elif cmd == "click":
                         cx, cy = args
                         page.mouse.click(cx, cy)
-                        time.sleep(0.05)
+                        time.sleep(0.02)
+                        self._update_page_info(page)
                         self._capture_frame(page)
                     elif cmd == "key":
                         k = args
@@ -157,9 +161,9 @@ class WebKitWorker(threading.Thread):
                         elif k in ("\b", "\x08"):
                             page.keyboard.press("Backspace")
                         elif k == "SCROLL_UP":
-                            page.mouse.wheel(0, -180)
+                            page.mouse.wheel(0, -220)
                         elif k == "SCROLL_DOWN":
-                            page.mouse.wheel(0, 180)
+                            page.mouse.wheel(0, 220)
                         elif len(k) == 1:
                             page.keyboard.type(k)
                         self._capture_frame(page)
@@ -169,19 +173,23 @@ class WebKitWorker(threading.Thread):
                         self._capture_frame(page)
                     elif cmd == "resize":
                         nw, nh = args
-                        self.vp_w, self.vp_h = nw, nh
-                        page.set_viewport_size({"width": nw, "height": nh})
-                        self._capture_frame(page)
+                        if nw != self.vp_w or nh != self.vp_h:
+                            self.vp_w, self.vp_h = nw, nh
+                            page.set_viewport_size({"width": nw, "height": nh})
+                            time.sleep(0.01)
+                            self._capture_frame(page)
                     elif cmd == "close":
                         break
                 except queue.Empty:
-                    # Idle frame capture for animated content or video playback
+                    # Idle loop: check video state and only capture when video is active
                     if self.running and page:
-                        try:
-                            # Periodic capture
+                        now = time.time()
+                        if now - last_media_check > 1.5:
+                            last_media_check = now
+                            self.video_active = self._check_media_playing(page)
+                        
+                        if self.video_active:
                             self._capture_frame(page)
-                        except Exception:
-                            pass
                 except Exception as e:
                     self.status_text = f"Worker notice: {str(e)[:40]}"
 
@@ -201,6 +209,14 @@ class WebKitWorker(threading.Thread):
                     pass
             self.engine_active = False
             self.is_loading = False
+
+    def _check_media_playing(self, page) -> bool:
+        """Checks if an active HTML5 video element is currently playing on the page."""
+        try:
+            js = "() => Array.from(document.querySelectorAll('video')).some(v => !v.paused && !v.ended && v.readyState > 2)"
+            return bool(page.evaluate(js))
+        except Exception:
+            return False
 
     def _do_navigate(self, page, url: str):
         self.is_loading = True
@@ -226,17 +242,19 @@ class WebKitWorker(threading.Thread):
                 pass
 
     def _capture_frame(self, page):
+        """Captures hardware-accelerated JPEG frame directly to memory."""
         try:
-            img_bytes = page.screenshot(type="png", timeout=5000)
-            if img_bytes:
+            img_bytes = page.screenshot(type="jpeg", quality=85, timeout=5000)
+            if img_bytes and pygame:
+                loaded_surf = pygame.image.load(io.BytesIO(img_bytes))
+                if loaded_surf.get_bytesize() != 4:
+                    surf = pygame.Surface(loaded_surf.get_size(), flags=pygame.SRCALPHA, depth=32)
+                    surf.blit(loaded_surf, (0, 0))
+                else:
+                    surf = loaded_surf
                 with self.lock:
                     self.current_frame_bytes = img_bytes
-                    if pygame:
-                        try:
-                            surf = pygame.image.load(io.BytesIO(img_bytes))
-                            self.current_frame_surf = surf
-                        except Exception:
-                            pass
+                    self.current_frame_surf = surf
         except Exception:
             pass
 
@@ -245,7 +263,10 @@ class WebKitWorker(threading.Thread):
 
     def stop(self):
         self.running = False
-        self.cmd_queue.put(("close", None))
+        try:
+            self.cmd_queue.put(("close", None))
+        except Exception:
+            pass
 
 
 class WebKitBrowserApp(Window):
@@ -288,19 +309,60 @@ class WebKitBrowserApp(Window):
         self.anim_frame = 0
         self.lazy_start = lazy_start
 
+        self.is_fullscreen = False
+        self.saved_fullscreen_rect = None
+
         self.worker: Optional[WebKitWorker] = None
         if not self.lazy_start:
             self._ensure_worker()
 
         self.on_draw_content = self._render_content
         self.on_click_content = self._handle_click
+        self.on_resize = self._handle_resize
+
+    def _handle_resize(self, win: Window, cw: int, ch: int):
+        """Adjusts WebKit page viewport to match full window client area."""
+        vp_w = max(320, cw)
+        vp_h = max(240, ch - CHROME_HEIGHT - STATUS_HEIGHT)
+        if self.worker:
+            self.worker.post_cmd("resize", (vp_w, vp_h))
+
+    def toggle_fullscreen(self, screen_w: int = 1280, screen_h: int = 720):
+        """Toggles true fullscreen display covering the entire monitor resolution."""
+        if not self.is_fullscreen:
+            self.saved_fullscreen_rect = (self.x, self.y, self.w, self.h, self.maximized)
+            self.x = 0
+            self.y = 0
+            self.w = screen_w
+            self.h = screen_h
+            self.maximized = True
+            self.is_fullscreen = True
+        else:
+            if self.saved_fullscreen_rect:
+                sx, sy, sw, sh, smax = self.saved_fullscreen_rect
+                self.x = sx
+                self.y = sy
+                self.w = sw
+                self.h = sh
+                self.maximized = smax
+            else:
+                self.x = 80
+                self.y = 35
+                self.w = 720
+                self.h = 520
+                self.maximized = False
+            self.is_fullscreen = False
+
+        cx, cy, cw, ch = self.client_rect
+        self._handle_resize(self, cw, ch)
 
     def _ensure_worker(self):
         """Initializes and starts the WebKit background worker on demand."""
         if self.worker is None:
-            cw = getattr(self, "w", 720) - 2
-            ch = getattr(self, "h", 520) - CHROME_HEIGHT - STATUS_HEIGHT - 24
-            self.worker = WebKitWorker(initial_url=self.current_url, vp_w=cw, vp_h=ch)
+            cx, cy, cw, ch = self.client_rect
+            vp_w = max(320, cw)
+            vp_h = max(240, ch - CHROME_HEIGHT - STATUS_HEIGHT)
+            self.worker = WebKitWorker(initial_url=self.current_url, vp_w=vp_w, vp_h=vp_h)
             self.worker.start()
 
     def _get_screen_geometry(self, fb: bytearray, win: Window) -> Tuple[int, int]:
@@ -335,7 +397,7 @@ class WebKitBrowserApp(Window):
         # 4. Render Web Viewport (y: cy + CHROME_HEIGHT .. cy + ch - STATUS_HEIGHT)
         vp_y = cy + CHROME_HEIGHT
         vp_h = max(40, ch - CHROME_HEIGHT - STATUS_HEIGHT)
-        self._render_viewport(fb, screen_w, cx, vp_y, cw, vp_h, clip, font_dict)
+        self._render_viewport(fb, screen_w, screen_h, cx, vp_y, cw, vp_h, clip, font_dict)
 
         # 5. Render Status Bar (y: cy + ch - STATUS_HEIGHT .. cy + ch)
         self._render_status_bar(fb, screen_w, cx, cy + ch - STATUS_HEIGHT, cw, clip, font_dict)
@@ -366,9 +428,16 @@ class WebKitBrowserApp(Window):
         self._draw_btn(fb, screen_w, bx, by, bw, bh, "H", COLOR_BTN_BG, COLOR_BTN_TXT, clip, font_dict)
         bx += bw + 8
 
+        # Fullscreen Toggle Button [FULL]
+        full_w = 42
+        full_x = x + w - full_w - 6
+        full_txt = "REST" if self.is_fullscreen else "FULL"
+        full_bg = 0x003D59A1 if self.is_fullscreen else COLOR_BTN_BG
+        self._draw_btn(fb, screen_w, full_x, by, full_w, bh, full_txt, full_bg, COLOR_BTN_TXT, clip, font_dict)
+
         # Engine Pill: [WebKit/Safari]
         pill_w = 120
-        pill_x = x + w - pill_w - 6
+        pill_x = full_x - pill_w - 6
         self._fill_rect(fb, screen_w, pill_x, by, pill_w, bh, COLOR_PILL_BG, clip)
         self._stroke_rect(fb, screen_w, pill_x, by, pill_w, bh, COLOR_PILL_TXT, clip)
         self._draw_text(fb, screen_w, pill_x + 8, by + 7, "WebKit 26.5 Core", COLOR_PILL_TXT, clip, font_dict)
@@ -418,7 +487,7 @@ class WebKitBrowserApp(Window):
             self._draw_text(fb, screen_w, bx + 6, by + 5, label, COLOR_BOOKMARK_TXT, clip, font_dict)
             bx += bw + 6
 
-    def _render_viewport(self, fb: bytearray, screen_w: int, x: int, y: int, w: int, h: int, clip: Tuple, font_dict: Dict):
+    def _render_viewport(self, fb: bytearray, screen_w: int, screen_h: int, x: int, y: int, w: int, h: int, clip: Tuple, font_dict: Dict):
         """Renders off-screen WebKit frame or animated loading / fallback state."""
         vp_clip = (max(clip[0], x), max(clip[1], y), min(clip[2], x + w), min(clip[3], y + h))
 
@@ -426,19 +495,31 @@ class WebKitBrowserApp(Window):
         worker_surf = getattr(self.worker, "current_frame_surf", None) if self.worker else None
 
         if worker_surf and pygame:
+            target_surf = worker_surf
             surf_w, surf_h = worker_surf.get_size()
-            copy_w = min(w, surf_w)
-            copy_h = min(h, surf_h)
+            if surf_w != w or surf_h != h:
+                try:
+                    target_surf = pygame.transform.scale(worker_surf, (w, h))
+                except Exception:
+                    target_surf = worker_surf
+
+            tw, th = target_surf.get_size()
+            copy_w = min(w, tw, max(0, screen_w - x))
+            copy_h = min(h, th, max(0, screen_h - y))
+            if copy_w <= 0 or copy_h <= 0:
+                return
 
             try:
-                raw_bytes = worker_surf.get_buffer().raw
-                stride_surf = surf_w * 4
-                stride_fb = screen_w * 4
+                raw_bytes = target_surf.get_buffer().raw
+                stride_surf = tw * 4
+                row_bytes_len = copy_w * 4
 
                 for row in range(copy_h):
                     src_off = row * stride_surf
                     dst_off = ((y + row) * screen_w + x) * 4
-                    fb[dst_off : dst_off + copy_w * 4] = raw_bytes[src_off : src_off + copy_w * 4]
+                    chunk = raw_bytes[src_off : src_off + row_bytes_len]
+                    if len(chunk) == row_bytes_len:
+                        fb[dst_off : dst_off + row_bytes_len] = chunk
                 return
             except Exception:
                 pass
@@ -507,9 +588,16 @@ class WebKitBrowserApp(Window):
                 self.navigate(DEFAULT_HOMEPAGE)
                 return
 
+            full_w = 42
+            full_x = cw - full_w - 6
+            if full_x <= rel_x <= full_x + full_w:
+                screen_w, screen_h = self._get_screen_geometry(bytearray(), win)
+                self.toggle_fullscreen(screen_w, screen_h)
+                return
+
             pill_w = 120
             go_w = 34
-            pill_x = cw - pill_w - 6
+            pill_x = full_x - pill_w - 6
             go_x = pill_x - go_w - 6
             if go_x <= rel_x <= go_x + go_w:
                 self._submit_omnibar()
@@ -538,6 +626,11 @@ class WebKitBrowserApp(Window):
 
     def handle_key(self, key_char: str):
         """Processes keystrokes for Omnibar input, scrolling, and DOM event forwarding."""
+        if key_char == "F11":
+            screen_w, screen_h = self._get_screen_geometry(bytearray(), self)
+            self.toggle_fullscreen(screen_w, screen_h)
+            return
+
         if self.omnibar_focused:
             if key_char in ("\r", "\n", "CTRL_ENTER"):
                 self._submit_omnibar()
@@ -553,13 +646,18 @@ class WebKitBrowserApp(Window):
                 self.omnibar_text += key_char
                 return
 
+        if key_char == "ESCAPE" and self.is_fullscreen:
+            screen_w, screen_h = self._get_screen_geometry(bytearray(), self)
+            self.toggle_fullscreen(screen_w, screen_h)
+            return
+
         if key_char in ("SCROLL_UP", "PAGE_UP"):
             if self.worker:
-                self.worker.post_cmd("scroll", -180)
+                self.worker.post_cmd("scroll", -220)
             return
         elif key_char in ("SCROLL_DOWN", "PAGE_DOWN"):
             if self.worker:
-                self.worker.post_cmd("scroll", 180)
+                self.worker.post_cmd("scroll", 220)
             return
         elif key_char == "F5":
             self.reload()

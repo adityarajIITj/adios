@@ -158,6 +158,8 @@ def main():
                     desktop.handle_key("KEY_LEFT")
                 elif event.key == pygame.K_RIGHT:
                     desktop.handle_key("KEY_RIGHT")
+                elif event.key == pygame.K_F11:
+                    desktop.handle_key("F11")
                 elif event.unicode:
                     desktop.handle_key(event.unicode)
 

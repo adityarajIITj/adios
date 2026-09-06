@@ -91,6 +91,26 @@ class TestWebKitBrowserApp(unittest.TestCase):
         nonzero = sum(1 for b in fb if b != 0)
         self.assertGreater(nonzero, 0)
 
+    def test_fullscreen_toggle(self):
+        self.assertFalse(self.browser.is_fullscreen)
+        # Toggle via F11
+        self.browser.handle_key("F11")
+        self.assertTrue(self.browser.is_fullscreen)
+        self.assertEqual(self.browser.x, 0)
+        self.assertEqual(self.browser.y, 0)
+        self.assertEqual(self.browser.w, 1280)
+        self.assertEqual(self.browser.h, 720)
+
+        # Toggle back via ESCAPE
+        self.browser.handle_key("ESCAPE")
+        self.assertFalse(self.browser.is_fullscreen)
+
+    def test_resize_dispatch(self):
+        initial_q_size = self.browser.worker.cmd_queue.qsize()
+        # Trigger resize
+        self.browser._handle_resize(self.browser, 1280, 720)
+        self.assertGreater(self.browser.worker.cmd_queue.qsize(), initial_q_size)
+
     def test_graceful_shutdown(self):
         worker = self.browser.worker
         self.browser.close()
