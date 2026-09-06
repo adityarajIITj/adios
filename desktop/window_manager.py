@@ -330,10 +330,20 @@ class WindowManager:
 
     def render_all(self, fb: bytearray, font_dict: Dict):
         """Composites all visible windows from back to front with shadows and chrome."""
-        for win in self.windows:
-            if not win.visible or win.minimized:
-                continue
-            self._render_window(win, fb, font_dict)
+        visible_windows = [w for w in self.windows if w.visible and not w.minimized]
+        if not visible_windows:
+            return
+
+        # Occlusion culling: find topmost maximized/fullscreen window covering workspace
+        start_idx = 0
+        for i in range(len(visible_windows) - 1, -1, -1):
+            w = visible_windows[i]
+            if (w.maximized or getattr(w, "is_fullscreen", False)) and w.x <= 0 and w.w >= self.width and w.h >= self.height - TASKBAR_HEIGHT:
+                start_idx = i
+                break
+
+        for i in range(start_idx, len(visible_windows)):
+            self._render_window(visible_windows[i], fb, font_dict)
 
         # Draw Snapping Preview Guide Outline if active
         if self.snap_preview != SNAP_NONE and self.dragging_win:

@@ -133,53 +133,67 @@ class WebKitWorker(threading.Thread):
                     # When video is playing, poll at 30 FPS. When idle, sleep up to 0.4s to conserve CPU.
                     poll_timeout = 0.033 if self.video_active else 0.40
                     cmd, args = self.cmd_queue.get(timeout=poll_timeout)
-                    if cmd == "navigate":
-                        self._do_navigate(page, args)
-                        self._capture_frame(page)
-                    elif cmd == "back":
-                        page.go_back(timeout=10000)
-                        self._update_page_info(page)
-                        self._capture_frame(page)
-                    elif cmd == "forward":
-                        page.go_forward(timeout=10000)
-                        self._update_page_info(page)
-                        self._capture_frame(page)
-                    elif cmd == "reload":
-                        page.reload(timeout=15000)
-                        self._update_page_info(page)
-                        self._capture_frame(page)
-                    elif cmd == "click":
-                        cx, cy = args
-                        page.mouse.click(cx, cy)
-                        time.sleep(0.02)
-                        self._update_page_info(page)
-                        self._capture_frame(page)
-                    elif cmd == "key":
-                        k = args
-                        if k in ("\r", "\n"):
-                            page.keyboard.press("Enter")
-                        elif k in ("\b", "\x08"):
-                            page.keyboard.press("Backspace")
-                        elif k == "SCROLL_UP":
-                            page.mouse.wheel(0, -220)
-                        elif k == "SCROLL_DOWN":
-                            page.mouse.wheel(0, 220)
-                        elif len(k) == 1:
-                            page.keyboard.type(k)
-                        self._capture_frame(page)
-                    elif cmd == "scroll":
-                        dy = args
-                        page.mouse.wheel(0, dy)
-                        self._capture_frame(page)
-                    elif cmd == "resize":
-                        nw, nh = args
-                        if nw != self.vp_w or nh != self.vp_h:
-                            self.vp_w, self.vp_h = nw, nh
-                            page.set_viewport_size({"width": nw, "height": nh})
+                    batch = [(cmd, args)]
+                    
+                    # Drain all pending events immediately to eliminate backlog delay
+                    while not self.cmd_queue.empty():
+                        try:
+                            batch.append(self.cmd_queue.get_nowait())
+                        except queue.Empty:
+                            break
+
+                    should_capture = False
+                    for cmd, args in batch:
+                        if cmd == "navigate":
+                            self._do_navigate(page, args)
+                            should_capture = True
+                        elif cmd == "back":
+                            page.go_back(timeout=10000)
+                            self._update_page_info(page)
+                            should_capture = True
+                        elif cmd == "forward":
+                            page.go_forward(timeout=10000)
+                            self._update_page_info(page)
+                            should_capture = True
+                        elif cmd == "reload":
+                            page.reload(timeout=15000)
+                            self._update_page_info(page)
+                            should_capture = True
+                        elif cmd == "click":
+                            cx, cy = args
+                            page.mouse.click(cx, cy)
                             time.sleep(0.01)
-                            self._capture_frame(page)
-                    elif cmd == "close":
-                        break
+                            self._update_page_info(page)
+                            should_capture = True
+                        elif cmd == "key":
+                            k = args
+                            if k in ("\r", "\n"):
+                                page.keyboard.press("Enter")
+                            elif k in ("\b", "\x08"):
+                                page.keyboard.press("Backspace")
+                            elif k == "SCROLL_UP":
+                                page.mouse.wheel(0, -260)
+                            elif k == "SCROLL_DOWN":
+                                page.mouse.wheel(0, 260)
+                            elif len(k) == 1:
+                                page.keyboard.type(k)
+                            should_capture = True
+                        elif cmd == "scroll":
+                            dy = args
+                            page.mouse.wheel(0, dy)
+                            should_capture = True
+                        elif cmd == "resize":
+                            nw, nh = args
+                            if nw != self.vp_w or nh != self.vp_h:
+                                self.vp_w, self.vp_h = nw, nh
+                                page.set_viewport_size({"width": nw, "height": nh})
+                                should_capture = True
+                        elif cmd == "close":
+                            self.running = False
+                            break
+
+                    if should_capture and self.running:
+                        self._capture_frame(page)
                 except queue.Empty:
                     # Idle loop: check video state and only capture when video is active
                     if self.running and page:
@@ -495,13 +509,19 @@ class WebKitBrowserApp(Window):
         worker_surf = getattr(self.worker, "current_frame_surf", None) if self.worker else None
 
         if worker_surf and pygame:
-            target_surf = worker_surf
             surf_w, surf_h = worker_surf.get_size()
             if surf_w != w or surf_h != h:
-                try:
-                    target_surf = pygame.transform.scale(worker_surf, (w, h))
-                except Exception:
-                    target_surf = worker_surf
+                if (getattr(self, "_cached_surf_source", None) is not worker_surf or
+                    getattr(self, "_cached_surf_dim", None) != (w, h)):
+                    try:
+                        self._cached_scaled_surf = pygame.transform.scale(worker_surf, (w, h))
+                    except Exception:
+                        self._cached_scaled_surf = worker_surf
+                    self._cached_surf_source = worker_surf
+                    self._cached_surf_dim = (w, h)
+                target_surf = self._cached_scaled_surf
+            else:
+                target_surf = worker_surf
 
             tw, th = target_surf.get_size()
             copy_w = min(w, tw, max(0, screen_w - x))
@@ -513,13 +533,13 @@ class WebKitBrowserApp(Window):
                 raw_bytes = target_surf.get_buffer().raw
                 stride_surf = tw * 4
                 row_bytes_len = copy_w * 4
+                mv_fb = memoryview(fb)
+                mv_raw = memoryview(raw_bytes)
 
                 for row in range(copy_h):
                     src_off = row * stride_surf
                     dst_off = ((y + row) * screen_w + x) * 4
-                    chunk = raw_bytes[src_off : src_off + row_bytes_len]
-                    if len(chunk) == row_bytes_len:
-                        fb[dst_off : dst_off + row_bytes_len] = chunk
+                    mv_fb[dst_off : dst_off + row_bytes_len] = mv_raw[src_off : src_off + row_bytes_len]
                 return
             except Exception:
                 pass
@@ -558,7 +578,7 @@ class WebKitBrowserApp(Window):
         self._draw_text(fb, screen_w, box_x + 20, box_y + 128, "Engine: Apple WebKit (Safari Core) | Off-Screen Stream", COLOR_PILL_TXT, vp_clip, font_dict)
 
     def _render_status_bar(self, fb: bytearray, screen_w: int, x: int, y: int, w: int, clip: Tuple, font_dict: Dict):
-        """Renders telemetry and connection security status."""
+        """Renders bottom telemetry status bar."""
         self._fill_rect(fb, screen_w, x, y, w, STATUS_HEIGHT, COLOR_STATUS_BG, clip)
         self._draw_line(fb, screen_w, x, y, x + w, y, COLOR_NAV_BORDER, clip)
 
@@ -621,6 +641,14 @@ class WebKitBrowserApp(Window):
             self.omnibar_focused = False
             vp_x = rel_x
             vp_y = rel_y - CHROME_HEIGHT
+            # Map click coordinates to native page coordinates if scaling
+            if self.worker and self.worker.current_frame_surf:
+                sw, sh = self.worker.current_frame_surf.get_size()
+                cur_w = cw
+                cur_h = max(1, ch - CHROME_HEIGHT - STATUS_HEIGHT)
+                if sw > 0 and sh > 0 and (sw != cur_w or sh != cur_h):
+                    vp_x = int(vp_x * (sw / max(1, cur_w)))
+                    vp_y = int(vp_y * (sh / cur_h))
             if self.worker:
                 self.worker.post_cmd("click", (vp_x, vp_y))
 
