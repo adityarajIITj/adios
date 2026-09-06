@@ -94,6 +94,7 @@ class WebKitWorker(threading.Thread):
         self.engine_active: bool = False
         self.running: bool = True
         self.video_active: bool = False
+        self.frame_version: int = 0
 
     def run(self):
         try:
@@ -121,6 +122,25 @@ class WebKitWorker(threading.Thread):
             page = context.new_page()
             self.engine_active = True
             self.status_text = f"Connecting to {self.initial_url}..."
+
+            # Block heavy analytics and ad trackers to accelerate page loading
+            def _route_filter(route):
+                u = route.request.url.lower()
+                block_tokens = ("google-analytics", "doubleclick", "adservice", "telemetry", "facebook.net", "adnxs", "amazon-adsystem", "googlesyndication")
+                if any(b in u for b in block_tokens):
+                    try:
+                        route.abort()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        route.continue_()
+                    except Exception:
+                        pass
+            try:
+                page.route("**/*", _route_filter)
+            except Exception:
+                pass
             
             # Initial navigation
             self._do_navigate(page, self.initial_url)
@@ -172,15 +192,27 @@ class WebKitWorker(threading.Thread):
                             elif k in ("\b", "\x08"):
                                 page.keyboard.press("Backspace")
                             elif k == "SCROLL_UP":
-                                page.mouse.wheel(0, -260)
+                                try:
+                                    page.evaluate("window.scrollBy(0, -220)")
+                                except Exception:
+                                    pass
                             elif k == "SCROLL_DOWN":
-                                page.mouse.wheel(0, 260)
+                                try:
+                                    page.evaluate("window.scrollBy(0, 220)")
+                                except Exception:
+                                    pass
                             elif len(k) == 1:
                                 page.keyboard.type(k)
                             should_capture = True
                         elif cmd == "scroll":
                             dy = args
-                            page.mouse.wheel(0, dy)
+                            try:
+                                page.evaluate(f"window.scrollBy(0, {int(dy)})")
+                            except Exception:
+                                try:
+                                    page.mouse.wheel(0, dy)
+                                except Exception:
+                                    pass
                             should_capture = True
                         elif cmd == "resize":
                             nw, nh = args
@@ -234,16 +266,18 @@ class WebKitWorker(threading.Thread):
 
     def _do_navigate(self, page, url: str):
         self.is_loading = True
-        self.load_progress = 0.3
-        self.status_text = f"Loading {url[:40]}..."
+        self.load_progress = 0.4
+        self.status_text = f"Connecting to {url[:40]}..."
         try:
-            page.goto(url, timeout=25000, wait_until="domcontentloaded")
+            page.goto(url, timeout=25000, wait_until="commit")
+            self.load_progress = 0.9
+            self._update_page_info(page)
+            self._capture_frame(page)
             self.load_progress = 1.0
             self.is_loading = False
-            self._update_page_info(page)
         except Exception as e:
             self.is_loading = False
-            self.status_text = f"Navigation completed with notice: {str(e)[:30]}"
+            self.status_text = f"Notice: {str(e)[:30]}"
             self._update_page_info(page)
 
     def _update_page_info(self, page):
@@ -258,7 +292,7 @@ class WebKitWorker(threading.Thread):
     def _capture_frame(self, page):
         """Captures hardware-accelerated JPEG frame directly to memory."""
         try:
-            img_bytes = page.screenshot(type="jpeg", quality=85, timeout=5000)
+            img_bytes = page.screenshot(type="jpeg", quality=75, timeout=4000)
             if img_bytes and pygame:
                 loaded_surf = pygame.image.load(io.BytesIO(img_bytes))
                 if loaded_surf.get_bytesize() != 4:
@@ -269,6 +303,7 @@ class WebKitWorker(threading.Thread):
                 with self.lock:
                     self.current_frame_bytes = img_bytes
                     self.current_frame_surf = surf
+                    self.frame_version += 1
         except Exception:
             pass
 
@@ -325,6 +360,8 @@ class WebKitBrowserApp(Window):
 
         self.is_fullscreen = False
         self.saved_fullscreen_rect = None
+        self.local_scroll_offset: int = 0
+        self.last_seen_frame_version: int = 0
 
         self.worker: Optional[WebKitWorker] = None
         if not self.lazy_start:
@@ -508,6 +545,13 @@ class WebKitBrowserApp(Window):
         # Check if worker has an active frame
         worker_surf = getattr(self.worker, "current_frame_surf", None) if self.worker else None
 
+        # Synchronize local optimistic scroll with fresh worker frame
+        if self.worker:
+            w_ver = getattr(self.worker, "frame_version", 0)
+            if w_ver != self.last_seen_frame_version:
+                self.last_seen_frame_version = w_ver
+                self.local_scroll_offset = 0
+
         if worker_surf and pygame:
             surf_w, surf_h = worker_surf.get_size()
             if surf_w != w or surf_h != h:
@@ -537,7 +581,8 @@ class WebKitBrowserApp(Window):
                 mv_raw = memoryview(raw_bytes)
 
                 for row in range(copy_h):
-                    src_off = row * stride_surf
+                    src_row = min(th - 1, max(0, row + self.local_scroll_offset))
+                    src_off = src_row * stride_surf
                     dst_off = ((y + row) * screen_w + x) * 4
                     mv_fb[dst_off : dst_off + row_bytes_len] = mv_raw[src_off : src_off + row_bytes_len]
                 return
@@ -680,10 +725,12 @@ class WebKitBrowserApp(Window):
             return
 
         if key_char in ("SCROLL_UP", "PAGE_UP"):
+            self.local_scroll_offset = max(-1600, self.local_scroll_offset - 220)
             if self.worker:
                 self.worker.post_cmd("scroll", -220)
             return
         elif key_char in ("SCROLL_DOWN", "PAGE_DOWN"):
+            self.local_scroll_offset = min(1600, self.local_scroll_offset + 220)
             if self.worker:
                 self.worker.post_cmd("scroll", 220)
             return
