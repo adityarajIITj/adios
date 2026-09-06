@@ -65,7 +65,14 @@ class NotepadApp(Window):
         self.undo_stack: List[Tuple[List[str], int, int]] = []
         self.redo_stack: List[Tuple[List[str], int, int]] = []
         self.select_all_active: bool = False
+        self.selection_anchor: Optional[Tuple[int, int]] = None
         self.last_key_time: float = time.time()
+
+        # In-Buffer Quick Search (Ctrl+F)
+        self.search_active: bool = False
+        self.search_query: str = ""
+        self.search_matches: List[Tuple[int, int]] = []
+        self.search_match_idx: int = 0
 
         self.on_draw_content = self._render_content
         self.on_click_content = self._handle_click
@@ -124,15 +131,65 @@ class NotepadApp(Window):
     # Clipboard & Selection Actions
     # --------------------------------------------------------------------------
 
+    def get_selection_range(self) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """Returns sorted ((start_line, start_col), (end_line, end_col)) if selection is active."""
+        if self.select_all_active:
+            if not self.lines:
+                return None
+            return ((0, 0), (len(self.lines) - 1, len(self.lines[-1])))
+        if self.selection_anchor is not None:
+            p1 = self.selection_anchor
+            p2 = (self.cursor_line, self.cursor_col)
+            if p1 == p2:
+                return None
+            return (min(p1, p2), max(p1, p2))
+        return None
+
+    def get_selected_text(self) -> str:
+        """Extracts text within active selection range."""
+        rng = self.get_selection_range()
+        if not rng:
+            return ""
+        (s_l, s_c), (e_l, e_c) = rng
+        if s_l == e_l:
+            return self.lines[s_l][s_c:e_c]
+        parts = [self.lines[s_l][s_c:]]
+        for li in range(s_l + 1, e_l):
+            parts.append(self.lines[li])
+        parts.append(self.lines[e_l][:e_c])
+        return "\n".join(parts)
+
+    def delete_selection(self):
+        """Deletes text within selection range and clears selection."""
+        rng = self.get_selection_range()
+        if not rng:
+            return
+        self._push_undo()
+        self.dirty = True
+        (s_l, s_c), (e_l, e_c) = rng
+        if s_l == e_l:
+            self.lines[s_l] = self.lines[s_l][:s_c] + self.lines[s_l][e_c:]
+        else:
+            self.lines[s_l] = self.lines[s_l][:s_c] + self.lines[e_l][e_c:]
+            del self.lines[s_l + 1 : e_l + 1]
+        self.cursor_line = s_l
+        self.cursor_col = s_c
+        self.selection_anchor = None
+        self.select_all_active = False
+        self.status_msg = "Selection deleted."
+        self._ensure_cursor_visible()
+
     def select_all(self):
         """Highlights entire document buffer for batch operations."""
         self.select_all_active = True
+        self.selection_anchor = None
         self.status_msg = f"Selected all text ({self.char_count} chars)."
 
     def copy_selection(self):
         """Copies selection or current line to system clipboard."""
-        if self.select_all_active:
-            text = "\n".join(self.lines)
+        rng = self.get_selection_range()
+        if rng:
+            text = self.get_selected_text()
         else:
             text = self.lines[self.cursor_line] if self.lines else ""
         SovereignClipboard.get_instance().set_text(text)
@@ -140,15 +197,13 @@ class NotepadApp(Window):
 
     def cut_selection(self):
         """Cuts selection or current line to system clipboard."""
-        self._push_undo()
-        if self.select_all_active:
-            text = "\n".join(self.lines)
+        rng = self.get_selection_range()
+        if rng:
+            text = self.get_selected_text()
             SovereignClipboard.get_instance().set_text(text)
-            self.lines = [""]
-            self.cursor_line = 0
-            self.cursor_col = 0
-            self.select_all_active = False
+            self.delete_selection()
         else:
+            self._push_undo()
             text = self.lines[self.cursor_line] if self.lines else ""
             SovereignClipboard.get_instance().set_text(text)
             if len(self.lines) > 1:
@@ -171,35 +226,36 @@ class NotepadApp(Window):
             return
 
         self._push_undo()
-        paste_lines = clip_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-
-        if self.select_all_active:
-            self.lines = paste_lines or [""]
-            self.cursor_line = len(self.lines) - 1
-            self.cursor_col = len(self.lines[-1])
-            self.select_all_active = False
-        else:
-            line = self.lines[self.cursor_line]
-            left = line[:self.cursor_col]
-            right = line[self.cursor_col:]
-
-            if len(paste_lines) == 1:
-                self.lines[self.cursor_line] = left + paste_lines[0] + right
-                self.cursor_col += len(paste_lines[0])
-            else:
-                self.lines[self.cursor_line] = left + paste_lines[0]
-                for idx in range(1, len(paste_lines) - 1):
-                    self.lines.insert(self.cursor_line + idx, paste_lines[idx])
-                self.lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + right)
-                self.cursor_line += len(paste_lines) - 1
-                self.cursor_col = len(paste_lines[-1])
-
         self.dirty = True
+        if self.get_selection_range():
+            self.delete_selection()
+
+        paste_lines = clip_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        line = self.lines[self.cursor_line]
+        left = line[:self.cursor_col]
+        right = line[self.cursor_col:]
+
+        if len(paste_lines) == 1:
+            self.lines[self.cursor_line] = left + paste_lines[0] + right
+            self.cursor_col += len(paste_lines[0])
+        else:
+            self.lines[self.cursor_line] = left + paste_lines[0]
+            for idx in range(1, len(paste_lines) - 1):
+                self.lines.insert(self.cursor_line + idx, paste_lines[idx])
+            self.lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + right)
+            self.cursor_line += len(paste_lines) - 1
+            self.cursor_col = len(paste_lines[-1])
+
+        self.selection_anchor = None
+        self.select_all_active = False
         self.status_msg = f"Pasted {len(clip_text)} chars ({len(paste_lines)} lines)."
         self._ensure_cursor_visible()
 
     def _delete_word_backward(self):
         """Performs smooth word-level backward deletion across whitespace and tokens."""
+        if self.get_selection_range():
+            self.delete_selection()
+            return
         if not self.lines:
             self.lines = [""]
             return
@@ -249,15 +305,204 @@ class NotepadApp(Window):
         self._ensure_cursor_visible()
 
     def duplicate_line(self):
-        """Duplicates current line directly below and shifts cursor down."""
+        """Duplicates current line or selection directly below and shifts cursor down."""
         self._push_undo()
-        self.lines.insert(self.cursor_line + 1, self.lines[self.cursor_line])
-        self.cursor_line += 1
+        rng = self.get_selection_range()
+        if rng and rng[0][0] < rng[1][0]:
+            s_l, e_l = rng[0][0], rng[1][0]
+            block = [self.lines[li] for li in range(s_l, e_l + 1)]
+            for i, bline in enumerate(block):
+                self.lines.insert(e_l + 1 + i, bline)
+            self.cursor_line = e_l + 1 + len(block) - 1
+        else:
+            self.lines.insert(self.cursor_line + 1, self.lines[self.cursor_line])
+            self.cursor_line += 1
         self.dirty = True
+        self._ensure_cursor_visible()
+
+    def swap_line_up(self):
+        """Moves current line up one position (Alt+Up)."""
+        if self.cursor_line > 0:
+            self._push_undo()
+            self.dirty = True
+            self.lines[self.cursor_line], self.lines[self.cursor_line - 1] = (
+                self.lines[self.cursor_line - 1],
+                self.lines[self.cursor_line]
+            )
+            self.cursor_line -= 1
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+
+    def swap_line_down(self):
+        """Moves current line down one position (Alt+Down)."""
+        if self.cursor_line < len(self.lines) - 1:
+            self._push_undo()
+            self.dirty = True
+            self.lines[self.cursor_line], self.lines[self.cursor_line + 1] = (
+                self.lines[self.cursor_line + 1],
+                self.lines[self.cursor_line]
+            )
+            self.cursor_line += 1
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+
+    def delete_line(self):
+        """Deletes the entire active line (Ctrl+Shift+K)."""
+        self._push_undo()
+        self.dirty = True
+        if len(self.lines) > 1:
+            del self.lines[self.cursor_line]
+            self.cursor_line = min(self.cursor_line, len(self.lines) - 1)
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+        else:
+            self.lines = [""]
+            self.cursor_line = 0
+            self.cursor_col = 0
+        self.selection_anchor = None
+        self.select_all_active = False
+        self._ensure_cursor_visible()
+
+    def move_word_left(self, select: bool = False):
+        """Moves cursor backward by one word (Ctrl+Left)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+
+        line = self.lines[self.cursor_line]
+        if self.cursor_col == 0:
+            if self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = len(self.lines[self.cursor_line])
+        else:
+            def is_w(c): return c.isalnum() or c == '_'
+            i = self.cursor_col
+            while i > 0 and line[i - 1] in (' ', '\t'):
+                i -= 1
+            if i > 0:
+                target_w = is_w(line[i - 1])
+                while i > 0 and (is_w(line[i - 1]) == target_w) and line[i - 1] not in (' ', '\t'):
+                    i -= 1
+            self.cursor_col = i
+        self._ensure_cursor_visible()
+
+    def move_word_right(self, select: bool = False):
+        """Moves cursor forward by one word (Ctrl+Right)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+
+        line = self.lines[self.cursor_line]
+        if self.cursor_col >= len(line):
+            if self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = 0
+        else:
+            def is_w(c): return c.isalnum() or c == '_'
+            i = self.cursor_col
+            target_w = is_w(line[i])
+            while i < len(line) and (is_w(line[i]) == target_w) and line[i] not in (' ', '\t'):
+                i += 1
+            while i < len(line) and line[i] in (' ', '\t'):
+                i += 1
+            self.cursor_col = i
+        self._ensure_cursor_visible()
+
+    def move_doc_start(self, select: bool = False):
+        """Jumps cursor to the beginning of the buffer (Ctrl+Home)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+        self.cursor_line = 0
+        self.cursor_col = 0
+        self.scroll_line = 0
+        self._ensure_cursor_visible()
+
+    def move_doc_end(self, select: bool = False):
+        """Jumps cursor to the end of the buffer (Ctrl+End)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+        self.cursor_line = max(0, len(self.lines) - 1)
+        self.cursor_col = len(self.lines[self.cursor_line])
+        self._ensure_cursor_visible()
+
+    def toggle_search(self):
+        """Toggles inline Find bar (Ctrl+F)."""
+        self.search_active = not self.search_active
+        if self.search_active:
+            sel = self.get_selected_text()
+            if sel and "\n" not in sel:
+                self.search_query = sel
+            self._update_search_matches()
+        else:
+            self.search_matches.clear()
+
+    def _update_search_matches(self):
+        """Finds all occurrences of search_query in the text buffer."""
+        self.search_matches.clear()
+        if not self.search_query:
+            self.search_match_idx = 0
+            return
+        q = self.search_query.lower()
+        for li, line in enumerate(self.lines):
+            low = line.lower()
+            start = 0
+            while True:
+                idx = low.find(q, start)
+                if idx == -1:
+                    break
+                self.search_matches.append((li, idx))
+                start = idx + len(q)
+        if self.search_matches:
+            self.search_match_idx = 0
+            for i, (li, ci) in enumerate(self.search_matches):
+                if (li, ci) >= (self.cursor_line, self.cursor_col):
+                    self.search_match_idx = i
+                    break
+            self._jump_to_current_match()
+        else:
+            self.search_match_idx = 0
+
+    def _next_search_match(self):
+        """Jumps to the next search match."""
+        if not self.search_matches:
+            return
+        self.search_match_idx = (self.search_match_idx + 1) % len(self.search_matches)
+        self._jump_to_current_match()
+
+    def _prev_search_match(self):
+        """Jumps to the previous search match."""
+        if not self.search_matches:
+            return
+        self.search_match_idx = (self.search_match_idx - 1) % len(self.search_matches)
+        self._jump_to_current_match()
+
+    def _jump_to_current_match(self):
+        """Positions cursor and scrolls to current search match."""
+        if not self.search_matches:
+            return
+        m_l, m_c = self.search_matches[self.search_match_idx]
+        self.cursor_line = m_l
+        self.cursor_col = m_c + len(self.search_query)
         self._ensure_cursor_visible()
 
     def delete_forward(self):
         """Deletes character directly under cursor or merges next line."""
+        if self.get_selection_range():
+            self.delete_selection()
+            return
         if not self.lines:
             return
         line = self.lines[self.cursor_line]
@@ -275,6 +520,8 @@ class NotepadApp(Window):
 
     def move_cursor_home(self):
         """Moves cursor to start of indentation or column 0."""
+        self.selection_anchor = None
+        self.select_all_active = False
         line = self.lines[self.cursor_line]
         first_non_ws = len(line) - len(line.lstrip(' '))
         if self.cursor_col == first_non_ws:
@@ -285,11 +532,15 @@ class NotepadApp(Window):
 
     def move_cursor_end(self):
         """Moves cursor to end of current line."""
+        self.selection_anchor = None
+        self.select_all_active = False
         self.cursor_col = len(self.lines[self.cursor_line])
         self._ensure_cursor_visible()
 
     def page_up(self):
         """Scrolls cursor and view up by one page."""
+        self.selection_anchor = None
+        self.select_all_active = False
         jump = 16
         self.cursor_line = max(0, self.cursor_line - jump)
         self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -297,6 +548,8 @@ class NotepadApp(Window):
 
     def page_down(self):
         """Scrolls cursor and view down by one page."""
+        self.selection_anchor = None
+        self.select_all_active = False
         jump = 16
         self.cursor_line = min(len(self.lines) - 1, self.cursor_line + jump)
         self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -386,6 +639,39 @@ class NotepadApp(Window):
         if not self.lines:
             self.lines = [""]
 
+        # Search & Escape Handling
+        if key_char == "ESCAPE":
+            if self.search_active:
+                self.search_active = False
+                self.search_matches.clear()
+                self.status_msg = "Search closed."
+                return
+            if self.selection_anchor or self.select_all_active:
+                self.selection_anchor = None
+                self.select_all_active = False
+                self.status_msg = "Selection cleared."
+                return
+
+        if key_char in ("CTRL_F", "\x06"):
+            self.toggle_search()
+            return
+
+        if self.search_active:
+            if key_char in ("\r", "\n", "CTRL_ENTER"):
+                self._next_search_match()
+                return
+            elif key_char == "SHIFT_TAB":
+                self._prev_search_match()
+                return
+            elif key_char in ("\b", "\x08"):
+                self.search_query = self.search_query[:-1]
+                self._update_search_matches()
+                return
+            elif len(key_char) == 1 and 32 <= ord(key_char) <= 126:
+                self.search_query += key_char
+                self._update_search_matches()
+                return
+
         # Productivity Shortcuts
         if key_char in ("CTRL_A", "\x01"):
             self.select_all()
@@ -419,12 +705,94 @@ class NotepadApp(Window):
             self.duplicate_line()
             return
 
+        if key_char == "CTRL_SHIFT_K":
+            self.delete_line()
+            return
+
+        if key_char == "ALT_UP":
+            self.swap_line_up()
+            return
+
+        if key_char == "ALT_DOWN":
+            self.swap_line_down()
+            return
+
         if key_char in ("CTRL_BACKSPACE", "\x7f"):
             self._delete_word_backward()
             return
 
         if key_char == "CTRL_ENTER":
             self.handle_key("\n")
+            return
+
+        # Word and Document Navigation
+        if key_char == "CTRL_LEFT":
+            self.move_word_left(select=False)
+            return
+
+        if key_char == "CTRL_RIGHT":
+            self.move_word_right(select=False)
+            return
+
+        if key_char == "CTRL_HOME":
+            self.move_doc_start(select=False)
+            return
+
+        if key_char == "CTRL_END":
+            self.move_doc_end(select=False)
+            return
+
+        # Shift Selection Navigation
+        if key_char == "SHIFT_LEFT":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_col > 0:
+                self.cursor_col -= 1
+            elif self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = len(self.lines[self.cursor_line])
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_RIGHT":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_col < len(self.lines[self.cursor_line]):
+                self.cursor_col += 1
+            elif self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = 0
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_UP":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_DOWN":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_HOME":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            self.move_cursor_home()
+            return
+
+        if key_char == "SHIFT_END":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            self.move_cursor_end()
             return
 
         # Navigation & Editing Keys
@@ -456,37 +824,36 @@ class NotepadApp(Window):
             self.scroll_down(3)
             return
 
-        # If select all is active, non-shortcut keys operate on entire selection
-        if self.select_all_active:
+        # Bracket/Quote wrapping over active selection
+        rng = self.get_selection_range()
+        if rng and key_char in ("(", "[", "{", '"', "'"):
+            open_c = key_char
+            close_c = {"(": ")", "[": "]", "{": "}"}.get(open_c, open_c)
+            self._push_undo()
+            self.dirty = True
+            (s_l, s_c), (e_l, e_c) = rng
+            if s_l == e_l:
+                line = self.lines[s_l]
+                self.lines[s_l] = line[:s_c] + open_c + line[s_c:e_c] + close_c + line[e_c:]
+                self.cursor_col = e_c + 2
+            else:
+                self.lines[s_l] = self.lines[s_l][:s_c] + open_c + self.lines[s_l][s_c:]
+                adj_ec = e_c + (1 if s_l == e_l else 0)
+                self.lines[e_l] = self.lines[e_l][:adj_ec] + close_c + self.lines[e_l][adj_ec:]
+            self.selection_anchor = None
+            self.select_all_active = False
+            self._ensure_cursor_visible()
+            return
+
+        # Replace active selection if typing replacement character
+        if rng:
             if key_char in ("\b", "\x08"):
-                self._push_undo()
-                self.lines = [""]
-                self.cursor_line = 0
-                self.cursor_col = 0
-                self.select_all_active = False
-                self.dirty = True
-                self._ensure_cursor_visible()
+                self.delete_selection()
                 return
             elif key_char in ("\r", "\n"):
-                self._push_undo()
-                self.lines = ["", ""]
-                self.cursor_line = 1
-                self.cursor_col = 0
-                self.select_all_active = False
-                self.dirty = True
-                self._ensure_cursor_visible()
-                return
-            elif key_char in ("KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"):
-                self.select_all_active = False
+                self.delete_selection()
             elif len(key_char) == 1 and ord(key_char) >= 32:
-                self._push_undo()
-                self.lines = [key_char]
-                self.cursor_line = 0
-                self.cursor_col = 1
-                self.select_all_active = False
-                self.dirty = True
-                self._ensure_cursor_visible()
-                return
+                self.delete_selection()
 
         # 1. Newline (Enter)
         if key_char in ("\r", "\n"):
@@ -528,8 +895,18 @@ class NotepadApp(Window):
             self._ensure_cursor_visible()
             return
 
-        # 3. Tab (4 spaces)
+        # 3. Tab (4 spaces or block indent)
         if key_char == "\t":
+            rng = self.get_selection_range()
+            if rng and rng[0][0] < rng[1][0]:
+                self._push_undo()
+                self.dirty = True
+                s_l, e_l = rng[0][0], rng[1][0]
+                for li in range(s_l, e_l + 1):
+                    self.lines[li] = "    " + self.lines[li]
+                self.cursor_col += 4
+                self._ensure_cursor_visible()
+                return
             self._push_undo()
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + "    " + line[self.cursor_col:]
@@ -538,8 +915,10 @@ class NotepadApp(Window):
             self._ensure_cursor_visible()
             return
 
-        # 4. Arrow Navigation
+        # 4. Arrow Navigation (clears selection anchor)
         if key_char in ("KEY_UP", "\x1b[A"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_line > 0:
                 self.cursor_line -= 1
                 self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -547,6 +926,8 @@ class NotepadApp(Window):
             return
 
         if key_char in ("KEY_DOWN", "\x1b[B"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_line < len(self.lines) - 1:
                 self.cursor_line += 1
                 self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -554,6 +935,8 @@ class NotepadApp(Window):
             return
 
         if key_char in ("KEY_LEFT", "\x1b[D"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_col > 0:
                 self.cursor_col -= 1
             elif self.cursor_line > 0:
@@ -563,6 +946,8 @@ class NotepadApp(Window):
             return
 
         if key_char in ("KEY_RIGHT", "\x1b[C"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_col < len(self.lines[self.cursor_line]):
                 self.cursor_col += 1
             elif self.cursor_line < len(self.lines) - 1:
@@ -573,6 +958,8 @@ class NotepadApp(Window):
 
         # 5. Printable Character Insertion
         if len(key_char) == 1 and ord(key_char) >= 32:
+            self.selection_anchor = None
+            self.select_all_active = False
             if key_char == " " or self.cursor_col == 0 or self.cursor_col % 8 == 0:
                 self._push_undo()
             line = self.lines[self.cursor_line]
@@ -637,15 +1024,32 @@ class NotepadApp(Window):
                 num_col = pal.text_highlight if line_idx == self.cursor_line else pal.text_muted
                 self._draw_text(fb, cx + 6, line_y, f"{line_idx + 1:2d}", num_col, font_dict)
 
-            # Line highlight: full selection or active cursor line
-            if self.select_all_active:
+            # Line highlight: range selection or active cursor line
+            raw_line = self.lines[line_idx]
+            rng = self.get_selection_range()
+            if rng and (rng[0][0] <= line_idx <= rng[1][0]):
+                (s_l, s_c), (e_l, e_c) = rng
+                col_start = s_c if line_idx == s_l else 0
+                col_end = e_c if line_idx == e_l else len(raw_line)
+                sx = text_x + col_start * CHAR_WIDTH
+                sw = max(4, (col_end - col_start) * CHAR_WIDTH)
                 sel_bg = 0x001E3A5F if pal.name != "Arctic Minimal" else 0x00C7D2FE
-                self._fill_rect(fb, text_x - 4, line_y - 2, text_w, line_h, sel_bg)
+                self._fill_rect(fb, sx - 2, line_y - 2, sw + 4, line_h, sel_bg)
             elif line_idx == self.cursor_line:
                 self._fill_rect(fb, text_x - 4, line_y - 2, text_w, line_h, pal.btn_bg)
 
+            # Search matches highlight
+            if self.search_active and self.search_query:
+                q_len = len(self.search_query)
+                for midx, (ml, mc) in enumerate(self.search_matches):
+                    if ml == line_idx:
+                        mx = text_x + mc * CHAR_WIDTH
+                        mw = q_len * CHAR_WIDTH
+                        is_cur = (midx == self.search_match_idx)
+                        m_bg = 0x00F59E0B if is_cur else 0x00B45309
+                        self._fill_rect(fb, mx, line_y - 2, mw, line_h, m_bg)
+
             # Render Line Text
-            raw_line = self.lines[line_idx]
             text_color = pal.text_highlight if self.select_all_active else pal.text_primary
             self._draw_text(fb, text_x, line_y, raw_line[:text_w // CHAR_WIDTH], text_color, font_dict)
 
@@ -657,17 +1061,30 @@ class NotepadApp(Window):
                 if text_x <= cur_x <= cx + cw - 4:
                     self._fill_rect(fb, cur_x, line_y, 2, 13, pal.accent_primary)
 
+        # Floating Quick Search Bar (Ctrl+F)
+        if self.search_active:
+            sb_w = min(320, cw - 60)
+            sb_h = 24
+            sb_x = cx + cw - sb_w - 14
+            sb_y = cy + tb_h + 4
+            self._fill_rect(fb, sb_x, sb_y, sb_w, sb_h, pal.card_bg)
+            self._draw_rect_outline(fb, sb_x, sb_y, sb_w, sb_h, pal.accent_primary)
+            cnt_str = f"[{self.search_match_idx + 1}/{len(self.search_matches)}]" if self.search_matches else "[0/0]"
+            bar_txt = f"Find: {self.search_query}_ {cnt_str} [Enter/Esc]"
+            self._draw_text(fb, sb_x + 8, sb_y + 6, bar_txt, pal.text_primary, font_dict)
+
         # 4. Bottom Status Bar
         sb_y = cy + ch - status_h
         self._fill_rect(fb, cx, sb_y, cw, status_h, pal.gutter_bg)
         self._draw_hline(fb, cx, sb_y, cw, pal.card_border)
 
         dirty_tag = " *" if self.dirty else ""
-        sel_tag = " [ALL SELECTED]" if self.select_all_active else ""
+        sel_tag = " [SEL]" if self.get_selection_range() else ""
+        find_tag = f" | Find: '{self.search_query}' ({self.search_match_idx+1}/{len(self.search_matches)})" if self.search_active and self.search_matches else (" | Find: No matches" if self.search_active else "")
         stat_txt = (
             f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | "
             f"{self.word_count} words | {self.char_count} chars | "
-            f"'{self.filename}'{dirty_tag}{sel_tag} | {self.status_msg}"
+            f"'{self.filename}'{dirty_tag}{sel_tag}{find_tag} | {self.status_msg}"
         )
         self._draw_text(fb, cx + 10, sb_y + 5, stat_txt[:cw // CHAR_WIDTH - 2], pal.text_muted, font_dict)
 

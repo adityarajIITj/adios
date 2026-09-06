@@ -23,6 +23,7 @@ class CoreUtils:
         # In-memory virtual filesystem table (path -> content)
         self.vfs: Dict[str, bytes] = vfs_root if vfs_root is not None else {}
         self.cwd: str = "/root"
+        self.total_mem_mb: int = 1024  # 1024 MB (1.0 GB) Sovereign Workstation RAM
         # Simulated sovereign process table
         self.processes = [
             {"pid": 1, "ppid": 0, "user": "root", "stat": "S", "cpu": 0.1, "mem": 1.2, "time": "00:04:12", "cmd": "init [ring0]"},
@@ -211,13 +212,26 @@ class CoreUtils:
         return f" {time_str} up 14:22,  1 user,  load average: 0.08, 0.05, 0.01"
 
     def free(self, human_readable: bool = False) -> str:
+        mem_mb = getattr(self, "total_mem_mb", 1024)
         if human_readable:
+            if mem_mb >= 1024:
+                return (
+                    "               total        used        free      shared  buff/cache   available\n"
+                    "Mem:           1024M        128M        832M        8.0M         64M        888M\n"
+                    "Swap:           256M          0B        256M"
+                )
             return (
                 "               total        used        free      shared  buff/cache   available\n"
                 "Mem:            512M         82M        384M        4.0M         45M        412M\n"
                 "Swap:           128M          0B        128M"
             )
         else:
+            if mem_mb >= 1024:
+                return (
+                    "               total        used        free      shared  buff/cache   available\n"
+                    "Mem:         1048576      131072      851968        8192       65536      909312\n"
+                    "Swap:         262144           0      262144"
+                )
             return (
                 "               total        used        free      shared  buff/cache   available\n"
                 "Mem:          524288       84582      393418        4096       46288      422314\n"
@@ -240,12 +254,16 @@ class CoreUtils:
         total_p = len(self.processes)
         running_p = sum(1 for p in self.processes if "R" in p["stat"])
         sleeping_p = total_p - running_p
+        mem_mb = getattr(self, "total_mem_mb", 1024)
+        free_mb = mem_mb * 0.81
+        used_mb = mem_mb * 0.13
+        avail_mb = mem_mb * 0.86
         lines = [
             f"top - {time_str} up 14:22,  1 user,  load average: 0.08, 0.05, 0.01",
             f"Tasks: {total_p} total, {running_p} running, {sleeping_p} sleeping, 0 stopped, 0 zombie",
             "%Cpu(s):  2.4 us,  1.1 sy,  0.0 ni, 96.5 id,  0.0 wa,  0.0 hi,  0.0 si",
-            "MiB Mem :    512.0 total,    384.2 free,     82.6 used,     45.2 buff/cache",
-            "MiB Swap:    128.0 total,    128.0 free,      0.0 used.    412.4 avail Mem",
+            f"MiB Mem :   {mem_mb:.1f} total,    {free_mb:.1f} free,     {used_mb:.1f} used,     64.0 buff/cache",
+            f"MiB Swap:    256.0 total,    256.0 free,      0.0 used.    {avail_mb:.1f} avail Mem",
             "",
             f"{'PID':>5} {'USER':<8} {'PR':>3} {'NI':>3} {'VIRT':>7} {'RES':>6} {'SHR':>5} {'S':<2} {'%CPU':>5} {'%MEM':>5} {'TIME+':>8} {'COMMAND'}"
         ]
@@ -285,6 +303,6 @@ if __name__ == "__main__":
     h = utils.sha256sum("greeting.txt")
     assert len(h) == 64
     assert "init" in utils.ps()
-    assert "512M" in utils.free(human_readable=True)
+    assert any(m in utils.free(human_readable=True) for m in ("1024M", "512M"))
     assert "load average" in utils.uptime()
     print("Core utilities verified.")

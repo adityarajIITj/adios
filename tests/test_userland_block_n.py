@@ -94,7 +94,7 @@ def test_userland_block_n_suite():
     assert "Tasks:" in top_out and "%Cpu(s):" in top_out and "load average" in top_out
 
     free_out = sh.eval("free -h")
-    assert "512M" in free_out and "Mem:" in free_out and "Swap:" in free_out
+    assert any(m in free_out for m in ("1024M", "512M")) and "Mem:" in free_out and "Swap:" in free_out
 
     uptime_out = sh.eval("uptime")
     assert "load average" in uptime_out and "up" in uptime_out

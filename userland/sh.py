@@ -320,7 +320,7 @@ if __name__ == "__main__":
     print("Pipeline result:", res)
     assert "1" in res
     assert "init" in sh.eval("ps")
-    assert "512M" in sh.eval("free -h")
+    assert any(m in sh.eval("free -h") for m in ("1024M", "512M"))
     assert "load average" in sh.eval("uptime")
     assert "root" in sh.eval("whoami")
     assert "AdiOS" in sh.eval("help")

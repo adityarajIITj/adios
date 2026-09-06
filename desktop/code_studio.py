@@ -114,7 +114,15 @@ class CodeStudio(Window):
         self.undo_stack: List[Tuple[List[str], int, int]] = []
         self.redo_stack: List[Tuple[List[str], int, int]] = []
         self.select_all_active: bool = False
+        self.selection_anchor: Optional[Tuple[int, int]] = None
+        self.is_dirty: bool = False
         self.last_key_time: float = time.time()
+
+        # In-Buffer Quick Search (Ctrl+F)
+        self.search_active: bool = False
+        self.search_query: str = ""
+        self.search_matches: List[Tuple[int, int]] = []
+        self.search_match_idx: int = 0
         
         # Execution State
         self.output_logs: List[str] = [
@@ -242,11 +250,28 @@ class CodeStudio(Window):
             self._draw_text(fb, x + 8, line_y, num_str, num_col, font_dict)
 
             # Active line subtle highlight or selection highlight
-            if self.select_all_active:
+            rng = self.get_selection_range()
+            if rng and (rng[0][0] <= line_idx <= rng[1][0]):
+                (s_l, s_c), (e_l, e_c) = rng
+                col_start = s_c if line_idx == s_l else 0
+                col_end = e_c if line_idx == e_l else len(raw_line)
+                sx = code_x + col_start * CHAR_WIDTH * self.font_scale
+                sw = max(4, (col_end - col_start) * CHAR_WIDTH * self.font_scale)
                 sel_bg = 0x001E3A5F if pal.name != "Arctic Minimal" else 0x00C7D2FE
-                self._fill_rect(fb, code_x - 4, line_y - 2, code_w, line_h, sel_bg)
+                self._fill_rect(fb, sx - 2, line_y - 2, sw + 4, line_h, sel_bg)
             elif line_idx == self.cursor_line:
                 self._fill_rect(fb, code_x - 4, line_y - 2, code_w, line_h, pal.btn_bg)
+
+            # Search matches highlight
+            if self.search_active and self.search_query:
+                q_len = len(self.search_query)
+                for midx, (ml, mc) in enumerate(self.search_matches):
+                    if ml == line_idx:
+                        mx = code_x + mc * CHAR_WIDTH * self.font_scale
+                        mw = q_len * CHAR_WIDTH * self.font_scale
+                        is_cur = (midx == self.search_match_idx)
+                        m_bg = 0x00F59E0B if is_cur else 0x00B45309
+                        self._fill_rect(fb, mx, line_y - 2, mw, line_h, m_bg)
 
             # Render line tokens
             raw_line = self.lines[line_idx]
@@ -260,12 +285,26 @@ class CodeStudio(Window):
                 if code_x <= cur_x <= x + w - 4:
                     self._fill_rect(fb, cur_x, line_y - 1, 2, line_h - 2, pal.accent_primary)
 
+        # Floating Quick Search Bar (Ctrl+F)
+        if self.search_active:
+            sb_w = min(340, w - 80)
+            sb_h = 24
+            sb_x = x + w - sb_w - 14
+            sb_y = y + 4
+            self._fill_rect(fb, sb_x, sb_y, sb_w, sb_h, pal.card_bg)
+            self._draw_rect_outline(fb, sb_x, sb_y, sb_w, sb_h, pal.accent_primary)
+            cnt_str = f"[{self.search_match_idx + 1}/{len(self.search_matches)}]" if self.search_matches else "[0/0]"
+            bar_txt = f"Find: {self.search_query}_ {cnt_str} [Enter/Esc]"
+            self._draw_text(fb, sb_x + 8, sb_y + 6, bar_txt, pal.text_primary, font_dict)
+
         # Bottom Editor Status Bar
         sb_y = y + canvas_h
         self._fill_rect(fb, x, sb_y, w, status_bar_h, pal.gutter_bg)
         self._draw_hline(fb, x, sb_y, w, pal.card_border)
-        sel_tag = " | [ALL SELECTED]" if self.select_all_active else ""
-        stat_txt = f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | UTF-8 | Python 3 | {len(self.lines)} lines{sel_tag}"
+        dirty_tag = " * [Modified]" if getattr(self, "is_dirty", False) else " [Saved]"
+        sel_tag = " | [SEL]" if self.get_selection_range() else ""
+        find_tag = f" | Find: '{self.search_query}' ({self.search_match_idx+1}/{len(self.search_matches)})" if self.search_active and self.search_matches else (" | Find: No matches" if self.search_active else "")
+        stat_txt = f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | UTF-8 | Python 3 | {len(self.lines)} lines{sel_tag}{dirty_tag}{find_tag}"
         self._draw_text(fb, x + 12, sb_y + 6, stat_txt, pal.text_muted, font_dict)
 
     def _render_highlighted_line(self, fb: bytearray, x: int, y: int, line: str, pal: Any, font_dict: Dict):
@@ -571,15 +610,64 @@ class CodeStudio(Window):
             self.output_logs.append(f">> Redo ({len(self.redo_stack)} actions remaining).")
             self._ensure_cursor_visible()
 
+    def get_selection_range(self) -> Optional[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """Returns sorted ((start_line, start_col), (end_line, end_col)) if selection is active."""
+        if self.select_all_active:
+            if not self.lines:
+                return None
+            return ((0, 0), (len(self.lines) - 1, len(self.lines[-1])))
+        if self.selection_anchor is not None:
+            p1 = self.selection_anchor
+            p2 = (self.cursor_line, self.cursor_col)
+            if p1 == p2:
+                return None
+            return (min(p1, p2), max(p1, p2))
+        return None
+
+    def get_selected_text(self) -> str:
+        """Extracts text within active selection range."""
+        rng = self.get_selection_range()
+        if not rng:
+            return ""
+        (s_l, s_c), (e_l, e_c) = rng
+        if s_l == e_l:
+            return self.lines[s_l][s_c:e_c]
+        parts = [self.lines[s_l][s_c:]]
+        for li in range(s_l + 1, e_l):
+            parts.append(self.lines[li])
+        parts.append(self.lines[e_l][:e_c])
+        return "\n".join(parts)
+
+    def delete_selection(self):
+        """Deletes text within selection range and clears selection."""
+        rng = self.get_selection_range()
+        if not rng:
+            return
+        self._push_undo()
+        self.is_dirty = True
+        (s_l, s_c), (e_l, e_c) = rng
+        if s_l == e_l:
+            self.lines[s_l] = self.lines[s_l][:s_c] + self.lines[s_l][e_c:]
+        else:
+            self.lines[s_l] = self.lines[s_l][:s_c] + self.lines[e_l][e_c:]
+            del self.lines[s_l + 1 : e_l + 1]
+        self.cursor_line = s_l
+        self.cursor_col = s_c
+        self.selection_anchor = None
+        self.select_all_active = False
+        self._ensure_cursor_visible()
+
     def select_all(self):
         """Selects all lines in editor buffer."""
         self.select_all_active = True
+        self.selection_anchor = None
         self.output_logs.append(f">> Selected all code ({sum(len(l) for l in self.lines)} chars).")
 
     def copy_selection(self):
         """Copies selection or active line to clipboard."""
-        if self.select_all_active:
-            text = "\n".join(self.lines)
+        rng = self.get_selection_range()
+        if rng:
+            text = self.get_selected_text()
         else:
             text = self.lines[self.cursor_line] if self.lines else ""
         SovereignClipboard.get_instance().set_text(text)
@@ -587,15 +675,14 @@ class CodeStudio(Window):
 
     def cut_selection(self):
         """Cuts selection or active line to clipboard."""
-        self._push_undo()
-        if self.select_all_active:
-            text = "\n".join(self.lines)
+        rng = self.get_selection_range()
+        if rng:
+            text = self.get_selected_text()
             SovereignClipboard.get_instance().set_text(text)
-            self.lines = [""]
-            self.cursor_line = 0
-            self.cursor_col = 0
-            self.select_all_active = False
+            self.delete_selection()
         else:
+            self._push_undo()
+            self.is_dirty = True
             text = self.lines[self.cursor_line] if self.lines else ""
             SovereignClipboard.get_instance().set_text(text)
             if len(self.lines) > 1:
@@ -615,31 +702,33 @@ class CodeStudio(Window):
         if not clip_text:
             return
         self._push_undo()
+        self.is_dirty = True
+        if self.get_selection_range():
+            self.delete_selection()
         paste_lines = clip_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        if self.select_all_active:
-            self.lines = paste_lines or [""]
-            self.cursor_line = len(self.lines) - 1
-            self.cursor_col = len(self.lines[-1])
-            self.select_all_active = False
+        line = self.lines[self.cursor_line]
+        left = line[:self.cursor_col]
+        right = line[self.cursor_col:]
+        if len(paste_lines) == 1:
+            self.lines[self.cursor_line] = left + paste_lines[0] + right
+            self.cursor_col += len(paste_lines[0])
         else:
-            line = self.lines[self.cursor_line]
-            left = line[:self.cursor_col]
-            right = line[self.cursor_col:]
-            if len(paste_lines) == 1:
-                self.lines[self.cursor_line] = left + paste_lines[0] + right
-                self.cursor_col += len(paste_lines[0])
-            else:
-                self.lines[self.cursor_line] = left + paste_lines[0]
-                for idx in range(1, len(paste_lines) - 1):
-                    self.lines.insert(self.cursor_line + idx, paste_lines[idx])
-                self.lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + right)
-                self.cursor_line += len(paste_lines) - 1
-                self.cursor_col = len(paste_lines[-1])
+            self.lines[self.cursor_line] = left + paste_lines[0]
+            for idx in range(1, len(paste_lines) - 1):
+                self.lines.insert(self.cursor_line + idx, paste_lines[idx])
+            self.lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + right)
+            self.cursor_line += len(paste_lines) - 1
+            self.cursor_col = len(paste_lines[-1])
+        self.selection_anchor = None
+        self.select_all_active = False
         self.output_logs.append(f">> Pasted {len(clip_text)} chars.")
         self._ensure_cursor_visible()
 
     def _delete_word_backward(self):
         """Performs word-level backward deletion across whitespace and tokens."""
+        if self.get_selection_range():
+            self.delete_selection()
+            return
         if not self.lines:
             self.lines = [""]
             return
@@ -647,6 +736,7 @@ class CodeStudio(Window):
         if self.cursor_col == 0:
             if self.cursor_line > 0:
                 self._push_undo()
+                self.is_dirty = True
                 prev_line = self.lines[self.cursor_line - 1]
                 prev_len = len(prev_line)
                 self.lines[self.cursor_line - 1] = prev_line + line
@@ -657,6 +747,7 @@ class CodeStudio(Window):
             return
 
         self._push_undo()
+        self.is_dirty = True
         left = line[:self.cursor_col]
         right = line[self.cursor_col:]
 
@@ -682,15 +773,223 @@ class CodeStudio(Window):
         self._ensure_cursor_visible()
 
     def duplicate_line(self):
-        """Duplicates current line directly below and shifts cursor down."""
+        """Duplicates current line or selection directly below and shifts cursor down."""
         self._push_undo()
-        self.lines.insert(self.cursor_line + 1, self.lines[self.cursor_line])
-        self.cursor_line += 1
+        self.is_dirty = True
+        rng = self.get_selection_range()
+        if rng and rng[0][0] < rng[1][0]:
+            s_l, e_l = rng[0][0], rng[1][0]
+            block = [self.lines[li] for li in range(s_l, e_l + 1)]
+            for i, bline in enumerate(block):
+                self.lines.insert(e_l + 1 + i, bline)
+            self.cursor_line = e_l + 1 + len(block) - 1
+        else:
+            self.lines.insert(self.cursor_line + 1, self.lines[self.cursor_line])
+            self.cursor_line += 1
+        self._ensure_cursor_visible()
+
+    def swap_line_up(self):
+        """Moves current line up one position (Alt+Up)."""
+        if self.cursor_line > 0:
+            self._push_undo()
+            self.is_dirty = True
+            self.lines[self.cursor_line], self.lines[self.cursor_line - 1] = (
+                self.lines[self.cursor_line - 1],
+                self.lines[self.cursor_line]
+            )
+            self.cursor_line -= 1
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+
+    def swap_line_down(self):
+        """Moves current line down one position (Alt+Down)."""
+        if self.cursor_line < len(self.lines) - 1:
+            self._push_undo()
+            self.is_dirty = True
+            self.lines[self.cursor_line], self.lines[self.cursor_line + 1] = (
+                self.lines[self.cursor_line + 1],
+                self.lines[self.cursor_line]
+            )
+            self.cursor_line += 1
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+
+    def delete_line(self):
+        """Deletes the entire active line (Ctrl+Shift+K)."""
+        self._push_undo()
+        self.is_dirty = True
+        if len(self.lines) > 1:
+            del self.lines[self.cursor_line]
+            self.cursor_line = min(self.cursor_line, len(self.lines) - 1)
+            self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+        else:
+            self.lines = [""]
+            self.cursor_line = 0
+            self.cursor_col = 0
+        self.selection_anchor = None
+        self.select_all_active = False
+        self._ensure_cursor_visible()
+
+    def move_word_left(self, select: bool = False):
+        """Moves cursor backward by one word (Ctrl+Left)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+
+        line = self.lines[self.cursor_line]
+        if self.cursor_col == 0:
+            if self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = len(self.lines[self.cursor_line])
+        else:
+            def is_w(c): return c.isalnum() or c == '_'
+            i = self.cursor_col
+            while i > 0 and line[i - 1] in (' ', '\t'):
+                i -= 1
+            if i > 0:
+                target_w = is_w(line[i - 1])
+                while i > 0 and (is_w(line[i - 1]) == target_w) and line[i - 1] not in (' ', '\t'):
+                    i -= 1
+            self.cursor_col = i
+        self._ensure_cursor_visible()
+
+    def move_word_right(self, select: bool = False):
+        """Moves cursor forward by one word (Ctrl+Right)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+
+        line = self.lines[self.cursor_line]
+        if self.cursor_col >= len(line):
+            if self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = 0
+        else:
+            def is_w(c): return c.isalnum() or c == '_'
+            i = self.cursor_col
+            target_w = is_w(line[i])
+            while i < len(line) and (is_w(line[i]) == target_w) and line[i] not in (' ', '\t'):
+                i += 1
+            while i < len(line) and line[i] in (' ', '\t'):
+                i += 1
+            self.cursor_col = i
+        self._ensure_cursor_visible()
+
+    def move_doc_start(self, select: bool = False):
+        """Jumps cursor to the beginning of the buffer (Ctrl+Home)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+        self.cursor_line = 0
+        self.cursor_col = 0
+        self.scroll_line = 0
+        self._ensure_cursor_visible()
+
+    def move_doc_end(self, select: bool = False):
+        """Jumps cursor to the end of the buffer (Ctrl+End)."""
+        if select:
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+        else:
+            self.selection_anchor = None
+            self.select_all_active = False
+        self.cursor_line = max(0, len(self.lines) - 1)
+        self.cursor_col = len(self.lines[self.cursor_line])
+        self._ensure_cursor_visible()
+
+    def toggle_search(self):
+        """Toggles inline Find bar (Ctrl+F)."""
+        self.search_active = not self.search_active
+        if self.search_active:
+            sel = self.get_selected_text()
+            if sel and "\n" not in sel:
+                self.search_query = sel
+            self._update_search_matches()
+        else:
+            self.search_matches.clear()
+
+    def _update_search_matches(self):
+        """Finds all occurrences of search_query in the text buffer."""
+        self.search_matches.clear()
+        if not self.search_query:
+            self.search_match_idx = 0
+            return
+        q = self.search_query.lower()
+        for li, line in enumerate(self.lines):
+            low = line.lower()
+            start = 0
+            while True:
+                idx = low.find(q, start)
+                if idx == -1:
+                    break
+                self.search_matches.append((li, idx))
+                start = idx + len(q)
+        if self.search_matches:
+            self.search_match_idx = 0
+            for i, (li, ci) in enumerate(self.search_matches):
+                if (li, ci) >= (self.cursor_line, self.cursor_col):
+                    self.search_match_idx = i
+                    break
+            self._jump_to_current_match()
+        else:
+            self.search_match_idx = 0
+
+    def _next_search_match(self):
+        """Jumps to the next search match."""
+        if not self.search_matches:
+            return
+        self.search_match_idx = (self.search_match_idx + 1) % len(self.search_matches)
+        self._jump_to_current_match()
+
+    def _prev_search_match(self):
+        """Jumps to the previous search match."""
+        if not self.search_matches:
+            return
+        self.search_match_idx = (self.search_match_idx - 1) % len(self.search_matches)
+        self._jump_to_current_match()
+
+    def _jump_to_current_match(self):
+        """Positions cursor and scrolls to current search match."""
+        if not self.search_matches:
+            return
+        m_l, m_c = self.search_matches[self.search_match_idx]
+        self.cursor_line = m_l
+        self.cursor_col = m_c + len(self.search_query)
         self._ensure_cursor_visible()
 
     def toggle_comment(self):
-        """Toggles Python line comment (# ) on active line."""
+        """Toggles Python line comment (# ) on active line or selected lines."""
+        rng = self.get_selection_range()
         self._push_undo()
+        self.is_dirty = True
+        if rng and rng[0][0] < rng[1][0]:
+            s_l, e_l = rng[0][0], rng[1][0]
+            all_commented = all(self.lines[li].lstrip(' ').startswith('#') for li in range(s_l, e_l + 1) if self.lines[li].strip())
+            for li in range(s_l, e_l + 1):
+                line = self.lines[li]
+                if not line.strip():
+                    continue
+                stripped = line.lstrip(' ')
+                indent = len(line) - len(stripped)
+                if all_commented:
+                    if stripped.startswith('# '):
+                        self.lines[li] = line[:indent] + stripped[2:]
+                    elif stripped.startswith('#'):
+                        self.lines[li] = line[:indent] + stripped[1:]
+                else:
+                    self.lines[li] = line[:indent] + '# ' + stripped
+            self._ensure_cursor_visible()
+            return
+
         line = self.lines[self.cursor_line]
         stripped = line.lstrip(' ')
         indent = len(line) - len(stripped)
@@ -706,27 +1005,43 @@ class CodeStudio(Window):
         self._ensure_cursor_visible()
 
     def unindent_line(self):
-        """Removes up to 4 spaces of leading indentation from current line."""
-        line = self.lines[self.cursor_line]
-        spaces = 0
-        while spaces < 4 and spaces < len(line) and line[spaces] == ' ':
-            spaces += 1
-        if spaces > 0:
+        """Removes up to 4 spaces of leading indentation from current line or selection."""
+        rng = self.get_selection_range()
+        if rng and rng[0][0] < rng[1][0]:
             self._push_undo()
+            self.is_dirty = True
+            s_l, e_l = rng[0][0], rng[1][0]
+            for li in range(s_l, e_l + 1):
+                line = self.lines[li]
+                spaces = len(line) - len(line.lstrip(' '))
+                dedent = min(4, spaces)
+                self.lines[li] = line[dedent:]
+            return
+
+        self._push_undo()
+        self.is_dirty = True
+        line = self.lines[self.cursor_line]
+        spaces = min(4, len(line) - len(line.lstrip(' ')))
+        if spaces > 0:
             self.lines[self.cursor_line] = line[spaces:]
             self.cursor_col = max(0, self.cursor_col - spaces)
             self._ensure_cursor_visible()
 
     def delete_forward(self):
         """Deletes character directly under cursor or merges next line."""
+        if self.get_selection_range():
+            self.delete_selection()
+            return
         if not self.lines:
             return
         line = self.lines[self.cursor_line]
         if self.cursor_col < len(line):
             self._push_undo()
+            self.is_dirty = True
             self.lines[self.cursor_line] = line[:self.cursor_col] + line[self.cursor_col + 1:]
         elif self.cursor_line < len(self.lines) - 1:
             self._push_undo()
+            self.is_dirty = True
             next_line = self.lines[self.cursor_line + 1]
             self.lines[self.cursor_line] = line + next_line
             del self.lines[self.cursor_line + 1]
@@ -734,6 +1049,8 @@ class CodeStudio(Window):
 
     def move_cursor_home(self):
         """Moves cursor to start of indentation or column 0."""
+        self.selection_anchor = None
+        self.select_all_active = False
         line = self.lines[self.cursor_line]
         first_non_ws = len(line) - len(line.lstrip(' '))
         if self.cursor_col == first_non_ws:
@@ -744,11 +1061,15 @@ class CodeStudio(Window):
 
     def move_cursor_end(self):
         """Moves cursor to end of current line."""
+        self.selection_anchor = None
+        self.select_all_active = False
         self.cursor_col = len(self.lines[self.cursor_line])
         self._ensure_cursor_visible()
 
     def page_up(self):
         """Scrolls cursor and view up by one page."""
+        self.selection_anchor = None
+        self.select_all_active = False
         jump = 16
         self.cursor_line = max(0, self.cursor_line - jump)
         self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -756,17 +1077,19 @@ class CodeStudio(Window):
 
     def page_down(self):
         """Scrolls cursor and view down by one page."""
+        self.selection_anchor = None
+        self.select_all_active = False
         jump = 16
         self.cursor_line = min(len(self.lines) - 1, self.cursor_line + jump)
         self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
         self._ensure_cursor_visible()
 
     def scroll_up(self, count: int = 3):
-        """Smoothly scrolls editor buffer viewport upwards."""
+        """Smoothly scrolls editor viewport upwards."""
         self.scroll_line = max(0, self.scroll_line - count)
 
     def scroll_down(self, count: int = 3):
-        """Smoothly scrolls editor buffer viewport downwards."""
+        """Smoothly scrolls editor viewport downwards."""
         max_scroll = max(0, len(self.lines) - 1)
         self.scroll_line = min(max_scroll, self.scroll_line + count)
 
@@ -778,7 +1101,10 @@ class CodeStudio(Window):
         self.cursor_col = 0
         self.scroll_line = 0
         self.select_all_active = False
+        self.selection_anchor = None
+        self.is_dirty = False
         self.active_tab = TAB_EDITOR
+        self.title = f"AdiOS Code Studio - [{os.path.basename(self.filepath)}]"
 
     def save_buffer(self, path: Optional[str] = None):
         """Saves current code buffer to disk."""
@@ -788,6 +1114,8 @@ class CodeStudio(Window):
             with open(target, "w", encoding="utf-8") as f:
                 f.write("\n".join(self.lines))
             self.filepath = target
+            self.is_dirty = False
+            self.title = f"AdiOS Code Studio - [{os.path.basename(target)}]"
             self.output_logs.append(f">> Saved {len(self.lines)} lines to '{target}'.")
         except Exception as e:
             self.output_logs.append(f">> Save error: {e}")
@@ -805,7 +1133,10 @@ class CodeStudio(Window):
                 self.cursor_col = 0
                 self.scroll_line = 0
                 self.select_all_active = False
+                self.selection_anchor = None
+                self.is_dirty = False
                 self.active_tab = TAB_EDITOR
+                self.title = f"AdiOS Code Studio - [{os.path.basename(path)}]"
                 self.output_logs.append(f">> Loaded '{path}' ({len(self.lines)} lines).")
         except Exception as e:
             self.output_logs.append(f">> Open error: {e}")
@@ -824,6 +1155,37 @@ class CodeStudio(Window):
                 elif len(key_char) == 1 and ord(key_char) >= 32:
                     self.pkg_input += key_char
             return
+
+        # Search & Escape Handling
+        if key_char == "ESCAPE":
+            if self.search_active:
+                self.search_active = False
+                self.search_matches.clear()
+                return
+            if self.selection_anchor or self.select_all_active:
+                self.selection_anchor = None
+                self.select_all_active = False
+                return
+
+        if key_char in ("CTRL_F", "\x06"):
+            self.toggle_search()
+            return
+
+        if self.search_active:
+            if key_char in ("\r", "\n", "CTRL_ENTER"):
+                self._next_search_match()
+                return
+            elif key_char == "SHIFT_TAB":
+                self._prev_search_match()
+                return
+            elif key_char in ("\b", "\x08"):
+                self.search_query = self.search_query[:-1]
+                self._update_search_matches()
+                return
+            elif len(key_char) == 1 and 32 <= ord(key_char) <= 126:
+                self.search_query += key_char
+                self._update_search_matches()
+                return
 
         # Productivity Shortcuts
         if key_char in ("CTRL_A", "\x01"):
@@ -858,6 +1220,18 @@ class CodeStudio(Window):
             self.duplicate_line()
             return
 
+        if key_char == "CTRL_SHIFT_K":
+            self.delete_line()
+            return
+
+        if key_char == "ALT_UP":
+            self.swap_line_up()
+            return
+
+        if key_char == "ALT_DOWN":
+            self.swap_line_down()
+            return
+
         if key_char in ("CTRL_SLASH", "\x1f"):
             self.toggle_comment()
             return
@@ -868,6 +1242,76 @@ class CodeStudio(Window):
 
         if key_char == "CTRL_ENTER":
             self.run_code()
+            return
+
+        # Word and Document Jumps
+        if key_char == "CTRL_LEFT":
+            self.move_word_left(select=False)
+            return
+
+        if key_char == "CTRL_RIGHT":
+            self.move_word_right(select=False)
+            return
+
+        if key_char == "CTRL_HOME":
+            self.move_doc_start(select=False)
+            return
+
+        if key_char == "CTRL_END":
+            self.move_doc_end(select=False)
+            return
+
+        # Shift Selection Navigation
+        if key_char == "SHIFT_LEFT":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_col > 0:
+                self.cursor_col -= 1
+            elif self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = len(self.lines[self.cursor_line])
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_RIGHT":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_col < len(self.lines[self.cursor_line]):
+                self.cursor_col += 1
+            elif self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = 0
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_UP":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_DOWN":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            if self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+            return
+
+        if key_char == "SHIFT_HOME":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            self.move_cursor_home()
+            return
+
+        if key_char == "SHIFT_END":
+            if self.selection_anchor is None:
+                self.selection_anchor = (self.cursor_line, self.cursor_col)
+            self.move_cursor_end()
             return
 
         # Navigation & Editing Keys
@@ -909,39 +1353,42 @@ class CodeStudio(Window):
         self.cursor_line = max(0, min(len(self.lines) - 1, self.cursor_line))
         self.cursor_col = max(0, min(len(self.lines[self.cursor_line]), self.cursor_col))
 
-        # Handle active selection replacement
-        if self.select_all_active:
+        # Selection Auto-Wrap with Bracket / Quote Pairs
+        rng = self.get_selection_range()
+        if rng and key_char in ("(", "[", "{", '"', "'"):
+            open_c = key_char
+            close_c = {"(": ")", "[": "]", "{": "}"}.get(open_c, open_c)
+            self._push_undo()
+            self.is_dirty = True
+            (s_l, s_c), (e_l, e_c) = rng
+            if s_l == e_l:
+                line = self.lines[s_l]
+                self.lines[s_l] = line[:s_c] + open_c + line[s_c:e_c] + close_c + line[e_c:]
+                self.cursor_col = e_c + 2
+            else:
+                self.lines[s_l] = self.lines[s_l][:s_c] + open_c + self.lines[s_l][s_c:]
+                adj_ec = e_c + (1 if s_l == e_l else 0)
+                self.lines[e_l] = self.lines[e_l][:adj_ec] + close_c + self.lines[e_l][adj_ec:]
+            self.selection_anchor = None
+            self.select_all_active = False
+            self._ensure_cursor_visible()
+            return
+
+        # Replace active selection if typing replacement character
+        if rng:
             if key_char in ("\b", "\x08"):
-                self._push_undo()
-                self.lines = [""]
-                self.cursor_line = 0
-                self.cursor_col = 0
-                self.select_all_active = False
-                self._ensure_cursor_visible()
+                self.delete_selection()
                 return
             elif key_char in ("\r", "\n"):
-                self._push_undo()
-                self.lines = ["", ""]
-                self.cursor_line = 1
-                self.cursor_col = 0
-                self.select_all_active = False
-                self._ensure_cursor_visible()
-                return
-            elif key_char in ("KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"):
-                self.select_all_active = False
+                self.delete_selection()
             elif len(key_char) == 1 and ord(key_char) >= 32:
-                self._push_undo()
-                self.lines = [key_char]
-                self.cursor_line = 0
-                self.cursor_col = 1
-                self.select_all_active = False
-                self._ensure_cursor_visible()
-                return
+                self.delete_selection()
 
         # Smart Bracket & Quote Auto-Closing and Step-Over
         if key_char in ("(", "[", "{"):
             pair = {"(": ")", "[": "]", "{": "}"}[key_char]
             self._push_undo()
+            self.is_dirty = True
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + pair + line[self.cursor_col:]
             self.cursor_col += 1
@@ -965,6 +1412,7 @@ class CodeStudio(Window):
             char_before = line[self.cursor_col - 1] if self.cursor_col > 0 else ""
             if (not char_before.isalnum()) and (char_after in ("", " ", ")", "]", "}", ",", ":")):
                 self._push_undo()
+                self.is_dirty = True
                 self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + key_char + line[self.cursor_col:]
                 self.cursor_col += 1
                 self._ensure_cursor_visible()
@@ -973,6 +1421,7 @@ class CodeStudio(Window):
         # 1. Newline (Enter) with Auto-Indentation and Pair Expansion
         if key_char in ("\r", "\n"):
             self._push_undo()
+            self.is_dirty = True
             line = self.lines[self.cursor_line]
             left = line[:self.cursor_col]
             right = line[self.cursor_col:]
@@ -1007,6 +1456,7 @@ class CodeStudio(Window):
             line = self.lines[self.cursor_line]
             if self.cursor_col > 0:
                 self._push_undo()
+                self.is_dirty = True
                 if self.cursor_col < len(line) and line[self.cursor_col - 1 : self.cursor_col + 1] in ("()", "[]", "{}", "''", '""'):
                     self.lines[self.cursor_line] = line[:self.cursor_col - 1] + line[self.cursor_col + 1:]
                     self.cursor_col -= 1
@@ -1018,6 +1468,7 @@ class CodeStudio(Window):
                     self.cursor_col -= 1
             elif self.cursor_line > 0:
                 self._push_undo()
+                self.is_dirty = True
                 prev_line = self.lines[self.cursor_line - 1]
                 prev_len = len(prev_line)
                 self.lines[self.cursor_line - 1] = prev_line + line
@@ -1027,17 +1478,30 @@ class CodeStudio(Window):
             self._ensure_cursor_visible()
             return
 
-        # 3. Tab (4 spaces)
+        # 3. Tab (4 spaces or multi-line indent)
         if key_char == "\t":
+            rng = self.get_selection_range()
+            if rng and rng[0][0] < rng[1][0]:
+                self._push_undo()
+                self.is_dirty = True
+                s_l, e_l = rng[0][0], rng[1][0]
+                for li in range(s_l, e_l + 1):
+                    self.lines[li] = "    " + self.lines[li]
+                self.cursor_col += 4
+                self._ensure_cursor_visible()
+                return
             self._push_undo()
+            self.is_dirty = True
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + "    " + line[self.cursor_col:]
             self.cursor_col += 4
             self._ensure_cursor_visible()
             return
 
-        # 4. Arrow Navigation
+        # 4. Arrow Navigation (clears selection anchor)
         if key_char in ("KEY_UP", "\x1b[A"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_line > 0:
                 self.cursor_line -= 1
                 self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -1045,6 +1509,8 @@ class CodeStudio(Window):
             return
 
         if key_char in ("KEY_DOWN", "\x1b[B"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_line < len(self.lines) - 1:
                 self.cursor_line += 1
                 self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
@@ -1052,6 +1518,8 @@ class CodeStudio(Window):
             return
 
         if key_char in ("KEY_LEFT", "\x1b[D"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_col > 0:
                 self.cursor_col -= 1
             elif self.cursor_line > 0:
@@ -1061,6 +1529,8 @@ class CodeStudio(Window):
             return
 
         if key_char in ("KEY_RIGHT", "\x1b[C"):
+            self.selection_anchor = None
+            self.select_all_active = False
             if self.cursor_col < len(self.lines[self.cursor_line]):
                 self.cursor_col += 1
             elif self.cursor_line < len(self.lines) - 1:
@@ -1071,8 +1541,11 @@ class CodeStudio(Window):
 
         # 5. Printable character insertion
         if len(key_char) == 1 and ord(key_char) >= 32:
+            self.selection_anchor = None
+            self.select_all_active = False
             if key_char == " " or self.cursor_col == 0 or self.cursor_col % 8 == 0:
                 self._push_undo()
+            self.is_dirty = True
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + line[self.cursor_col:]
             self.cursor_col += 1

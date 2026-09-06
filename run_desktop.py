@@ -24,7 +24,7 @@ except ImportError:
     sys.exit(1)
 
 from desktop.master_desktop import MasterDesktop
-from vm.vm import VM, RAM_SIZE_512MB
+from vm.vm import VM, RAM_SIZE_1024MB
 from vm.vpu import VideoProcessingUnit
 
 WIDTH = 1280
@@ -37,16 +37,17 @@ def main():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     clock = pygame.time.Clock()
 
-    # Initialize Bare-Metal Hardware Simulation
-    vm = VM(ram_size=RAM_SIZE_512MB)
+    # Initialize Bare-Metal Hardware Simulation with 1024 MB (1.0 GB) RAM
+    vm = VM(ram_size=RAM_SIZE_1024MB)
     vm.vpu = VideoProcessingUnit(vm)
     fb = bytearray(WIDTH * HEIGHT * 4)
 
     # Initialize Sovereign Master Desktop Compositor
-    desktop = MasterDesktop(vm=vm, width=WIDTH, height=HEIGHT, ram_capacity_mb=512)
+    desktop = MasterDesktop(vm=vm, width=WIDTH, height=HEIGHT, ram_capacity_mb=1024)
+    desktop.sound_server.start()
 
     running = True
-    last_mouse_pos = (0, 0)
+    last_mouse_pos = (WIDTH // 2, HEIGHT // 2)
 
     while running:
         for event in pygame.event.get():
@@ -73,9 +74,15 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 ctrl_held = bool(mods & (pygame.KMOD_CTRL | pygame.KMOD_META))
+                alt_held = bool(mods & pygame.KMOD_ALT)
+                shift_held = bool(mods & pygame.KMOD_SHIFT)
 
-                if event.key == pygame.K_ESCAPE and mods & pygame.KMOD_SHIFT:
+                if event.key == pygame.K_ESCAPE and shift_held:
                     running = False
+                elif event.key == pygame.K_ESCAPE:
+                    desktop.handle_key("ESCAPE")
+                elif ctrl_held and shift_held and event.key == pygame.K_k:
+                    desktop.handle_key("CTRL_SHIFT_K")
                 elif ctrl_held and event.key == pygame.K_a:
                     desktop.handle_key("CTRL_A")
                 elif ctrl_held and event.key == pygame.K_c:
@@ -92,12 +99,38 @@ def main():
                     desktop.handle_key("CTRL_S")
                 elif ctrl_held and event.key == pygame.K_d:
                     desktop.handle_key("CTRL_D")
+                elif ctrl_held and event.key == pygame.K_f:
+                    desktop.handle_key("CTRL_F")
                 elif ctrl_held and event.key in (pygame.K_SLASH, pygame.K_KP_DIVIDE):
                     desktop.handle_key("CTRL_SLASH")
                 elif ctrl_held and event.key == pygame.K_BACKSPACE:
                     desktop.handle_key("CTRL_BACKSPACE")
                 elif ctrl_held and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     desktop.handle_key("CTRL_ENTER")
+                elif ctrl_held and event.key == pygame.K_LEFT:
+                    desktop.handle_key("CTRL_LEFT")
+                elif ctrl_held and event.key == pygame.K_RIGHT:
+                    desktop.handle_key("CTRL_RIGHT")
+                elif ctrl_held and event.key == pygame.K_HOME:
+                    desktop.handle_key("CTRL_HOME")
+                elif ctrl_held and event.key == pygame.K_END:
+                    desktop.handle_key("CTRL_END")
+                elif alt_held and event.key == pygame.K_UP:
+                    desktop.handle_key("ALT_UP")
+                elif alt_held and event.key == pygame.K_DOWN:
+                    desktop.handle_key("ALT_DOWN")
+                elif shift_held and event.key == pygame.K_LEFT:
+                    desktop.handle_key("SHIFT_LEFT")
+                elif shift_held and event.key == pygame.K_RIGHT:
+                    desktop.handle_key("SHIFT_RIGHT")
+                elif shift_held and event.key == pygame.K_UP:
+                    desktop.handle_key("SHIFT_UP")
+                elif shift_held and event.key == pygame.K_DOWN:
+                    desktop.handle_key("SHIFT_DOWN")
+                elif shift_held and event.key == pygame.K_HOME:
+                    desktop.handle_key("SHIFT_HOME")
+                elif shift_held and event.key == pygame.K_END:
+                    desktop.handle_key("SHIFT_END")
                 elif event.key == pygame.K_DELETE:
                     desktop.handle_key("DELETE")
                 elif event.key == pygame.K_HOME:
@@ -108,7 +141,7 @@ def main():
                     desktop.handle_key("PAGE_UP")
                 elif event.key == pygame.K_PAGEDOWN:
                     desktop.handle_key("PAGE_DOWN")
-                elif event.key == pygame.K_TAB and mods & pygame.KMOD_SHIFT:
+                elif event.key == pygame.K_TAB and shift_held:
                     desktop.handle_key("SHIFT_TAB")
                 elif event.key == pygame.K_BACKSPACE:
                     desktop.handle_key("\b")
