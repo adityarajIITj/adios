@@ -11,6 +11,7 @@ Strict Zero Emoji Policy.
 """
 
 import sys
+import os
 import io
 import time
 import subprocess
@@ -91,10 +92,19 @@ class CodeStudio(Window):
         )
         self.active_tab: int = TAB_EDITOR
         
-        # Editor Buffer
-        self.lines: List[str] = TEMPLATES["math3d"].strip().split("\n")
-        self.cursor_line: int = 0
-        self.cursor_col: int = 0
+        # Editor Buffer - clean, functional, and fully editable
+        self.filepath: str = "workspace/script.py"
+        self.lines: List[str] = [
+            "# AdiOS Sovereign Code Studio",
+            "def main():",
+            "    print('Hello from AdiOS Sovereign Workstation!')",
+            "    for i in range(1, 6):",
+            "        print(f'Step {i}: Ready to code.')",
+            "",
+            "main()"
+        ]
+        self.cursor_line: int = 6
+        self.cursor_col: int = 6
         self.scroll_line: int = 0
         self.font_scale: int = 1
         
@@ -167,24 +177,33 @@ class CodeStudio(Window):
             self._draw_text(fb, tab_x + 9, y + 8, name, txt_col, font_dict)
             tab_x += tab_w + 6
 
-        # Action Buttons on right side: [Zoom], [Load Template], [Run]
-        btn_run_x = x + w - 75
-        self._fill_rect(fb, btn_run_x, y + 4, 65, h - 8, pal.accent_primary)
-        self._draw_text(fb, btn_run_x + 12, y + 8, "[Run]", 0x000F172A if pal.name == "Arctic Minimal" else 0x00FFFFFF, font_dict)
+        # Action Buttons on right side: [New], [Save], [Template], [Zoom], [Run]
+        btn_run_x = x + w - 68
+        self._fill_rect(fb, btn_run_x, y + 4, 60, h - 8, pal.accent_primary)
+        self._draw_text(fb, btn_run_x + 10, y + 8, "[Run]", 0x000F172A if pal.name == "Arctic Minimal" else 0x00FFFFFF, font_dict)
 
-        btn_t_x = btn_run_x - 125
-        self._fill_rect(fb, btn_t_x, y + 4, 115, h - 8, pal.btn_bg)
-        self._draw_rect_outline(fb, btn_t_x, y + 4, 115, h - 8, pal.btn_border)
-        self._draw_text(fb, btn_t_x + 8, y + 8, "Load Template", pal.text_primary, font_dict)
+        btn_z_x = btn_run_x - 56
+        self._fill_rect(fb, btn_z_x, y + 4, 50, h - 8, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_z_x, y + 4, 50, h - 8, pal.btn_border)
+        self._draw_text(fb, btn_z_x + 6, y + 8, f"Z:{self.font_scale}x", pal.text_muted, font_dict)
 
-        btn_z_x = btn_t_x - 70
-        self._fill_rect(fb, btn_z_x, y + 4, 62, h - 8, pal.btn_bg)
-        self._draw_rect_outline(fb, btn_z_x, y + 4, 62, h - 8, pal.btn_border)
-        zoom_lbl = f"Zoom:{self.font_scale}x"
-        self._draw_text(fb, btn_z_x + 6, y + 8, zoom_lbl, pal.text_muted, font_dict)
+        btn_t_x = btn_z_x - 72
+        self._fill_rect(fb, btn_t_x, y + 4, 66, h - 8, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_t_x, y + 4, 66, h - 8, pal.btn_border)
+        self._draw_text(fb, btn_t_x + 6, y + 8, "Template", pal.text_primary, font_dict)
+
+        btn_save_x = btn_t_x - 50
+        self._fill_rect(fb, btn_save_x, y + 4, 44, h - 8, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_save_x, y + 4, 44, h - 8, pal.btn_border)
+        self._draw_text(fb, btn_save_x + 8, y + 8, "Save", pal.text_primary, font_dict)
+
+        btn_new_x = btn_save_x - 46
+        self._fill_rect(fb, btn_new_x, y + 4, 40, h - 8, pal.btn_bg)
+        self._draw_rect_outline(fb, btn_new_x, y + 4, 40, h - 8, pal.btn_border)
+        self._draw_text(fb, btn_new_x + 8, y + 8, "New", pal.text_primary, font_dict)
 
     def _render_editor(self, fb: bytearray, x: int, y: int, w: int, h: int, pal: Any, font_dict: Dict):
-        """Renders code editor with line number gutter, syntax tokenization, and bottom status bar."""
+        """Renders code editor with line number gutter, syntax tokenization, cursor bar, and bottom status bar."""
         status_bar_h = 20
         canvas_h = h - status_bar_h
         gutter_w = 44
@@ -221,6 +240,12 @@ class CodeStudio(Window):
             # Render line tokens
             raw_line = self.lines[line_idx]
             self._render_highlighted_line(fb, code_x, line_y, raw_line, pal, font_dict)
+
+            # Render active cursor bar
+            if line_idx == self.cursor_line and self.active_tab == TAB_EDITOR:
+                cur_x = code_x + self.cursor_col * CHAR_WIDTH * self.font_scale
+                if code_x <= cur_x <= x + w - 4:
+                    self._fill_rect(fb, cur_x, line_y - 1, 2, line_h - 2, pal.accent_primary)
 
         # Bottom Editor Status Bar
         sb_y = y + canvas_h
@@ -415,12 +440,14 @@ class CodeStudio(Window):
             elif rel_x < 330:
                 self.active_tab = TAB_PACKAGES
 
-            # Check [Run] button
+            # Check action buttons on right side: [New], [Save], [Template], [Zoom], [Run]
             cw = self.client_rect[2]
-            if rel_x >= cw - 75:
+            if cw - 68 <= rel_x <= cw - 8:
                 self.run_code()
-            elif cw - 190 <= rel_x < cw - 75:
-                # Cycle template
+            elif cw - 124 <= rel_x <= cw - 74:
+                self.font_scale = 2 if self.font_scale == 1 else 1
+            elif cw - 196 <= rel_x <= cw - 130:
+                # Cycle preloaded templates
                 keys = list(TEMPLATES.keys())
                 curr_idx = 0
                 for i, k in enumerate(keys):
@@ -428,9 +455,26 @@ class CodeStudio(Window):
                         curr_idx = (i + 1) % len(keys)
                         break
                 self.load_template(keys[curr_idx])
-            elif cw - 265 <= rel_x < cw - 190:
-                # Toggle Zoom
-                self.font_scale = 2 if self.font_scale == 1 else 1
+            elif cw - 246 <= rel_x <= cw - 202:
+                self.save_buffer()
+            elif cw - 292 <= rel_x <= cw - 252:
+                self.new_buffer()
+            return
+
+        # Editor canvas click to position cursor
+        if self.active_tab == TAB_EDITOR and rel_y > 28:
+            canvas_y = 28
+            line_h = 16 * self.font_scale
+            gutter_w = 44
+            clicked_idx = self.scroll_line + (rel_y - canvas_y) // line_h
+            if 0 <= clicked_idx < len(self.lines):
+                self.cursor_line = clicked_idx
+                code_x = gutter_w + 10
+                if rel_x >= code_x:
+                    col = (rel_x - code_x) // (CHAR_WIDTH * self.font_scale)
+                    self.cursor_col = min(col, len(self.lines[self.cursor_line]))
+                else:
+                    self.cursor_col = 0
             return
 
         # Output tab clear button
@@ -472,6 +516,156 @@ class CodeStudio(Window):
                     self.pkg_scroll_idx = max(0, self.pkg_scroll_idx - 10)
                 elif cw - 47 <= rel_x <= cw - 23 and 68 <= rel_y <= 90:
                     self.pkg_scroll_idx = min(max(0, len(self.installed_packages) - 18), self.pkg_scroll_idx + 10)
+
+    def new_buffer(self):
+        """Clears buffer to a clean, empty script ready for coding."""
+        self.lines = ["# Sovereign Python Script", ""]
+        self.cursor_line = 1
+        self.cursor_col = 0
+        self.scroll_line = 0
+        self.active_tab = TAB_EDITOR
+
+    def save_buffer(self, path: Optional[str] = None):
+        """Saves current code buffer to disk."""
+        target = path or getattr(self, "filepath", "workspace/script.py")
+        try:
+            os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                f.write("\n".join(self.lines))
+            self.filepath = target
+            self.output_logs.append(f">> Saved {len(self.lines)} lines to '{target}'.")
+        except Exception as e:
+            self.output_logs.append(f">> Save error: {e}")
+
+    def open_buffer(self, path: str):
+        """Loads a file from disk into the editor buffer."""
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    self.lines = f.read().splitlines() or [""]
+                self.filepath = path
+                self.cursor_line = 0
+                self.cursor_col = 0
+                self.scroll_line = 0
+                self.active_tab = TAB_EDITOR
+                self.output_logs.append(f">> Loaded '{path}' ({len(self.lines)} lines).")
+        except Exception as e:
+            self.output_logs.append(f">> Open error: {e}")
+
+    def handle_key(self, key_char: str):
+        """Processes keystrokes for direct in-buffer code editing and terminal input."""
+        if self.active_tab != TAB_EDITOR:
+            if self.active_tab == TAB_PACKAGES:
+                if key_char in ("\r", "\n"):
+                    if self.pkg_input.strip():
+                        self.install_package(self.pkg_input.strip())
+                elif key_char in ("\b", "\x08"):
+                    self.pkg_input = self.pkg_input[:-1]
+                elif len(key_char) == 1 and ord(key_char) >= 32:
+                    self.pkg_input += key_char
+            return
+
+        if not self.lines:
+            self.lines = [""]
+
+        self.cursor_line = max(0, min(len(self.lines) - 1, self.cursor_line))
+        self.cursor_col = max(0, min(len(self.lines[self.cursor_line]), self.cursor_col))
+
+        # 1. Newline (Enter) with Auto-Indentation
+        if key_char in ("\r", "\n"):
+            line = self.lines[self.cursor_line]
+            left = line[:self.cursor_col]
+            right = line[self.cursor_col:]
+            
+            leading_spaces = len(left) - len(left.lstrip(' '))
+            if left.rstrip().endswith(":"):
+                leading_spaces += 4
+            
+            indent_str = " " * leading_spaces
+            self.lines[self.cursor_line] = left
+            self.lines.insert(self.cursor_line + 1, indent_str + right)
+            self.cursor_line += 1
+            self.cursor_col = len(indent_str)
+            self._ensure_cursor_visible()
+            return
+
+        # 2. Backspace
+        if key_char in ("\b", "\x08"):
+            line = self.lines[self.cursor_line]
+            if self.cursor_col > 0:
+                if line[:self.cursor_col].endswith("    ") and self.cursor_col >= 4:
+                    self.lines[self.cursor_line] = line[:self.cursor_col - 4] + line[self.cursor_col:]
+                    self.cursor_col -= 4
+                else:
+                    self.lines[self.cursor_line] = line[:self.cursor_col - 1] + line[self.cursor_col:]
+                    self.cursor_col -= 1
+            elif self.cursor_line > 0:
+                prev_line = self.lines[self.cursor_line - 1]
+                prev_len = len(prev_line)
+                self.lines[self.cursor_line - 1] = prev_line + line
+                del self.lines[self.cursor_line]
+                self.cursor_line -= 1
+                self.cursor_col = prev_len
+            self._ensure_cursor_visible()
+            return
+
+        # 3. Tab (4 spaces)
+        if key_char == "\t":
+            line = self.lines[self.cursor_line]
+            self.lines[self.cursor_line] = line[:self.cursor_col] + "    " + line[self.cursor_col:]
+            self.cursor_col += 4
+            self._ensure_cursor_visible()
+            return
+
+        # 4. Arrow Navigation
+        if key_char in ("KEY_UP", "\x1b[A"):
+            if self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+            return
+
+        if key_char in ("KEY_DOWN", "\x1b[B"):
+            if self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            self._ensure_cursor_visible()
+            return
+
+        if key_char in ("KEY_LEFT", "\x1b[D"):
+            if self.cursor_col > 0:
+                self.cursor_col -= 1
+            elif self.cursor_line > 0:
+                self.cursor_line -= 1
+                self.cursor_col = len(self.lines[self.cursor_line])
+            self._ensure_cursor_visible()
+            return
+
+        if key_char in ("KEY_RIGHT", "\x1b[C"):
+            if self.cursor_col < len(self.lines[self.cursor_line]):
+                self.cursor_col += 1
+            elif self.cursor_line < len(self.lines) - 1:
+                self.cursor_line += 1
+                self.cursor_col = 0
+            self._ensure_cursor_visible()
+            return
+
+        # 5. Printable character insertion
+        if len(key_char) == 1 and ord(key_char) >= 32:
+            line = self.lines[self.cursor_line]
+            self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + line[self.cursor_col:]
+            self.cursor_col += 1
+            self._ensure_cursor_visible()
+
+    def _ensure_cursor_visible(self):
+        """Scrolls editor buffer so cursor remains visible."""
+        _, _, _, ch = self.client_rect
+        line_h = 16 * self.font_scale
+        visible_lines = max(1, (ch - 48) // line_h)
+        if self.cursor_line < self.scroll_line:
+            self.scroll_line = self.cursor_line
+        elif self.cursor_line >= self.scroll_line + visible_lines:
+            self.scroll_line = self.cursor_line - visible_lines + 1
 
     def load_template(self, name: str):
         """Loads a pre-built code template into editor buffer."""
