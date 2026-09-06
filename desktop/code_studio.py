@@ -21,6 +21,7 @@ from typing import List, Tuple, Dict, Optional, Any
 
 from .window_manager import Window, CHAR_WIDTH, CHAR_HEIGHT
 from .theme import ThemeManager
+from .clipboard import SovereignClipboard
 
 # Studio Tab Identifiers
 TAB_EDITOR = 0
@@ -93,7 +94,8 @@ class CodeStudio(Window):
         self.active_tab: int = TAB_EDITOR
         
         # Editor Buffer - clean, functional, and fully editable
-        self.filepath: str = "workspace/script.py"
+        self.filepath: str = "storage/code/script.py"
+        os.makedirs(os.path.dirname(self.filepath) or ".", exist_ok=True)
         self.lines: List[str] = [
             "# AdiOS Sovereign Code Studio",
             "def main():",
@@ -107,6 +109,11 @@ class CodeStudio(Window):
         self.cursor_col: int = 6
         self.scroll_line: int = 0
         self.font_scale: int = 1
+
+        # Undo / Redo & Selection State
+        self.undo_stack: List[Tuple[List[str], int, int]] = []
+        self.redo_stack: List[Tuple[List[str], int, int]] = []
+        self.select_all_active: bool = False
         
         # Execution State
         self.output_logs: List[str] = [
@@ -233,8 +240,11 @@ class CodeStudio(Window):
             num_col = pal.text_highlight if line_idx == self.cursor_line else pal.text_muted
             self._draw_text(fb, x + 8, line_y, num_str, num_col, font_dict)
 
-            # Active line subtle highlight
-            if line_idx == self.cursor_line:
+            # Active line subtle highlight or selection highlight
+            if self.select_all_active:
+                sel_bg = 0x001E3A5F if pal.name != "Arctic Minimal" else 0x00C7D2FE
+                self._fill_rect(fb, code_x - 4, line_y - 2, code_w, line_h, sel_bg)
+            elif line_idx == self.cursor_line:
                 self._fill_rect(fb, code_x - 4, line_y - 2, code_w, line_h, pal.btn_bg)
 
             # Render line tokens
@@ -242,7 +252,7 @@ class CodeStudio(Window):
             self._render_highlighted_line(fb, code_x, line_y, raw_line, pal, font_dict)
 
             # Render active cursor bar
-            if line_idx == self.cursor_line and self.active_tab == TAB_EDITOR:
+            if not self.select_all_active and line_idx == self.cursor_line and self.active_tab == TAB_EDITOR:
                 cur_x = code_x + self.cursor_col * CHAR_WIDTH * self.font_scale
                 if code_x <= cur_x <= x + w - 4:
                     self._fill_rect(fb, cur_x, line_y - 1, 2, line_h - 2, pal.accent_primary)
@@ -251,7 +261,8 @@ class CodeStudio(Window):
         sb_y = y + canvas_h
         self._fill_rect(fb, x, sb_y, w, status_bar_h, pal.gutter_bg)
         self._draw_hline(fb, x, sb_y, w, pal.card_border)
-        stat_txt = f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | UTF-8 | Python 3 | {len(self.lines)} lines"
+        sel_tag = " | [ALL SELECTED]" if self.select_all_active else ""
+        stat_txt = f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | UTF-8 | Python 3 | {len(self.lines)} lines{sel_tag}"
         self._draw_text(fb, x + 12, sb_y + 6, stat_txt, pal.text_muted, font_dict)
 
     def _render_highlighted_line(self, fb: bytearray, x: int, y: int, line: str, pal: Any, font_dict: Dict):
@@ -517,17 +528,160 @@ class CodeStudio(Window):
                 elif cw - 47 <= rel_x <= cw - 23 and 68 <= rel_y <= 90:
                     self.pkg_scroll_idx = min(max(0, len(self.installed_packages) - 18), self.pkg_scroll_idx + 10)
 
+    def _push_undo(self):
+        """Snapshots current buffer and cursor position into undo stack."""
+        self.undo_stack.append(([l for l in self.lines], self.cursor_line, self.cursor_col))
+        if len(self.undo_stack) > 64:
+            self.undo_stack.pop(0)
+        self.redo_stack.clear()
+
+    def undo(self):
+        """Reverts code buffer to previous snapshot."""
+        if self.undo_stack:
+            self.redo_stack.append(([l for l in self.lines], self.cursor_line, self.cursor_col))
+            lines, cline, ccol = self.undo_stack.pop()
+            self.lines = [l for l in lines]
+            self.cursor_line = max(0, min(cline, len(self.lines) - 1))
+            self.cursor_col = max(0, min(ccol, len(self.lines[self.cursor_line])))
+            self.select_all_active = False
+            self.output_logs.append(f">> Undo ({len(self.undo_stack)} actions remaining).")
+            self._ensure_cursor_visible()
+
+    def redo(self):
+        """Restores previously undone code buffer snapshot."""
+        if self.redo_stack:
+            self.undo_stack.append(([l for l in self.lines], self.cursor_line, self.cursor_col))
+            lines, cline, ccol = self.redo_stack.pop()
+            self.lines = [l for l in lines]
+            self.cursor_line = max(0, min(cline, len(self.lines) - 1))
+            self.cursor_col = max(0, min(ccol, len(self.lines[self.cursor_line])))
+            self.select_all_active = False
+            self.output_logs.append(f">> Redo ({len(self.redo_stack)} actions remaining).")
+            self._ensure_cursor_visible()
+
+    def select_all(self):
+        """Selects all lines in editor buffer."""
+        self.select_all_active = True
+        self.output_logs.append(f">> Selected all code ({sum(len(l) for l in self.lines)} chars).")
+
+    def copy_selection(self):
+        """Copies selection or active line to clipboard."""
+        if self.select_all_active:
+            text = "\n".join(self.lines)
+        else:
+            text = self.lines[self.cursor_line] if self.lines else ""
+        SovereignClipboard.get_instance().set_text(text)
+        self.output_logs.append(f">> Copied {len(text)} chars to clipboard.")
+
+    def cut_selection(self):
+        """Cuts selection or active line to clipboard."""
+        self._push_undo()
+        if self.select_all_active:
+            text = "\n".join(self.lines)
+            SovereignClipboard.get_instance().set_text(text)
+            self.lines = [""]
+            self.cursor_line = 0
+            self.cursor_col = 0
+            self.select_all_active = False
+        else:
+            text = self.lines[self.cursor_line] if self.lines else ""
+            SovereignClipboard.get_instance().set_text(text)
+            if len(self.lines) > 1:
+                del self.lines[self.cursor_line]
+                if self.cursor_line >= len(self.lines):
+                    self.cursor_line = len(self.lines) - 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            else:
+                self.lines = [""]
+                self.cursor_col = 0
+        self.output_logs.append(f">> Cut {len(text)} chars to clipboard.")
+        self._ensure_cursor_visible()
+
+    def paste_clipboard(self):
+        """Pastes clipboard text into editor buffer."""
+        clip_text = SovereignClipboard.get_instance().get_text()
+        if not clip_text:
+            return
+        self._push_undo()
+        paste_lines = clip_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if self.select_all_active:
+            self.lines = paste_lines or [""]
+            self.cursor_line = len(self.lines) - 1
+            self.cursor_col = len(self.lines[-1])
+            self.select_all_active = False
+        else:
+            line = self.lines[self.cursor_line]
+            left = line[:self.cursor_col]
+            right = line[self.cursor_col:]
+            if len(paste_lines) == 1:
+                self.lines[self.cursor_line] = left + paste_lines[0] + right
+                self.cursor_col += len(paste_lines[0])
+            else:
+                self.lines[self.cursor_line] = left + paste_lines[0]
+                for idx in range(1, len(paste_lines) - 1):
+                    self.lines.insert(self.cursor_line + idx, paste_lines[idx])
+                self.lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + right)
+                self.cursor_line += len(paste_lines) - 1
+                self.cursor_col = len(paste_lines[-1])
+        self.output_logs.append(f">> Pasted {len(clip_text)} chars.")
+        self._ensure_cursor_visible()
+
+    def _delete_word_backward(self):
+        """Performs word-level backward deletion across whitespace and tokens."""
+        if not self.lines:
+            self.lines = [""]
+            return
+        line = self.lines[self.cursor_line]
+        if self.cursor_col == 0:
+            if self.cursor_line > 0:
+                self._push_undo()
+                prev_line = self.lines[self.cursor_line - 1]
+                prev_len = len(prev_line)
+                self.lines[self.cursor_line - 1] = prev_line + line
+                del self.lines[self.cursor_line]
+                self.cursor_line -= 1
+                self.cursor_col = prev_len
+                self._ensure_cursor_visible()
+            return
+
+        self._push_undo()
+        left = line[:self.cursor_col]
+        right = line[self.cursor_col:]
+
+        i = len(left)
+        while i > 0 and left[i - 1] in (' ', '\t'):
+            i -= 1
+
+        if i == 0:
+            self.lines[self.cursor_line] = right
+            self.cursor_col = 0
+            self._ensure_cursor_visible()
+            return
+
+        def is_word_char(c: str) -> bool:
+            return c.isalnum() or c == '_'
+
+        is_word = is_word_char(left[i - 1])
+        while i > 0 and left[i - 1] not in (' ', '\t') and (is_word_char(left[i - 1]) == is_word):
+            i -= 1
+
+        self.lines[self.cursor_line] = left[:i] + right
+        self.cursor_col = i
+        self._ensure_cursor_visible()
+
     def new_buffer(self):
         """Clears buffer to a clean, empty script ready for coding."""
+        self._push_undo()
         self.lines = ["# Sovereign Python Script", ""]
         self.cursor_line = 1
         self.cursor_col = 0
         self.scroll_line = 0
+        self.select_all_active = False
         self.active_tab = TAB_EDITOR
 
     def save_buffer(self, path: Optional[str] = None):
         """Saves current code buffer to disk."""
-        target = path or getattr(self, "filepath", "workspace/script.py")
+        target = path or getattr(self, "filepath", "storage/code/script.py")
         try:
             os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
             with open(target, "w", encoding="utf-8") as f:
@@ -542,18 +696,21 @@ class CodeStudio(Window):
         try:
             if os.path.exists(path):
                 with open(path, "r", encoding="utf-8", errors="replace") as f:
-                    self.lines = f.read().splitlines() or [""]
+                    content = f.read()
+                self._push_undo()
+                self.lines = content.splitlines() or [""]
                 self.filepath = path
                 self.cursor_line = 0
                 self.cursor_col = 0
                 self.scroll_line = 0
+                self.select_all_active = False
                 self.active_tab = TAB_EDITOR
                 self.output_logs.append(f">> Loaded '{path}' ({len(self.lines)} lines).")
         except Exception as e:
             self.output_logs.append(f">> Open error: {e}")
 
     def handle_key(self, key_char: str):
-        """Processes keystrokes for direct in-buffer code editing and terminal input."""
+        """Processes keystrokes for direct in-buffer code editing, shortcuts, and terminal input."""
         if self.active_tab != TAB_EDITOR:
             if self.active_tab == TAB_PACKAGES:
                 if key_char in ("\r", "\n"):
@@ -565,14 +722,81 @@ class CodeStudio(Window):
                     self.pkg_input += key_char
             return
 
+        # Productivity Shortcuts
+        if key_char in ("CTRL_A", "\x01"):
+            self.select_all()
+            return
+
+        if key_char in ("CTRL_C", "\x03"):
+            self.copy_selection()
+            return
+
+        if key_char in ("CTRL_X", "\x18"):
+            self.cut_selection()
+            return
+
+        if key_char in ("CTRL_V", "\x16"):
+            self.paste_clipboard()
+            return
+
+        if key_char in ("CTRL_Z", "\x1a"):
+            self.undo()
+            return
+
+        if key_char in ("CTRL_Y", "\x19"):
+            self.redo()
+            return
+
+        if key_char in ("CTRL_S", "\x13"):
+            self.save_buffer()
+            return
+
+        if key_char in ("CTRL_BACKSPACE", "\x7f"):
+            self._delete_word_backward()
+            return
+
+        if key_char == "CTRL_ENTER":
+            self.run_code()
+            return
+
         if not self.lines:
             self.lines = [""]
 
         self.cursor_line = max(0, min(len(self.lines) - 1, self.cursor_line))
         self.cursor_col = max(0, min(len(self.lines[self.cursor_line]), self.cursor_col))
 
+        # Handle active selection replacement
+        if self.select_all_active:
+            if key_char in ("\b", "\x08"):
+                self._push_undo()
+                self.lines = [""]
+                self.cursor_line = 0
+                self.cursor_col = 0
+                self.select_all_active = False
+                self._ensure_cursor_visible()
+                return
+            elif key_char in ("\r", "\n"):
+                self._push_undo()
+                self.lines = ["", ""]
+                self.cursor_line = 1
+                self.cursor_col = 0
+                self.select_all_active = False
+                self._ensure_cursor_visible()
+                return
+            elif key_char in ("KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"):
+                self.select_all_active = False
+            elif len(key_char) == 1 and ord(key_char) >= 32:
+                self._push_undo()
+                self.lines = [key_char]
+                self.cursor_line = 0
+                self.cursor_col = 1
+                self.select_all_active = False
+                self._ensure_cursor_visible()
+                return
+
         # 1. Newline (Enter) with Auto-Indentation
         if key_char in ("\r", "\n"):
+            self._push_undo()
             line = self.lines[self.cursor_line]
             left = line[:self.cursor_col]
             right = line[self.cursor_col:]
@@ -593,6 +817,7 @@ class CodeStudio(Window):
         if key_char in ("\b", "\x08"):
             line = self.lines[self.cursor_line]
             if self.cursor_col > 0:
+                self._push_undo()
                 if line[:self.cursor_col].endswith("    ") and self.cursor_col >= 4:
                     self.lines[self.cursor_line] = line[:self.cursor_col - 4] + line[self.cursor_col:]
                     self.cursor_col -= 4
@@ -600,6 +825,7 @@ class CodeStudio(Window):
                     self.lines[self.cursor_line] = line[:self.cursor_col - 1] + line[self.cursor_col:]
                     self.cursor_col -= 1
             elif self.cursor_line > 0:
+                self._push_undo()
                 prev_line = self.lines[self.cursor_line - 1]
                 prev_len = len(prev_line)
                 self.lines[self.cursor_line - 1] = prev_line + line
@@ -611,6 +837,7 @@ class CodeStudio(Window):
 
         # 3. Tab (4 spaces)
         if key_char == "\t":
+            self._push_undo()
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + "    " + line[self.cursor_col:]
             self.cursor_col += 4
@@ -652,6 +879,8 @@ class CodeStudio(Window):
 
         # 5. Printable character insertion
         if len(key_char) == 1 and ord(key_char) >= 32:
+            if key_char == " " or self.cursor_col == 0 or self.cursor_col % 8 == 0:
+                self._push_undo()
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + line[self.cursor_col:]
             self.cursor_col += 1

@@ -81,9 +81,12 @@ class FileExplorer(Window):
         )
         self.on_open_file = on_open_file
         self.current_dir = os.path.abspath(".")
+        os.makedirs("storage/notepad", exist_ok=True)
+        os.makedirs("storage/code", exist_ok=True)
         self.places = [
             ("Root", os.path.abspath(".")),
-            ("Scripts", os.path.abspath("scripts")),
+            ("Notes", os.path.abspath("storage/notepad")),
+            ("Code", os.path.abspath("storage/code")),
             ("Desktop", os.path.abspath("desktop")),
             ("Graphics", os.path.abspath("graphics")),
             ("Tests", os.path.abspath("tests"))

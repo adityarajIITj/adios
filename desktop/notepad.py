@@ -4,11 +4,14 @@ AdiOS Sovereign Notepad Application (desktop/notepad.py)
 A clean, minimalist, high-productivity text editor and document draft studio.
 Features:
 - Multi-line text buffer with cursor navigation (Arrow keys, Home, End, Backspace, Enter, Tab)
+- Standard productivity shortcuts: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Z, Ctrl+Y, Ctrl+S, Ctrl+Backspace, Ctrl+Enter
+- Ultra-smooth word-level deletion and multi-level undo/redo
+- Sovereign clipboard engine integration
+- Dedicated storage directory: storage/notepad/ (notes.txt)
 - Document management: [New], [Open], [Save], [Clear]
 - Toggleable line numbers gutter
 - Live telemetry: Line, Column, Word Count, Character Count
 - Minimalist modern styling integrated with AdiOS ThemeManager
-- Zero bloat, pure linear framebuffer rendering
 
 Strict Zero Emoji Policy.
 """
@@ -18,6 +21,7 @@ from typing import List, Optional, Tuple, Dict, Any
 
 from .window_manager import Window, CHAR_WIDTH, CHAR_HEIGHT
 from .theme import ThemeManager
+from .clipboard import SovereignClipboard
 
 class NotepadApp(Window):
     """
@@ -30,11 +34,11 @@ class NotepadApp(Window):
         y: int = 90,
         w: int = 600,
         h: int = 460,
-        initial_file: str = "notes.txt"
+        initial_file: str = "storage/notepad/notes.txt"
     ):
         super().__init__(
             win_id=win_id,
-            title=f"AdiOS Notepad - [{initial_file}]",
+            title=f"AdiOS Notepad - [{os.path.basename(initial_file)}]",
             x=x,
             y=y,
             w=w,
@@ -42,10 +46,12 @@ class NotepadApp(Window):
             bg_color=0x00121820
         )
         self.filename: str = initial_file
+        os.makedirs(os.path.dirname(self.filename) or ".", exist_ok=True)
+
         self.lines: List[str] = [
-            "Welcome to AdiOS Notepad.",
-            "Type directly into this buffer to take notes or draft code.",
-            ""
+            "Welcome to AdiOS Sovereign Notepad.",
+            "Type directly into this buffer to take notes or draft ideas.",
+            "Shortcuts: Ctrl+A (all), Ctrl+C (copy), Ctrl+V (paste), Ctrl+Z (undo), Ctrl+S (save)."
         ]
         self.cursor_line: int = 2
         self.cursor_col: int = 0
@@ -53,6 +59,11 @@ class NotepadApp(Window):
         self.show_line_numbers: bool = True
         self.dirty: bool = False
         self.status_msg: str = "Ready."
+
+        # Undo / Redo & Selection State
+        self.undo_stack: List[Tuple[List[str], int, int]] = []
+        self.redo_stack: List[Tuple[List[str], int, int]] = []
+        self.select_all_active: bool = False
 
         self.on_draw_content = self._render_content
         self.on_click_content = self._handle_click
@@ -71,18 +82,185 @@ class NotepadApp(Window):
         return sum(len(l) for l in self.lines) + max(0, len(self.lines) - 1)
 
     # --------------------------------------------------------------------------
+    # Undo / Redo Mechanics
+    # --------------------------------------------------------------------------
+
+    def _push_undo(self):
+        """Snapshots current buffer and cursor position into undo stack."""
+        self.undo_stack.append(([line for line in self.lines], self.cursor_line, self.cursor_col))
+        if len(self.undo_stack) > 64:
+            self.undo_stack.pop(0)
+        self.redo_stack.clear()
+
+    def undo(self):
+        """Reverts text buffer to previous snapshot."""
+        if self.undo_stack:
+            self.redo_stack.append(([line for line in self.lines], self.cursor_line, self.cursor_col))
+            lines, cline, ccol = self.undo_stack.pop()
+            self.lines = [line for line in lines]
+            self.cursor_line = max(0, min(cline, len(self.lines) - 1))
+            self.cursor_col = max(0, min(ccol, len(self.lines[self.cursor_line])))
+            self.select_all_active = False
+            self.dirty = True
+            self.status_msg = f"Undo ({len(self.undo_stack)} actions remaining)"
+            self._ensure_cursor_visible()
+
+    def redo(self):
+        """Restores previously undone text buffer snapshot."""
+        if self.redo_stack:
+            self.undo_stack.append(([line for line in self.lines], self.cursor_line, self.cursor_col))
+            lines, cline, ccol = self.redo_stack.pop()
+            self.lines = [line for line in lines]
+            self.cursor_line = max(0, min(cline, len(self.lines) - 1))
+            self.cursor_col = max(0, min(ccol, len(self.lines[self.cursor_line])))
+            self.select_all_active = False
+            self.dirty = True
+            self.status_msg = f"Redo ({len(self.redo_stack)} actions remaining)"
+            self._ensure_cursor_visible()
+
+    # --------------------------------------------------------------------------
+    # Clipboard & Selection Actions
+    # --------------------------------------------------------------------------
+
+    def select_all(self):
+        """Highlights entire document buffer for batch operations."""
+        self.select_all_active = True
+        self.status_msg = f"Selected all text ({self.char_count} chars)."
+
+    def copy_selection(self):
+        """Copies selection or current line to system clipboard."""
+        if self.select_all_active:
+            text = "\n".join(self.lines)
+        else:
+            text = self.lines[self.cursor_line] if self.lines else ""
+        SovereignClipboard.get_instance().set_text(text)
+        self.status_msg = f"Copied {len(text)} chars to clipboard."
+
+    def cut_selection(self):
+        """Cuts selection or current line to system clipboard."""
+        self._push_undo()
+        if self.select_all_active:
+            text = "\n".join(self.lines)
+            SovereignClipboard.get_instance().set_text(text)
+            self.lines = [""]
+            self.cursor_line = 0
+            self.cursor_col = 0
+            self.select_all_active = False
+        else:
+            text = self.lines[self.cursor_line] if self.lines else ""
+            SovereignClipboard.get_instance().set_text(text)
+            if len(self.lines) > 1:
+                del self.lines[self.cursor_line]
+                if self.cursor_line >= len(self.lines):
+                    self.cursor_line = len(self.lines) - 1
+                self.cursor_col = min(self.cursor_col, len(self.lines[self.cursor_line]))
+            else:
+                self.lines = [""]
+                self.cursor_col = 0
+        self.dirty = True
+        self.status_msg = f"Cut {len(text)} chars to clipboard."
+        self._ensure_cursor_visible()
+
+    def paste_clipboard(self):
+        """Pastes text from clipboard into document buffer."""
+        clip_text = SovereignClipboard.get_instance().get_text()
+        if not clip_text:
+            self.status_msg = "Clipboard is empty."
+            return
+
+        self._push_undo()
+        paste_lines = clip_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+        if self.select_all_active:
+            self.lines = paste_lines or [""]
+            self.cursor_line = len(self.lines) - 1
+            self.cursor_col = len(self.lines[-1])
+            self.select_all_active = False
+        else:
+            line = self.lines[self.cursor_line]
+            left = line[:self.cursor_col]
+            right = line[self.cursor_col:]
+
+            if len(paste_lines) == 1:
+                self.lines[self.cursor_line] = left + paste_lines[0] + right
+                self.cursor_col += len(paste_lines[0])
+            else:
+                self.lines[self.cursor_line] = left + paste_lines[0]
+                for idx in range(1, len(paste_lines) - 1):
+                    self.lines.insert(self.cursor_line + idx, paste_lines[idx])
+                self.lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + right)
+                self.cursor_line += len(paste_lines) - 1
+                self.cursor_col = len(paste_lines[-1])
+
+        self.dirty = True
+        self.status_msg = f"Pasted {len(clip_text)} chars ({len(paste_lines)} lines)."
+        self._ensure_cursor_visible()
+
+    def _delete_word_backward(self):
+        """Performs smooth word-level backward deletion across whitespace and tokens."""
+        if not self.lines:
+            self.lines = [""]
+            return
+
+        line = self.lines[self.cursor_line]
+        if self.cursor_col == 0:
+            if self.cursor_line > 0:
+                self._push_undo()
+                prev_line = self.lines[self.cursor_line - 1]
+                prev_len = len(prev_line)
+                self.lines[self.cursor_line - 1] = prev_line + line
+                del self.lines[self.cursor_line]
+                self.cursor_line -= 1
+                self.cursor_col = prev_len
+                self.dirty = True
+                self._ensure_cursor_visible()
+            return
+
+        self._push_undo()
+        left = line[:self.cursor_col]
+        right = line[self.cursor_col:]
+
+        # 1. Skip trailing spaces to the left of cursor
+        i = len(left)
+        while i > 0 and left[i - 1] in (' ', '\t'):
+            i -= 1
+
+        if i == 0:
+            # Entire left was whitespace
+            self.lines[self.cursor_line] = right
+            self.cursor_col = 0
+            self.dirty = True
+            self._ensure_cursor_visible()
+            return
+
+        # 2. Match token category (word char including underscore vs punctuation)
+        def is_word_char(c: str) -> bool:
+            return c.isalnum() or c == '_'
+
+        is_word = is_word_char(left[i - 1])
+        while i > 0 and left[i - 1] not in (' ', '\t') and (is_word_char(left[i - 1]) == is_word):
+            i -= 1
+
+        self.lines[self.cursor_line] = left[:i] + right
+        self.cursor_col = i
+        self.dirty = True
+        self._ensure_cursor_visible()
+
+    # --------------------------------------------------------------------------
     # Document Operations
     # --------------------------------------------------------------------------
 
     def new_file(self):
         """Resets the document buffer to an empty file."""
+        self._push_undo()
         self.lines = [""]
         self.cursor_line = 0
         self.cursor_col = 0
         self.scroll_line = 0
         self.dirty = False
+        self.select_all_active = False
         self.status_msg = "New empty document created."
-        self.title = f"AdiOS Notepad - [{self.filename}]"
+        self.title = f"AdiOS Notepad - [{os.path.basename(self.filename)}]"
 
     def open_file(self, path: Optional[str] = None):
         """Loads text from disk into document buffer."""
@@ -91,12 +269,14 @@ class NotepadApp(Window):
             if os.path.exists(target):
                 with open(target, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
+                self._push_undo()
                 self.lines = content.splitlines() if content else [""]
                 self.filename = target
                 self.cursor_line = 0
                 self.cursor_col = 0
                 self.scroll_line = 0
                 self.dirty = False
+                self.select_all_active = False
                 self.status_msg = f"Opened '{os.path.basename(target)}' ({len(self.lines)} lines)."
                 self.title = f"AdiOS Notepad - [{os.path.basename(target)}]"
             else:
@@ -108,6 +288,7 @@ class NotepadApp(Window):
         """Saves current document buffer to disk."""
         target = path or self.filename
         try:
+            os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
             content = "\n".join(self.lines)
             with open(target, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -120,11 +301,13 @@ class NotepadApp(Window):
 
     def clear_all(self):
         """Clears buffer completely."""
+        self._push_undo()
         self.lines = [""]
         self.cursor_line = 0
         self.cursor_col = 0
         self.scroll_line = 0
         self.dirty = True
+        self.select_all_active = False
         self.status_msg = "Buffer cleared."
 
     # --------------------------------------------------------------------------
@@ -132,12 +315,82 @@ class NotepadApp(Window):
     # --------------------------------------------------------------------------
 
     def handle_key(self, key_char: str):
-        """Processes keystrokes for text editing and navigation."""
+        """Processes keystrokes for text editing, shortcuts, and navigation."""
         if not self.lines:
             self.lines = [""]
 
+        # Productivity Shortcuts
+        if key_char in ("CTRL_A", "\x01"):
+            self.select_all()
+            return
+
+        if key_char in ("CTRL_C", "\x03"):
+            self.copy_selection()
+            return
+
+        if key_char in ("CTRL_X", "\x18"):
+            self.cut_selection()
+            return
+
+        if key_char in ("CTRL_V", "\x16"):
+            self.paste_clipboard()
+            return
+
+        if key_char in ("CTRL_Z", "\x1a"):
+            self.undo()
+            return
+
+        if key_char in ("CTRL_Y", "\x19"):
+            self.redo()
+            return
+
+        if key_char in ("CTRL_S", "\x13"):
+            self.save_file()
+            return
+
+        if key_char in ("CTRL_BACKSPACE", "\x7f"):
+            self._delete_word_backward()
+            return
+
+        if key_char == "CTRL_ENTER":
+            self.handle_key("\n")
+            return
+
+        # If select all is active, non-shortcut keys operate on entire selection
+        if self.select_all_active:
+            if key_char in ("\b", "\x08"):
+                self._push_undo()
+                self.lines = [""]
+                self.cursor_line = 0
+                self.cursor_col = 0
+                self.select_all_active = False
+                self.dirty = True
+                self._ensure_cursor_visible()
+                return
+            elif key_char in ("\r", "\n"):
+                self._push_undo()
+                self.lines = ["", ""]
+                self.cursor_line = 1
+                self.cursor_col = 0
+                self.select_all_active = False
+                self.dirty = True
+                self._ensure_cursor_visible()
+                return
+            elif key_char in ("KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D"):
+                self.select_all_active = False
+            elif len(key_char) == 1 and ord(key_char) >= 32:
+                self._push_undo()
+                self.lines = [key_char]
+                self.cursor_line = 0
+                self.cursor_col = 1
+                self.select_all_active = False
+                self.dirty = True
+                self._ensure_cursor_visible()
+                return
+
         # 1. Newline (Enter)
         if key_char in ("\r", "\n"):
+            self._push_undo()
             line = self.lines[self.cursor_line]
             left = line[:self.cursor_col]
             right = line[self.cursor_col:]
@@ -154,8 +407,9 @@ class NotepadApp(Window):
         if key_char in ("\b", "\x08"):
             line = self.lines[self.cursor_line]
             if self.cursor_col > 0:
+                self._push_undo()
                 # Check for 4-space unindent
-                if line[:self.cursor_col].endswith("    "):
+                if line[:self.cursor_col].endswith("    ") and self.cursor_col >= 4:
                     self.lines[self.cursor_line] = line[:self.cursor_col - 4] + line[self.cursor_col:]
                     self.cursor_col -= 4
                 else:
@@ -163,7 +417,7 @@ class NotepadApp(Window):
                     self.cursor_col -= 1
                 self.dirty = True
             elif self.cursor_line > 0:
-                # Merge with previous line
+                self._push_undo()
                 prev_line = self.lines[self.cursor_line - 1]
                 prev_len = len(prev_line)
                 self.lines[self.cursor_line - 1] = prev_line + line
@@ -176,6 +430,7 @@ class NotepadApp(Window):
 
         # 3. Tab (4 spaces)
         if key_char == "\t":
+            self._push_undo()
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + "    " + line[self.cursor_col:]
             self.cursor_col += 4
@@ -218,6 +473,8 @@ class NotepadApp(Window):
 
         # 5. Printable Character Insertion
         if len(key_char) == 1 and ord(key_char) >= 32:
+            if key_char == " " or self.cursor_col == 0 or self.cursor_col % 8 == 0:
+                self._push_undo()
             line = self.lines[self.cursor_line]
             self.lines[self.cursor_line] = line[:self.cursor_col] + key_char + line[self.cursor_col:]
             self.cursor_col += 1
@@ -280,16 +537,20 @@ class NotepadApp(Window):
                 num_col = pal.text_highlight if line_idx == self.cursor_line else pal.text_muted
                 self._draw_text(fb, cx + 6, line_y, f"{line_idx + 1:2d}", num_col, font_dict)
 
-            # Active Line subtle tint
-            if line_idx == self.cursor_line:
+            # Line highlight: full selection or active cursor line
+            if self.select_all_active:
+                sel_bg = 0x001E3A5F if pal.name != "Arctic Minimal" else 0x00C7D2FE
+                self._fill_rect(fb, text_x - 4, line_y - 2, text_w, line_h, sel_bg)
+            elif line_idx == self.cursor_line:
                 self._fill_rect(fb, text_x - 4, line_y - 2, text_w, line_h, pal.btn_bg)
 
             # Render Line Text
             raw_line = self.lines[line_idx]
-            self._draw_text(fb, text_x, line_y, raw_line[:text_w // CHAR_WIDTH], pal.text_primary, font_dict)
+            text_color = pal.text_highlight if self.select_all_active else pal.text_primary
+            self._draw_text(fb, text_x, line_y, raw_line[:text_w // CHAR_WIDTH], text_color, font_dict)
 
-            # Render Cursor Bar
-            if line_idx == self.cursor_line:
+            # Render Cursor Bar (if not in select-all mode)
+            if not self.select_all_active and line_idx == self.cursor_line:
                 cur_x = text_x + self.cursor_col * CHAR_WIDTH
                 if text_x <= cur_x <= cx + cw - 4:
                     self._fill_rect(fb, cur_x, line_y, 2, 13, pal.accent_primary)
@@ -300,10 +561,11 @@ class NotepadApp(Window):
         self._draw_hline(fb, cx, sb_y, cw, pal.card_border)
 
         dirty_tag = " *" if self.dirty else ""
+        sel_tag = " [ALL SELECTED]" if self.select_all_active else ""
         stat_txt = (
             f"Ln {self.cursor_line + 1}, Col {self.cursor_col + 1} | "
             f"{self.word_count} words | {self.char_count} chars | "
-            f"'{self.filename}'{dirty_tag} | {self.status_msg}"
+            f"'{self.filename}'{dirty_tag}{sel_tag} | {self.status_msg}"
         )
         self._draw_text(fb, cx + 10, sb_y + 5, stat_txt[:cw // CHAR_WIDTH - 2], pal.text_muted, font_dict)
 
@@ -313,37 +575,48 @@ class NotepadApp(Window):
         self._draw_hline(fb, x, y + h - 1, w, pal.card_border)
 
         buttons = [
-            ("New", 48),
-            ("Open", 52),
-            ("Save", 52),
-            ("Clear", 56),
-            ("Nums", 54)
+            ("New", 46),
+            ("Open", 48),
+            ("Save", 48),
+            ("Undo", 48),
+            ("Copy", 48),
+            ("Paste", 52),
+            ("Clear", 52),
+            ("Nums", 50)
         ]
         curr_x = x + 8
         for label, bw in buttons:
             self._fill_rect(fb, curr_x, y + 4, bw, h - 8, pal.btn_bg)
             self._draw_rect_outline(fb, curr_x, y + 4, bw, h - 8, pal.btn_border)
-            self._draw_text(fb, curr_x + 8, y + 8, label, pal.text_primary, font_dict)
-            curr_x += bw + 6
+            self._draw_text(fb, curr_x + 6, y + 8, label, pal.text_primary, font_dict)
+            curr_x += bw + 5
 
     def _handle_click(self, win: Window, rel_x: int, rel_y: int):
         """Handles toolbar button clicks and canvas cursor placement."""
         # Check toolbar buttons
         if rel_y <= 28:
-            if 8 <= rel_x <= 56:
+            curr_x = 8
+            if curr_x <= rel_x <= curr_x + 46:
                 self.new_file()
-            elif 62 <= rel_x <= 114:
+            elif curr_x + 51 <= rel_x <= curr_x + 99:
                 self.open_file()
-            elif 120 <= rel_x <= 172:
+            elif curr_x + 104 <= rel_x <= curr_x + 152:
                 self.save_file()
-            elif 178 <= rel_x <= 234:
+            elif curr_x + 157 <= rel_x <= curr_x + 205:
+                self.undo()
+            elif curr_x + 210 <= rel_x <= curr_x + 258:
+                self.copy_selection()
+            elif curr_x + 263 <= rel_x <= curr_x + 315:
+                self.paste_clipboard()
+            elif curr_x + 320 <= rel_x <= curr_x + 372:
                 self.clear_all()
-            elif 240 <= rel_x <= 294:
+            elif curr_x + 377 <= rel_x <= curr_x + 427:
                 self.show_line_numbers = not self.show_line_numbers
                 self.status_msg = f"Line numbers: {'ON' if self.show_line_numbers else 'OFF'}"
             return
 
         # Check canvas click to place cursor
+        self.select_all_active = False
         gutter_w = 36 if self.show_line_numbers else 8
         line_h = 16
         clicked_idx = self.scroll_line + (rel_y - 28) // line_h

@@ -19,6 +19,7 @@ from desktop.code_studio import CodeStudio, TEMPLATES, TAB_EDITOR, TAB_OUTPUT, T
 from desktop.file_explorer import FileExplorer, FileEntry
 from desktop.scene3d_studio import Scene3DStudio, create_octahedron, create_hex_prism, create_monolith
 from desktop.notepad import NotepadApp
+from desktop.clipboard import SovereignClipboard
 from desktop.master_desktop import MasterDesktop
 
 class TestV3ThemeEngine(unittest.TestCase):
@@ -138,6 +139,51 @@ class TestV3CodeStudio(unittest.TestCase):
         self.studio.pkg_scroll_idx = 10
         self.assertEqual(self.studio.pkg_scroll_idx, 10)
 
+    def test_code_studio_shortcuts_and_undo(self):
+        # 1. Select All (Ctrl+A)
+        self.studio.handle_key("CTRL_A")
+        self.assertTrue(self.studio.select_all_active)
+
+        # 2. Copy (Ctrl+C)
+        self.studio.handle_key("CTRL_C")
+        clip = SovereignClipboard.get_instance().get_text()
+        self.assertIn("AdiOS Sovereign Code Studio", clip)
+
+        # 3. Cut (Ctrl+X)
+        self.studio.handle_key("CTRL_X")
+        self.assertEqual(self.studio.lines, [""])
+        self.assertFalse(self.studio.select_all_active)
+
+        # 4. Undo (Ctrl+Z)
+        self.studio.handle_key("CTRL_Z")
+        self.assertIn("AdiOS Sovereign Code Studio", "\n".join(self.studio.lines))
+
+        # 5. Redo (Ctrl+Y)
+        self.studio.handle_key("CTRL_Y")
+        self.assertEqual(self.studio.lines, [""])
+
+        # 6. Paste (Ctrl+V)
+        self.studio.handle_key("CTRL_V")
+        self.assertIn("AdiOS Sovereign Code Studio", "\n".join(self.studio.lines))
+
+        # 7. Word Delete Backward (Ctrl+Backspace)
+        self.studio.new_buffer()
+        for ch in "def compute_trajectory():":
+            self.studio.handle_key(ch)
+        self.studio.handle_key("CTRL_BACKSPACE")
+        self.assertEqual(self.studio.lines[1], "def compute_trajectory")
+        self.studio.handle_key("CTRL_BACKSPACE")
+        self.assertEqual(self.studio.lines[1], "def ")
+
+        # 8. Quick Run (Ctrl+Enter)
+        self.studio.handle_key("CTRL_ENTER")
+        self.assertEqual(self.studio.active_tab, TAB_OUTPUT)
+
+        # 9. Save shortcut (Ctrl+S)
+        self.studio.active_tab = TAB_EDITOR
+        self.studio.handle_key("CTRL_S")
+        self.assertTrue(os.path.exists(self.studio.filepath))
+
 class TestV3Notepad(unittest.TestCase):
     def setUp(self):
         self.notepad = NotepadApp()
@@ -179,6 +225,53 @@ class TestV3Notepad(unittest.TestCase):
             os.remove(test_file)
         except Exception:
             pass
+
+    def test_notepad_shortcuts_and_undo(self):
+        # 1. Select All (Ctrl+A)
+        self.notepad.handle_key("CTRL_A")
+        self.assertTrue(self.notepad.select_all_active)
+
+        # 2. Copy (Ctrl+C)
+        self.notepad.handle_key("CTRL_C")
+        clip = SovereignClipboard.get_instance().get_text()
+        self.assertIn("Welcome to AdiOS", clip)
+
+        # 3. Cut (Ctrl+X)
+        self.notepad.handle_key("CTRL_X")
+        self.assertEqual(self.notepad.lines, [""])
+        self.assertFalse(self.notepad.select_all_active)
+
+        # 4. Undo (Ctrl+Z)
+        self.notepad.handle_key("CTRL_Z")
+        self.assertIn("Welcome to AdiOS", "\n".join(self.notepad.lines))
+
+        # 5. Redo (Ctrl+Y)
+        self.notepad.handle_key("CTRL_Y")
+        self.assertEqual(self.notepad.lines, [""])
+
+        # 6. Paste (Ctrl+V)
+        self.notepad.handle_key("CTRL_V")
+        self.assertIn("Welcome to AdiOS", "\n".join(self.notepad.lines))
+
+        # 7. Word Delete Backward (Ctrl+Backspace)
+        self.notepad.new_file()
+        for ch in "alpha beta gamma":
+            self.notepad.handle_key(ch)
+        self.notepad.handle_key("CTRL_BACKSPACE")
+        self.assertEqual(self.notepad.lines[0], "alpha beta ")
+        self.notepad.handle_key("CTRL_BACKSPACE")
+        self.assertEqual(self.notepad.lines[0], "alpha ")
+
+        # 8. Selection replacement typing
+        self.notepad.handle_key("CTRL_A")
+        self.assertTrue(self.notepad.select_all_active)
+        self.notepad.handle_key("X")
+        self.assertEqual(self.notepad.lines, ["X"])
+        self.assertFalse(self.notepad.select_all_active)
+
+        # 9. Save shortcut (Ctrl+S)
+        self.notepad.handle_key("CTRL_S")
+        self.assertTrue(os.path.exists(self.notepad.filename))
 
     def test_notepad_rendering(self):
         fb = bytearray(1280 * 720 * 4)
@@ -233,6 +326,21 @@ class TestV3FileExplorer(unittest.TestCase):
         explorer._handle_click(explorer, 200, 60)
         self.assertTrue(len(opened_paths) > 0)
         self.assertEqual(opened_paths[0], explorer.entries[file_idx].path)
+
+    def test_places_storage_bookmarks(self):
+        places_dict = dict(self.explorer.places)
+        self.assertIn("Notes", places_dict)
+        self.assertIn("Code", places_dict)
+        self.assertTrue(os.path.isdir(places_dict["Notes"]))
+        self.assertTrue(os.path.isdir(places_dict["Code"]))
+
+        # Navigate to Notes folder
+        self.explorer.navigate_to(places_dict["Notes"])
+        self.assertEqual(self.explorer.current_dir, places_dict["Notes"])
+
+        # Navigate to Code folder
+        self.explorer.navigate_to(places_dict["Code"])
+        self.assertEqual(self.explorer.current_dir, places_dict["Code"])
 
 class TestV3Scene3DStudio(unittest.TestCase):
     def setUp(self):
@@ -334,6 +442,31 @@ class TestV3MasterDesktopIntegration(unittest.TestCase):
         fb = bytearray(1280 * 720 * 4)
         self.desktop.render(fb)
         self.assertEqual(len(fb), 1280 * 720 * 4)
+
+class TestV3StorageSegregation(unittest.TestCase):
+    def test_segregated_default_locations(self):
+        np = NotepadApp()
+        cs = CodeStudio()
+
+        # Check default paths contain respective storage directories
+        self.assertTrue("storage" in np.filename and "notepad" in np.filename)
+        self.assertTrue("storage" in cs.filepath and "code" in cs.filepath)
+
+        # Ensure directories exist
+        self.assertTrue(os.path.isdir("storage/notepad"))
+        self.assertTrue(os.path.isdir("storage/code"))
+
+        # Save sample documents into each
+        np.lines = ["Note item 1", "Note item 2"]
+        np.save_file()
+        self.assertTrue(os.path.exists(np.filename))
+
+        cs.lines = ["# Code item", "print('ok')"]
+        cs.save_buffer()
+        self.assertTrue(os.path.exists(cs.filepath))
+
+        # Check that file paths are distinct and folders separate
+        self.assertNotEqual(os.path.dirname(np.filename), os.path.dirname(cs.filepath))
 
 if __name__ == "__main__":
     unittest.main()

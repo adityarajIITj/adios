@@ -62,8 +62,29 @@ def main():
                 if event.button == 1:
                     desktop.handle_mouse_up(event.pos[0], event.pos[1])
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE and pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                mods = pygame.key.get_mods()
+                ctrl_held = bool(mods & (pygame.KMOD_CTRL | pygame.KMOD_META))
+
+                if event.key == pygame.K_ESCAPE and mods & pygame.KMOD_SHIFT:
                     running = False
+                elif ctrl_held and event.key == pygame.K_a:
+                    desktop.handle_key("CTRL_A")
+                elif ctrl_held and event.key == pygame.K_c:
+                    desktop.handle_key("CTRL_C")
+                elif ctrl_held and event.key == pygame.K_v:
+                    desktop.handle_key("CTRL_V")
+                elif ctrl_held and event.key == pygame.K_x:
+                    desktop.handle_key("CTRL_X")
+                elif ctrl_held and event.key == pygame.K_z:
+                    desktop.handle_key("CTRL_Z")
+                elif ctrl_held and event.key == pygame.K_y:
+                    desktop.handle_key("CTRL_Y")
+                elif ctrl_held and event.key == pygame.K_s:
+                    desktop.handle_key("CTRL_S")
+                elif ctrl_held and event.key == pygame.K_BACKSPACE:
+                    desktop.handle_key("CTRL_BACKSPACE")
+                elif ctrl_held and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    desktop.handle_key("CTRL_ENTER")
                 elif event.key == pygame.K_BACKSPACE:
                     desktop.handle_key("\b")
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
