@@ -167,6 +167,18 @@ def hmac_sha256(key: bytes, message: bytes) -> bytes:
     inner = sha256_hash(i_key_pad + message)
     return sha256_hash(o_key_pad + inner)
 
+def compare_digest_ct(a: bytes, b: bytes) -> bool:
+    """
+    Constant-time byte sequence comparison to protect against timing attacks.
+    Returns True if both byte sequences are identical, False otherwise.
+    """
+    if len(a) != len(b):
+        return False
+    result = 0
+    for x, y in zip(a, b):
+        result |= x ^ y
+    return result == 0
+
 if __name__ == "__main__":
     msg = b"AdiOS Sovereign Computing"
     h = SHA256(msg).hexdigest()
