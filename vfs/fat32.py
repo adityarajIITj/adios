@@ -60,6 +60,16 @@ class BPB:
         self.volume_label = sector[71:82].decode("ascii", errors="replace").strip()
         self.fs_type = sector[82:90].decode("ascii", errors="replace").strip()
 
+    @property
+    def bytes_per_cluster(self) -> int:
+        """Returns the total number of data bytes in a single allocation cluster."""
+        return self.bytes_per_sector * self.sectors_per_cluster
+
+    @property
+    def is_fat32(self) -> bool:
+        """Returns True if the volume parameters identify as FAT32 format."""
+        return self.fat_size_16 == 0 and self.sectors_per_fat > 0
+
 
 class FAT32Entry:
     """Represents a decoded FAT32 directory entry."""
