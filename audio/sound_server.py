@@ -64,6 +64,13 @@ class SoundServer:
         except Exception:
             self._has_pygame = False
 
+    @property
+    def effective_volume(self) -> float:
+        """Returns the current output volume multiplier accounting for system mute state."""
+        if self.is_muted:
+            return 0.0
+        return max(0.0, min(1.0, self.master_volume))
+
     def start(self):
         """Starts the sound server (no-op if already initialized)."""
         pass
