@@ -42,6 +42,16 @@ class VirtioBlkDevice:
         self.vq = Virtqueue(queue_size=queue_size)
         self.active_requests = {} # head_desc -> (req_type, sector, buf_offset)
 
+    @property
+    def capacity_bytes(self) -> int:
+        """Returns the total raw storage capacity in bytes."""
+        return self.num_sectors * SECTOR_SIZE
+
+    @property
+    def capacity_mb(self) -> float:
+        """Returns the storage capacity formatted in megabytes."""
+        return self.capacity_bytes / (1024 * 1024)
+
     def read_sector(self, sector: int) -> bytes:
         """Reads a 512-byte sector synchronously via VirtIO."""
         if sector >= self.num_sectors:
