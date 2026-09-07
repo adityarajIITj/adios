@@ -51,8 +51,10 @@ void *page_alloc(void) {
 }
 
 void page_free(void *ptr) {
+    if (!ptr) return;
     uint32_t addr = (uint32_t)ptr;
     if (addr < RAM_BASE || addr >= RAM_BASE + RAM_SIZE) return;
+    if (PAGE_OFFSET(addr) != 0) return; // Must be page-aligned
 
     uint32_t page = (addr - RAM_BASE) / PAGE_SIZE;
     uint32_t word = page / 32;

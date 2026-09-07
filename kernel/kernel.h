@@ -18,7 +18,20 @@ typedef unsigned int   size_t;
 #define RAM_BASE       0x80000000
 #define RAM_SIZE       (32 * 1024 * 1024)
 #define PAGE_SIZE      4096
+#define PAGE_MASK      (~(PAGE_SIZE - 1))
+#define PAGE_OFFSET(a) ((uint32_t)(a) & (PAGE_SIZE - 1))
+#define PAGE_ALIGN(a)  (((uint32_t)(a) + PAGE_SIZE - 1) & PAGE_MASK)
 #define STACK_SIZE     8192
+
+// RISC-V Sv32 Page Table Entry (PTE) Flags
+#define PTE_V          (1 << 0) // Valid
+#define PTE_R          (1 << 1) // Read
+#define PTE_W          (1 << 2) // Write
+#define PTE_X          (1 << 3) // Execute
+#define PTE_U          (1 << 4) // User-mode accessible
+#define PTE_G          (1 << 5) // Global mapping
+#define PTE_A          (1 << 6) // Accessed
+#define PTE_D          (1 << 7) // Dirty
 
 // MMIO Ports
 #define UART_DATA      ((volatile uint32_t*)0x10000000)
