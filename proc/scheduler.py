@@ -146,6 +146,17 @@ class MLFQScheduler:
             self.queues[int(curr.priority)].append(curr)
             self.current_process = None
 
+    def get_queue_depth(self, priority: PriorityClass) -> int:
+        """Returns the number of ready processes waiting in the specified priority band."""
+        prio_idx = int(priority)
+        if 0 <= prio_idx < len(self.queues):
+            return len(self.queues[prio_idx])
+        return 0
+
+    def get_active_process_count(self) -> int:
+        """Returns total active processes tracked across all scheduler states."""
+        return len(self.all_processes)
+
 if __name__ == "__main__":
     sched = MLFQScheduler()
     p1 = TaskControlBlock("realtime_audio", priority=PriorityClass.REALTIME)
