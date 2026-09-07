@@ -32,6 +32,16 @@ class Pipe:
         self.readers_open = 1
         self.writers_open = 1
 
+    @property
+    def available_bytes(self) -> int:
+        """Returns the number of readable bytes currently buffered in the pipe."""
+        return len(self.buffer)
+
+    @property
+    def is_empty(self) -> bool:
+        """Returns True if the pipe buffer has no queued bytes."""
+        return len(self.buffer) == 0
+
     def write(self, data: bytes, non_blocking: bool = False) -> int:
         """
         Writes bytes into the pipe buffer.
