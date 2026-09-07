@@ -43,6 +43,23 @@ PAGE_SIZE      = 4096            # 4 KB
 MEGAPAGE_SIZE  = 4096 * 1024     # 4 MB
 ENTRIES_PER_PT = 1024            # 1024 32-bit entries per 4KB page table
 
+def split_vaddr(vaddr: int) -> Tuple[int, int, int]:
+    """
+    Splits a 32-bit virtual address into Sv32 components:
+    - vpn1: 10-bit Level 1 Virtual Page Number (bits 31..22)
+    - vpn0: 10-bit Level 0 Virtual Page Number (bits 21..12)
+    - offset: 12-bit Byte Offset within page (bits 11..0)
+    """
+    v = vaddr & 0xFFFFFFFF
+    vpn1 = (v >> 22) & 0x3FF
+    vpn0 = (v >> 12) & 0x3FF
+    offset = v & 0xFFF
+    return vpn1, vpn0, offset
+
+def join_paddr(ppn: int, offset: int) -> int:
+    """Combines a 22-bit Physical Page Number with a 12-bit page offset."""
+    return ((ppn & 0x3FFFFF) << 12) | (offset & 0xFFF)
+
 class PageFaultException(Exception):
     def __init__(self, cause: int, bad_vaddr: int, message: str):
         super().__init__(f"{message} (vaddr=0x{bad_vaddr:08X}, cause={cause})")
