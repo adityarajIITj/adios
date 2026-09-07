@@ -14,6 +14,12 @@ from typing import List, Dict, Tuple, Optional
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from crypto.sha256 import sha256_hash as sha256
 
+# Standard POSIX Return Codes
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+EXIT_USAGE = 2
+EXIT_NOT_FOUND = 127
+
 class CoreUtils:
     """
     Standard operating system userland utility commands operating
@@ -33,6 +39,16 @@ class CoreUtils:
             {"pid": 88, "ppid": 42, "user": "root", "stat": "S", "cpu": 0.5, "mem": 3.1, "time": "00:00:54", "cmd": "compositor"},
             {"pid": 101, "ppid": 88, "user": "root", "stat": "R+", "cpu": 0.8, "mem": 4.5, "time": "00:00:15", "cmd": "sh"}
         ]
+
+    @property
+    def current_directory(self) -> str:
+        """Returns the canonical current working directory."""
+        return self.cwd
+
+    @property
+    def process_count(self) -> int:
+        """Returns the number of active tasks in the process table."""
+        return len(self.processes)
 
     def _resolve_path(self, path: str) -> str:
         """Resolves relative or tilde path against current working directory."""
