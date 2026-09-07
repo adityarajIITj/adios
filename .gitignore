@@ -9,3 +9,12 @@ __pycache__/
 *.swp
 *.img
 *.bin
+
+# Sovereign User Local Storage (Personal Notes, Drawings, and Code Drafts are kept local)
+storage/notepad/*
+!storage/notepad/.gitkeep
+!storage/notepad/notes.txt
+storage/code/*
+!storage/code/.gitkeep
+storage/paint/*
+!storage/paint/.gitkeep

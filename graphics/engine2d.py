@@ -411,3 +411,21 @@ def draw_procedural_icon(
             dy = abs(py - cy)
             blend_pixel(fb, cx + 5 - dy // 2, py, 122, 162, 247, 1.0, screen_w, screen_h)
             blend_pixel(fb, cx + 9 - dy // 2, py, 122, 162, 247, 0.8, screen_w, screen_h)
+
+    elif icon_type in ("paint", "art"):
+        pw, ph = size - 12, size - 16
+        px0, py0 = cx - pw // 2, cy - ph // 2
+        draw_rounded_rect(fb, px0, py0, pw, ph, radius=5, fill_color=0x00F43F5E, border_color=0x00FDA4AF, screen_w=screen_w, screen_h=screen_h)
+        draw_circle(fb, cx - 4, cy - 3, 2, 0x0038BDF8, screen_w=screen_w, screen_h=screen_h)
+        draw_circle(fb, cx + 4, cy - 3, 2, 0x00FBBF24, screen_w=screen_w, screen_h=screen_h)
+        draw_circle(fb, cx, cy + 3, 2, 0x0034D399, screen_w=screen_w, screen_h=screen_h)
+
+    elif icon_type in ("calc", "calculator"):
+        cw_b, ch_b = size - 12, size - 14
+        cx0, cy0 = cx - cw_b // 2, cy - ch_b // 2
+        draw_rounded_rect(fb, cx0, cy0, cw_b, ch_b, radius=4, fill_color=0x000F172A, border_color=0x00A855F7, screen_w=screen_w, screen_h=screen_h)
+        draw_rounded_rect(fb, cx0 + 3, cy0 + 3, cw_b - 6, 5, radius=1, fill_color=0x0010B981, screen_w=screen_w, screen_h=screen_h)
+        blend_pixel(fb, cx - 3, cy + 2, 192, 132, 252, 1.0, screen_w, screen_h)
+        blend_pixel(fb, cx + 3, cy + 2, 192, 132, 252, 1.0, screen_w, screen_h)
+        blend_pixel(fb, cx - 3, cy + 6, 192, 132, 252, 1.0, screen_w, screen_h)
+        blend_pixel(fb, cx + 3, cy + 6, 192, 132, 252, 1.0, screen_w, screen_h)

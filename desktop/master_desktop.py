@@ -36,6 +36,8 @@ from .file_explorer import FileExplorer
 from .scene3d_studio import Scene3DStudio
 from .notepad import NotepadApp
 from .browser import WebKitBrowserApp
+from .paint_studio import PaintStudio
+from .calculator import ProgrammableCalculator
 from graphics.engine3d import Engine3D, Vector3, create_cube, create_temple_pyramid
 from browser.layout_engine import HTMLParser, CSSStyleSheet, LayoutEngine
 from db.engine import SovereignDB
@@ -402,12 +404,29 @@ class MasterDesktop:
         self.win_shell.on_click_content = self._click_shell
         self.wm.add_window(self.win_shell)
 
-        # 8. Paint Studio & Pocket Calculator (Floating)
-        self.win_paint = Window("paint", "Paint Studio & Scientific Calculator", left_margin + 120, TASKBAR_HEIGHT + 50, 540, 380)
+        # 8. Sovereign Paint Studio (2D Vector Engine) (Floating)
+        self.win_paint = PaintStudio(
+            win_id="paint",
+            x=left_margin + 120,
+            y=TASKBAR_HEIGHT + 35,
+            w=min(680, self.width - left_margin - 30),
+            h=min(500, self.height - TASKBAR_HEIGHT - 45)
+        )
         self.win_paint.visible = False
-        self.win_paint.on_draw_content = self._draw_paint
-        self.win_paint.on_click_content = self._click_paint
+        self.win_paint.desktop = self
+        self.paint_strokes = self.win_paint.paint_strokes
         self.wm.add_window(self.win_paint)
+
+        # 8b. Sovereign Programmable Graphing Calculator (Floating)
+        self.win_calc = ProgrammableCalculator(
+            win_id="calc",
+            x=left_margin + 150,
+            y=TASKBAR_HEIGHT + 50,
+            w=min(720, self.width - left_margin - 40),
+            h=min(490, self.height - TASKBAR_HEIGHT - 55)
+        )
+        self.win_calc.visible = False
+        self.wm.add_window(self.win_calc)
 
         # 9. Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)
         self.win_games = Window("games", "Sovereign 3D Games Arcade (CastleAdiOS & StarFlight)", max(left_margin, self.width // 2 - 310), TASKBAR_HEIGHT + 40, 620, 420)
@@ -1122,6 +1141,12 @@ class MasterDesktop:
                 self.calc_op = None
                 self.calc_reset_on_next = True
 
+        if hasattr(self, "win_calc") and self.win_calc:
+            try:
+                self.win_calc.handle_calc_key(k)
+            except Exception:
+                pass
+
     # --------------------------------------------------------------------------
     # Subsystem 9: Sovereign 3D Games Arcade (CastleAdiOS 3D & StarFlight 3D)
     # --------------------------------------------------------------------------
@@ -1783,15 +1808,16 @@ class MasterDesktop:
             ("5. AdiOS File Explorer", "files"),
             ("6. Network & Crypto Monitor", "netmon"),
             ("7. POSIX Sovereign Shell", "shell"),
-            ("8. Paint Studio & Calculator", "paint"),
-            ("9. Sovereign 3D Games Arcade", "games"),
-            ("10. Toggle Wallpaper Theme", "wallpaper"),
-            ("11. Sovereign YouTube (60 FPS HD)", "youtube"),
-            ("12. Toggle Background Music", "bgm"),
-            ("13. AdiOS Code Studio (IDE)", "studio"),
-            ("14. 3D Spatial Scene Studio", "scene3d"),
-            ("15. AdiOS Notepad (Text)", "notepad"),
-            ("16. WebKit Modern Web Browser", "webkit"),
+            ("8. Paint Studio (2D Vector)", "paint"),
+            ("9. Programmable Graph Calc", "calc"),
+            ("10. Sovereign 3D Games Arcade", "games"),
+            ("11. Toggle Wallpaper Theme", "wallpaper"),
+            ("12. Sovereign YouTube (60 FPS HD)", "youtube"),
+            ("13. Toggle Background Music", "bgm"),
+            ("14. AdiOS Code Studio (IDE)", "studio"),
+            ("15. 3D Spatial Scene Studio", "scene3d"),
+            ("16. AdiOS Notepad (Text)", "notepad"),
+            ("17. WebKit Modern Web Browser", "webkit"),
         ]
 
         for idx, (label, wid) in enumerate(items):
@@ -1940,7 +1966,7 @@ class MasterDesktop:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
-                    "paint", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit"
+                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit"
                 ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
@@ -2011,6 +2037,12 @@ class MasterDesktop:
                     elif cmd.lower() in ("webkit", "web", "surf", "safari", "browse"):
                         self.launch_or_focus("webkit")
                         self.shell_history.append("[AdiOS WebKit] Launching Modern Safari-Core Web Browser...")
+                    elif cmd.lower() in ("paint", "draw", "art", "brush"):
+                        self.launch_or_focus("paint")
+                        self.shell_history.append("[AdiOS Paint Studio] Launching 2D Vector Paint Studio...")
+                    elif cmd.lower() in ("calc", "calculator", "math", "graph"):
+                        self.launch_or_focus("calc")
+                        self.shell_history.append("[AdiOS Calculator] Launching Programmable Graphing Calculator...")
                     else:
                         try:
                             out = self.shell.eval(cmd)

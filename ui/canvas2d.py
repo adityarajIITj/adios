@@ -125,6 +125,9 @@ class Canvas2D:
             return
 
         offset = (y * self.width + x) * 4
+        if ((color >> 24) & 0xFF) == 0:
+            color = (0xFF << 24) | (color & 0x00FFFFFF)
+
         if ((color >> 24) & 0xFF) == 255:
             # Opaque fast-path: Little-endian BGRA
             self.pixels[offset] = color & 0xFF
@@ -211,6 +214,8 @@ class Canvas2D:
         xpxl2 = int(xend)
 
         base_a = (color >> 24) & 0xFF
+        if base_a == 0:
+            base_a = 255
         rgb = color & 0x00FFFFFF
 
         # Main drawing loop

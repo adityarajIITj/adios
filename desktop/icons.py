@@ -57,6 +57,8 @@ class DesktopIconManager:
             ("webkit",   "WebKit Web", "computer", "webkit",   0x0073DACA),
             ("studio",   "Studio IDE", "computer", "studio",   0x0038BDF8),
             ("notepad",  "Notepad",    "notepad",  "notepad",  0x00CBD5E1),
+            ("paint",    "Paint Pro",  "paint",    "paint",    0x00F43F5E),
+            ("calc",     "Graph Calc", "calc",     "calc",     0x00A855F7),
             ("youtube",  "YouTube",    "youtube",  "youtube",  0x00F7768E),
             ("files",    "AdioFiles",  "explorer", "files",    0x0094A3B8),
             ("scene3d",  "3D Scene",   "games",    "scene3d",  0x000EA5E9),
@@ -65,8 +67,8 @@ class DesktopIconManager:
         ]
 
         start_x = 24
-        start_y = 36
-        spacing_y = 78
+        start_y = 32
+        spacing_y = 66
 
         for idx, (iid, label, itype, target, accent) in enumerate(default_items):
             iy = start_y + idx * spacing_y

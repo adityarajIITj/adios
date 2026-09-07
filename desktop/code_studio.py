@@ -243,6 +243,7 @@ class CodeStudio(Window):
                 break
 
             line_y = y + idx * line_h + 3
+            raw_line = self.lines[line_idx]
             
             # Line number
             num_str = f"{line_idx + 1:3d}"
@@ -274,7 +275,6 @@ class CodeStudio(Window):
                         self._fill_rect(fb, mx, line_y - 2, mw, line_h, m_bg)
 
             # Render line tokens
-            raw_line = self.lines[line_idx]
             self._render_highlighted_line(fb, code_x, line_y, raw_line, pal, font_dict)
 
             # Render active cursor bar (solid while typing, gentle blink when idle)
