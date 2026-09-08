@@ -16,6 +16,7 @@ from typing import Dict, List, Tuple, Optional
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from userland.coreutils import CoreUtils
+from userland.fluid_cmd import run_fluid_cmd
 
 HELP_MANUAL = """=============================================================================
 AdiOS Sovereign POSIX Shell & Toolchain Utility Manual
@@ -49,6 +50,7 @@ Process & System Monitoring:
   kill [-9] <pid>       Send termination signal to process by PID
   clear                 Clear terminal display history
   wallpaper [theme]     Display or change desktop ASCII art wallpaper (cyber, sovereign, slant, matrix)
+  fluid [opts]          FluidRAM autonomous memory manifold telemetry & sovereign challenge
 
 In-OS C99 Toolchain & Build System:
   cc [opts] <file.c>    AdiOS In-OS C99 compiler (flags: -S, -c, -o, --help)
@@ -298,6 +300,8 @@ class SovereignShell:
                 if "=" in item:
                     k, v = item.split("=", 1)
                     self.env[k.strip()] = v.strip()
+        elif cmd == "fluid":
+            output = run_fluid_cmd(args)
         else:
             output = f"sh: command not found: {cmd}"
 

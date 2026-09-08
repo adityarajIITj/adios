@@ -39,6 +39,8 @@ from .browser import WebKitBrowserApp
 from .paint_studio import PaintStudio
 from .calculator import ProgrammableCalculator
 from .sound_tracker import SoundTrackerApp
+from .fluid_oscilloscope import FluidOscilloscopeApp
+from kernel.fluid_ram import get_fluid_ram_mesh
 from kernel.chronos import ChronosEngine
 from .chronos_hud import ChronosHUD, COLOR_CHRONOS_BORDER
 from .holo_desktop import HoloDesktop, COLOR_HOLO_CYAN
@@ -166,6 +168,10 @@ class MasterDesktop:
 
         # SoundTracker 8-Channel Polyphonic Synthesizer & Visual DAW
         self.sound_tracker = SoundTrackerApp(screen_w=self.width, screen_h=self.height)
+
+        # FluidRAM Autonomous Dynamic Memory Mesh & Oscilloscope Visualizer
+        self.fluid_ram = get_fluid_ram_mesh()
+        self.fluid_oscilloscope = FluidOscilloscopeApp(screen_w=self.width, screen_h=self.height)
 
     # --------------------------------------------------------------------------
     # Subsystem Initializations
@@ -516,6 +522,19 @@ class MasterDesktop:
         self.win_tracker.visible = False
         self.wm.add_window(self.win_tracker)
 
+        # 17. FluidRAM Autonomous Dynamic Memory Oscilloscope
+        self.win_fluid = Window(
+            "fluid_ram", "AdiOS FluidRAM Oscilloscope - 60 FPS Living Memory Manifold",
+            left_margin + 20, TASKBAR_HEIGHT + 20,
+            min(760, self.width - left_margin - 30),
+            min(520, self.height - TASKBAR_HEIGHT - 35),
+            can_close=True, can_maximize=True, can_minimize=True
+        )
+        self.win_fluid.on_draw_content = self._draw_fluid_ram
+        self.win_fluid.on_click_content = self._click_fluid_ram
+        self.win_fluid.visible = False
+        self.wm.add_window(self.win_fluid)
+
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
 
@@ -526,6 +545,14 @@ class MasterDesktop:
     def _click_tracker(self, win: Window, rel_x: int, rel_y: int):
         if hasattr(self, "sound_tracker"):
             self.sound_tracker.handle_click(rel_x, rel_y)
+
+    def _draw_fluid_ram(self, win: Window, fb: bytearray, font_dict):
+        if hasattr(self, "fluid_oscilloscope"):
+            self.fluid_oscilloscope.render(fb, font_dict, win.x, win.y, win.w, win.h)
+
+    def _click_fluid_ram(self, win: Window, rel_x: int, rel_y: int):
+        if hasattr(self, "fluid_oscilloscope"):
+            self.fluid_oscilloscope.handle_click(rel_x, rel_y, win.w, win.h)
 
     def _on_explorer_open_file(self, file_path: str):
         """Callback invoked when user opens a file in FileExplorer."""
@@ -1581,6 +1608,8 @@ class MasterDesktop:
                 if hasattr(w, "_ensure_worker") and callable(w._ensure_worker):
                     w._ensure_worker()
                 self.wm.focus_window(w)
+                if hasattr(self, "fluid_ram"):
+                    self.fluid_ram.attract_focus(w.title.split()[0])
                 self.status_message = f"Active window: {w.title}"
                 self.start_menu_open = False
                 return
@@ -1602,6 +1631,10 @@ class MasterDesktop:
         # SoundTracker DSP Step Timing & Spectrum Visualizer
         if hasattr(self, "sound_tracker") and hasattr(self, "win_tracker") and self.win_tracker.visible and not self.win_tracker.minimized:
             self.sound_tracker.step()
+
+        # FluidRAM Oscilloscope step simulation & wave harmonics
+        if hasattr(self, "fluid_oscilloscope") and hasattr(self, "win_fluid") and self.win_fluid.visible and not self.win_fluid.minimized:
+            self.fluid_oscilloscope.step()
 
         self.rot_3d.y = (self.rot_3d.y + 2.0) % 360.0
 
@@ -1749,7 +1782,10 @@ class MasterDesktop:
                     sw_x += 72
 
         # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
-        telemetry = f"RAM: {self.ram_used_mb:.1f}M/{self.ram_capacity_mb}M"
+        if hasattr(self, "fluid_ram"):
+            telemetry = f"FluidRAM: {self.fluid_ram.global_used_mb:.0f}M/{self.fluid_ram.total_ram_mb}M [{int(self.fluid_ram.flow_rate_efficiency * 100)}% Flow]"
+        else:
+            telemetry = f"RAM: {self.ram_used_mb:.1f}M/{self.ram_capacity_mb}M"
         self._draw_string(fb, self.width - 640, 7, telemetry, COLOR_ACCENT_GREEN)
 
         # Holo-Mode 3D Cyberspace (F10) Quick Toggle Button (Tray)
@@ -1892,11 +1928,12 @@ class MasterDesktop:
             ("16. AdiOS Notepad (Text)", "notepad"),
             ("17. WebKit Modern Web Browser", "webkit"),
             ("18. SoundTracker (8-Ch Synth)", "tracker"),
+            ("19. FluidRAM Oscilloscope", "fluid_ram"),
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_ACCENT_GREEN if wid in ("bgm", "tracker") else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
+            color = COLOR_ACCENT_GREEN if wid in ("bgm", "tracker", "fluid_ram") else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
