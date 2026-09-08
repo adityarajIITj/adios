@@ -54,7 +54,7 @@ class DesktopIconManager:
 
     def _setup_default_icons(self):
         default_items = [
-            ("webkit",   "WebKit Web", "computer", "webkit",   0x0073DACA),
+            ("webkit",   "SovereignWeb","computer", "webkit",   0x0073DACA),
             ("studio",   "Studio IDE", "computer", "studio",   0x0038BDF8),
             ("notepad",  "Notepad",    "notepad",  "notepad",  0x00CBD5E1),
             ("paint",    "Paint Pro",  "paint",    "paint",    0x00F43F5E),

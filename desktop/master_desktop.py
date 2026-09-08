@@ -1534,14 +1534,6 @@ class MasterDesktop:
         self.start_menu_open = not self.start_menu_open
 
     def launch_or_focus(self, win_id: str):
-        if win_id in ("webkit", "browser"):
-            try:
-                from desktop.native_browser import NativeBrowserManager
-                NativeBrowserManager.get_instance().launch()
-                self.status_message = "Sovereign Web Browser active [Hardware Accelerated 60-144 FPS]"
-            except Exception as e:
-                self.status_message = f"Browser notice: {str(e)[:40]}"
-
         for w in self.wm.windows:
             if w.win_id == win_id:
                 w.visible = True
@@ -1594,6 +1586,11 @@ class MasterDesktop:
         # YouTube Player 60 FPS Frame Stepping
         if hasattr(self, "youtube_app") and hasattr(self, "win_youtube") and self.win_youtube.visible and not self.win_youtube.minimized:
             self.youtube_app.step()
+
+        # SovereignWeb Browser In-Page Video Stepping
+        if hasattr(self, "win_webkit") and self.win_webkit.visible and not self.win_webkit.minimized:
+            if hasattr(self.win_webkit, "step_frame"):
+                self.win_webkit.step_frame(mouse_x, mouse_y)
 
     def _init_youtube_player(self):
         from desktop.youtube_player import YouTubePlayerApp
