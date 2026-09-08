@@ -40,6 +40,7 @@ from .paint_studio import PaintStudio
 from .calculator import ProgrammableCalculator
 from kernel.chronos import ChronosEngine
 from .chronos_hud import ChronosHUD, COLOR_CHRONOS_BORDER
+from .holo_desktop import HoloDesktop, COLOR_HOLO_CYAN
 from graphics.engine3d import Engine3D, Vector3, create_cube, create_temple_pyramid
 from browser.layout_engine import HTMLParser, CSSStyleSheet, LayoutEngine
 from db.engine import SovereignDB
@@ -158,6 +159,9 @@ class MasterDesktop:
         # Chronos OS-Wide Real-Time Time-Travel Engine & HUD Overlay
         self.chronos = ChronosEngine()
         self.chronos_hud = ChronosHUD(screen_w=self.width, screen_h=self.height)
+
+        # Holo-Mode 3D Spatial Cyberspace Desktop Engine
+        self.holo_desktop = HoloDesktop(width=self.width, height=self.height)
 
     # --------------------------------------------------------------------------
     # Subsystem Initializations
@@ -544,7 +548,7 @@ class MasterDesktop:
 
     def _draw_string(self, fb: bytearray, x: int, y: int, text: str, color: int, clip_rect=None):
         min_x, min_y, max_x, max_y = (0, 0, self.width - 1, self.height - 1) if clip_rect is None else clip_rect
-        c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0])
+        c_bytes = bytes([color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF, 0xFF])
         curr_x = x
         font_arr = self._get_font_array()
         q_glyph = self._font_q
@@ -589,8 +593,8 @@ class MasterDesktop:
         if x1 > x2 or y1 > y2:
             return
 
-        bg_bytes = bytes([bg_col & 0xFF, (bg_col >> 8) & 0xFF, (bg_col >> 16) & 0xFF, 0])
-        border_bytes = bytes([COLOR_BORDER & 0xFF, (COLOR_BORDER >> 8) & 0xFF, (COLOR_BORDER >> 16) & 0xFF, 0])
+        bg_bytes = bytes([bg_col & 0xFF, (bg_col >> 8) & 0xFF, (bg_col >> 16) & 0xFF, 0xFF])
+        border_bytes = bytes([COLOR_BORDER & 0xFF, (COLOR_BORDER >> 8) & 0xFF, (COLOR_BORDER >> 16) & 0xFF, 0xFF])
         span_len = x2 - x1 + 1
         bg_line = bg_bytes * span_len
         border_line = border_bytes * span_len
@@ -1540,6 +1544,11 @@ class MasterDesktop:
         self.start_menu_open = not self.start_menu_open
 
     def launch_or_focus(self, win_id: str):
+        if win_id == "holo":
+            self.holo_desktop.toggle(self)
+            self.start_menu_open = False
+            return
+
         for w in self.wm.windows:
             if w.win_id == win_id:
                 w.visible = True
@@ -1560,6 +1569,10 @@ class MasterDesktop:
         if hasattr(self, "chronos"):
             self.chronos.capture_frame(self)
             self.chronos.step_playback(self)
+
+        # Holo-Mode 3D spatial cyberspace transition and camera step
+        if hasattr(self, "holo_desktop"):
+            self.holo_desktop.step(dt=0.033)
 
         self.rot_3d.y = (self.rot_3d.y + 2.0) % 360.0
 
@@ -1628,7 +1641,7 @@ class MasterDesktop:
         self.youtube_app.handle_click(rel_x, rel_y)
         self.status_message = f"YouTube Player: {self.youtube_app.relay.channel_info['title']} ({'PLAYING' if self.youtube_app.is_playing else 'PAUSED'})"
 
-    def render(self, fb: bytearray):
+    def render_2d_workspace(self, fb: bytearray):
         # 1. Desktop Background: Fast blit cached wallpaper and icons
         icons_state = tuple((i.selected, i.hover) for i in self.icons.icons)
         cache_key = (self.wallpaper_style, self.wallpaper_visible, self.width, self.height, icons_state)
@@ -1645,6 +1658,13 @@ class MasterDesktop:
 
         # 2. Render Window Manager Layer (all visible windows in Z-order)
         self.wm.render_all(fb, self.font)
+
+    def render(self, fb: bytearray):
+        # Check if Holo-Mode 3D Spatial Cyberspace is active or transitioning
+        if hasattr(self, "holo_desktop") and (self.holo_desktop.is_active or self.holo_desktop.transition_t > 0.0):
+            self.holo_desktop.render(fb, self)
+        else:
+            self.render_2d_workspace(fb)
 
         # 3. Render Top Taskbar (24px high across self.width)
         tb_bytes = bytes([COLOR_TASKBAR_BG & 0xFF, (COLOR_TASKBAR_BG >> 8) & 0xFF, (COLOR_TASKBAR_BG >> 16) & 0xFF, 0])
@@ -1681,7 +1701,7 @@ class MasterDesktop:
 
         # Window Switcher Pills on Taskbar
         sw_x = 338
-        max_sw_x = self.width - 440
+        max_sw_x = self.width - 525
         dot_col = COLOR_ACCENT_CYAN
         dot_bytes = bytes([dot_col & 0xFF, (dot_col >> 8) & 0xFF, (dot_col >> 16) & 0xFF, 0])
         for w in self.wm.windows:
@@ -1700,8 +1720,14 @@ class MasterDesktop:
                     sw_x += 72
 
         # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
-        telemetry = f"RAM: {self.ram_used_mb:.1f}M/{self.ram_capacity_mb}M | 60FPS"
-        self._draw_string(fb, self.width - 590, 7, telemetry, COLOR_ACCENT_GREEN)
+        telemetry = f"RAM: {self.ram_used_mb:.1f}M/{self.ram_capacity_mb}M"
+        self._draw_string(fb, self.width - 640, 7, telemetry, COLOR_ACCENT_GREEN)
+
+        # Holo-Mode 3D Cyberspace (F10) Quick Toggle Button (Tray)
+        holo_act = hasattr(self, "holo_desktop") and self.holo_desktop.is_active
+        holo_bg = COLOR_HOLO_CYAN if holo_act else COLOR_BUTTON_BG
+        holo_txt = 0x00000000 if holo_act else COLOR_HOLO_CYAN
+        self._draw_button(fb, self.width - 515, 3, 80, 18, "HOLO F10", holo_bg, holo_txt)
 
         # Chronos Time-Travel (F9) Quick Toggle Button (Tray)
         chronos_act = hasattr(self, "chronos") and self.chronos.is_active
@@ -1873,7 +1899,7 @@ class MasterDesktop:
 
             # Window Switcher Pills click
             sw_x = 338
-            max_sw_x = self.width - 440
+            max_sw_x = self.width - 525
             for w in self.wm.windows:
                 if w.visible:
                     if sw_x <= mx <= sw_x + 68 and sw_x + 68 < max_sw_x:
@@ -1894,6 +1920,11 @@ class MasterDesktop:
                             self.status_message = f"Focused window '{w.title}'."
                             return ("switch_window", w)
                     sw_x += 72
+
+            # Holo-Mode 3D Cyberspace (F10) Button click
+            if self.width - 515 <= mx <= self.width - 435:
+                self.holo_desktop.toggle(self)
+                return ("holo_toggle", self.holo_desktop.is_active)
 
             # Chronos Time-Travel (F9) Button click
             if self.width - 430 <= mx <= self.width - 332:
@@ -2011,6 +2042,12 @@ class MasterDesktop:
                     return ("menu_select", action_id)
             self.start_menu_open = False
 
+        # 4.5. Holo-Mode 3D Spatial Cyberspace Window Raycast & Interaction
+        if hasattr(self, "holo_desktop") and self.holo_desktop.is_active:
+            res = self.holo_desktop.handle_mouse_down(mx, my, button=1, desktop=self)
+            if res:
+                return res
+
         # 5. Window Manager Handling
         res = self.wm.handle_mouse_down(mx, my)
         if res:
@@ -2033,17 +2070,29 @@ class MasterDesktop:
         return None
 
     def handle_mouse_up(self, mx: int, my: int):
+        if hasattr(self, "holo_desktop") and self.holo_desktop.is_active:
+            self.holo_desktop.handle_mouse_up(mx, my, button=1)
         if hasattr(self, "chronos") and self.chronos.is_active:
             self.chronos_hud.handle_mouse_up(mx, my)
         self.wm.handle_mouse_up(mx, my)
 
     def handle_mouse_move(self, mx: int, my: int):
+        if hasattr(self, "holo_desktop") and self.holo_desktop.is_active:
+            self.holo_desktop.handle_mouse_move(mx, my, self)
         if hasattr(self, "chronos") and self.chronos.is_active:
             self.chronos_hud.handle_mouse_drag(mx, my, self.chronos, self)
         self.icons.handle_mouse_move(mx, my)
         self.wm.handle_mouse_move(mx, my)
 
     def handle_key(self, key_char: str):
+        if key_char == "F10":
+            self.holo_desktop.toggle(self)
+            return
+
+        if hasattr(self, "holo_desktop") and self.holo_desktop.is_active:
+            if self.holo_desktop.handle_key(key_char, self):
+                return
+
         if key_char == "F9":
             self.chronos.toggle_time_travel(self)
             self.sound_server.play_ui_sound("click")
@@ -2087,7 +2136,10 @@ class MasterDesktop:
                     return
                 self.shell_history.append("root@adios:~# " + cmd)
                 if cmd:
-                    if cmd.lower() in ("games", "game", "castle", "flight", "arcade", "play"):
+                    if cmd.lower() in ("holo", "spatial", "cyberspace", "3d", "vr"):
+                        self.holo_desktop.toggle(self)
+                        self.shell_history.append("[AdiOS Holo-Mode] Toggling 3D Spatial Cyberspace Workstation...")
+                    elif cmd.lower() in ("games", "game", "castle", "flight", "arcade", "play"):
                         self.launch_or_focus("games")
                         self.shell_history.append("[AdiOS Games Arcade] Launching Sovereign 3D Games...")
                     elif cmd.lower() in ("notepad", "notes", "write", "nano", "edit"):
