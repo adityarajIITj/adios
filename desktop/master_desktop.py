@@ -548,11 +548,11 @@ class MasterDesktop:
 
     def _draw_fluid_ram(self, win: Window, fb: bytearray, font_dict):
         if hasattr(self, "fluid_oscilloscope"):
-            self.fluid_oscilloscope.render(fb, font_dict, win.x, win.y, win.w, win.h)
+            self.fluid_oscilloscope.render(fb, font_dict, win.x, win.y + 22, win.w, win.h - 22)
 
     def _click_fluid_ram(self, win: Window, rel_x: int, rel_y: int):
         if hasattr(self, "fluid_oscilloscope"):
-            self.fluid_oscilloscope.handle_click(rel_x, rel_y, win.w, win.h)
+            self.fluid_oscilloscope.handle_click(rel_x, rel_y, win.w, win.h - 22)
 
     def _on_explorer_open_file(self, file_path: str):
         """Callback invoked when user opens a file in FileExplorer."""
@@ -1894,7 +1894,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 418
+        mh = 442
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -2086,14 +2086,14 @@ class MasterDesktop:
 
         # 4. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 418:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 442:
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
-                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit", "tracker"
+                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit", "tracker", "fluid_ram"
                 ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
@@ -2227,6 +2227,9 @@ class MasterDesktop:
                     elif cmd.lower() in ("tracker", "synth", "daw", "music", "audio", "sound"):
                         self.launch_or_focus("tracker")
                         self.shell_history.append("[AdiOS SoundTracker] Launching 8-Channel Polyphonic Synth & Visual DAW...")
+                    elif cmd.lower() in ("fluid", "fluidram", "ram", "oscilloscope", "manifold"):
+                        self.launch_or_focus("fluid_ram")
+                        self.shell_history.append("[AdiOS FluidRAM] Launching 60 FPS FluidRAM Oscilloscope...")
                     else:
                         try:
                             out = self.shell.eval(cmd)

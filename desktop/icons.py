@@ -28,7 +28,7 @@ class DesktopIcon:
         self.y = y
         self.size = size
         self.width = 68
-        self.height = 72
+        self.height = 56
         self.selected = False
         self.hover = False
 
@@ -54,21 +54,22 @@ class DesktopIconManager:
 
     def _setup_default_icons(self):
         default_items = [
-            ("webkit",   "SovereignWeb","computer", "webkit",   0x0073DACA),
-            ("studio",   "Studio IDE", "computer", "studio",   0x0038BDF8),
-            ("notepad",  "Notepad",    "notepad",  "notepad",  0x00CBD5E1),
-            ("paint",    "Paint Pro",  "paint",    "paint",    0x00F43F5E),
-            ("calc",     "Graph Calc", "calc",     "calc",     0x00A855F7),
-            ("youtube",  "YouTube",    "youtube",  "youtube",  0x00F7768E),
-            ("files",    "AdioFiles",  "explorer", "files",    0x0094A3B8),
-            ("scene3d",  "3D Scene",   "games",    "scene3d",  0x000EA5E9),
-            ("shell",    "Cyber Shell","shell",    "shell",    0x009ECE6A),
-            ("settings", "Audio/Set",  "settings", "sound_cfg",0x007AA2F7),
+            ("webkit",    "SovereignWeb","computer", "webkit",    0x0073DACA),
+            ("studio",    "Studio IDE",  "computer", "studio",    0x0038BDF8),
+            ("notepad",   "Notepad",     "notepad",  "notepad",   0x00CBD5E1),
+            ("fluid_ram", "FluidRAM",    "computer", "fluid_ram", 0x002563EB),
+            ("paint",     "Paint Pro",   "paint",    "paint",     0x00F43F5E),
+            ("calc",      "Graph Calc",  "calc",     "calc",      0x00A855F7),
+            ("youtube",   "YouTube",     "youtube",  "youtube",   0x00F7768E),
+            ("files",     "AdioFiles",   "explorer", "files",     0x0094A3B8),
+            ("scene3d",   "3D Scene",    "games",    "scene3d",   0x000EA5E9),
+            ("shell",     "Cyber Shell", "shell",    "shell",     0x009ECE6A),
+            ("settings",  "Audio/Set",   "settings", "sound_cfg", 0x007AA2F7),
         ]
 
         start_x = 24
         start_y = 32
-        spacing_y = 66
+        spacing_y = 60
 
         for idx, (iid, label, itype, target, accent) in enumerate(default_items):
             iy = start_y + idx * spacing_y

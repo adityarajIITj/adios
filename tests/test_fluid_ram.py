@@ -228,5 +228,63 @@ class TestFluidUserlandCmd(unittest.TestCase):
         self.assertIn("ADIOS FLUIDRAM", res)
 
 
+class TestFluidRAMDesktopIntegration(unittest.TestCase):
+    """Validates FluidRAM desktop integration, start menu item 19, desktop icon, and shell launch."""
+
+    def setUp(self):
+        from desktop.master_desktop import MasterDesktop, TASKBAR_HEIGHT
+        self.desktop = MasterDesktop(width=1280, height=720)
+        self.taskbar_h = TASKBAR_HEIGHT
+
+    def test_start_menu_launch_item_19(self):
+        """Validates that clicking item 19 in Start Menu opens FluidRAM Oscilloscope."""
+        self.desktop.win_fluid.visible = False
+        self.desktop.handle_mouse_down(10, 10)  # Open start menu
+        self.assertTrue(self.desktop.start_menu_open)
+        
+        # Item 19: rel_item = 18. Hit y = TASKBAR_HEIGHT + 30 + 18 * 20 + 4
+        click_y = self.taskbar_h + 30 + 18 * 20 + 4
+        res = self.desktop.handle_mouse_down(50, click_y)
+        self.assertEqual(res, ("menu_select", "fluid_ram"))
+        self.assertTrue(self.desktop.win_fluid.visible)
+        self.assertFalse(self.desktop.start_menu_open)
+
+    def test_desktop_icon_double_click(self):
+        """Validates that double-clicking the FluidRAM desktop icon launches the window."""
+        self.desktop.win_fluid.visible = False
+        fluid_icon = [i for i in self.desktop.icons.icons if i.icon_id == "fluid_ram"][0]
+        
+        # First click selects
+        res1 = self.desktop.handle_mouse_down(fluid_icon.x + 10, fluid_icon.y + 10)
+        self.assertEqual(res1, ("icon_select", "fluid_ram"))
+        
+        # Second click within interval launches
+        res2 = self.desktop.handle_mouse_down(fluid_icon.x + 10, fluid_icon.y + 10)
+        self.assertEqual(res2, ("icon_launch", "fluid_ram"))
+        self.assertTrue(self.desktop.win_fluid.visible)
+
+    def test_shell_command_launch(self):
+        """Validates launching FluidRAM from shell input command."""
+        self.desktop.win_fluid.visible = False
+        self.desktop.wm.focus_window(self.desktop.win_shell)
+        self.desktop.shell_input = "fluid"
+        self.desktop.handle_key("\n")
+        self.assertTrue(self.desktop.win_fluid.visible)
+        self.assertIn("FluidRAM", self.desktop.shell_history[-1])
+
+    def test_fluid_window_rendering_and_interaction(self):
+        """Validates that FluidRAM renders on desktop framebuffer without clipping or errors."""
+        self.desktop.launch_or_focus("fluid_ram")
+        fb = bytearray(1280 * 720 * 4)
+        self.desktop.step_frame(200, 200)
+        self.desktop.render(fb)
+        self.assertEqual(len(fb), 1280 * 720 * 4)
+        
+        # Test clicking Pulse Wave button
+        self.desktop.win_fluid.on_click_content(self.desktop.win_fluid, 50, 45)
+        self.assertIn("Pressure pulse injected", self.desktop.fluid_oscilloscope.status_message)
+
+
 if __name__ == "__main__":
     unittest.main()
+

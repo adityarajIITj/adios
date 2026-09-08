@@ -4,6 +4,13 @@
 
 ---
 
+<div align="center">
+  <img src="docs/assets/adios_v4_beta_workstation.png" alt="AdiOS v4.0 Beta Sovereign Workstation 1280x720 HD" width="920"/>
+  <p><em>AdiOS v4.0 Beta Workstation (1280x720 HD @ 60 FPS) in Nordic Slate with the FluidRAM 1024 MB Oscilloscope, Code Studio IDE, 3D Scene Studio, and desktop quick-launch icons.</em></p>
+</div>
+
+---
+
 ## Why AdiOS Exists
 
 Modern operating systems have forgotten how to be lean. Opening a web browser today easily consumes 4 GB of RAM, spins up dozens of background helper daemons, and constantly thrashes your SSD with cache files.
@@ -24,6 +31,11 @@ Every layer in AdiOS is handcrafted:
 Traditional operating systems partition memory into rigid buckets. When an app needs more than its slice, the kernel either swaps to disk or abruptly kills the process.
 
 FluidRAM models your 1024 MB of RAM as an interconnected topological mesh. When you focus on an application, memory naturally dilates toward your active window like blood flowing to active muscle, while background tasks contract their state. This gives AdiOS an effective virtual density of 4096 MB (4.0x) on 1024 MB of physical memory—with zero page faults, zero swap file thrashing, and zero OOM terminations.
+
+<div align="center">
+  <img src="docs/assets/adios_v4_beta_fluid_ram.png" alt="FluidRAM Oscilloscope 60 FPS Living Memory Manifold" width="920"/>
+  <p><em>The FluidRAM Oscilloscope visualizing 1024 MB of physical memory as a 32x32 hydrodynamic manifold with real-time pressure surge gauges, cell inspection, and zero page faults.</em></p>
+</div>
 
 ### 2. The Void-Pipe: Zero-Disk Live Video Streaming
 Playing a video in a conventional browser downloads chunks to your drive, demuxes them into memory, and buffers dozens of decoded frames.
@@ -46,6 +58,11 @@ Everything you need to work, create, and explore is built in:
 - **FluidRAM Oscilloscope**: A real-time 32x32 visual manifold displaying all 1024 MB of RAM in motion, complete with live pressure gauges and tactile impulse controls.
 - **3D Games & Scene Studio**: Full 3D flight simulator, castle dungeon crawler, and real-time mesh visualizer.
 - **POSIX Shell & Coreutils**: Interactive terminal with pipes, file redirection, in-OS C compiler, and system diagnostics (`fluid --challenge`).
+
+<div align="center">
+  <img src="docs/assets/adios_v4_beta_soundtracker.png" alt="AdiOS SoundTracker 8-Channel Polyphonic Synthesizer and Visual DAW" width="920"/>
+  <p><em>SoundTracker 8-Channel Polyphonic Synthesizer and Visual DAW with real-time waveform oscilloscope and 16-band spectrum analyzer.</em></p>
+</div>
 
 ---
 
@@ -85,7 +102,7 @@ python run_desktop.py
 Every subsystem in AdiOS is backed by automated tests:
 
 ```bash
-# Run the complete test suite (199 passing tests)
+# Run the complete test suite (203 passing tests)
 python -m unittest discover tests
 
 # Run the FluidRAM stress test and benchmark
@@ -104,7 +121,7 @@ adios/
 ├── audio/          # Low-latency polyphonic DSP synth and sound server
 ├── graphics/       # 2D vector compositor and 3D software rasterizer
 ├── userland/       # POSIX shell, core utilities, and C99 compiler
-└── tests/          # 199 automated unit tests verifying 100% system integrity
+└── tests/          # 203 automated unit tests verifying 100% system integrity
 ```
 
 ---
