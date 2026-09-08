@@ -38,6 +38,8 @@ from .notepad import NotepadApp
 from .browser import WebKitBrowserApp
 from .paint_studio import PaintStudio
 from .calculator import ProgrammableCalculator
+from kernel.chronos import ChronosEngine
+from .chronos_hud import ChronosHUD, COLOR_CHRONOS_BORDER
 from graphics.engine3d import Engine3D, Vector3, create_cube, create_temple_pyramid
 from browser.layout_engine import HTMLParser, CSSStyleSheet, LayoutEngine
 from db.engine import SovereignDB
@@ -152,6 +154,10 @@ class MasterDesktop:
 
         # Create Workstation Windows (490x350 grid layout)
         self._setup_master_windows()
+
+        # Chronos OS-Wide Real-Time Time-Travel Engine & HUD Overlay
+        self.chronos = ChronosEngine()
+        self.chronos_hud = ChronosHUD(screen_w=self.width, screen_h=self.height)
 
     # --------------------------------------------------------------------------
     # Subsystem Initializations
@@ -1550,6 +1556,11 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def step_frame(self, mouse_x: int, mouse_y: int):
+        # 0. Chronos temporal snapshot capture and playback step
+        if hasattr(self, "chronos"):
+            self.chronos.capture_frame(self)
+            self.chronos.step_playback(self)
+
         self.rot_3d.y = (self.rot_3d.y + 2.0) % 360.0
 
         # Games Arcade continuous animation
@@ -1689,8 +1700,14 @@ class MasterDesktop:
                     sw_x += 72
 
         # Right status indicators: SMP Cores & System Clock & Dynamic RAM capacity
-        telemetry = f"SMP: {self.hart_loads[0]}% | RAM: {self.ram_used_mb:.1f}MB/{self.ram_capacity_mb}MB | 60 FPS"
-        self._draw_string(fb, self.width - 550, 7, telemetry, COLOR_ACCENT_GREEN)
+        telemetry = f"RAM: {self.ram_used_mb:.1f}M/{self.ram_capacity_mb}M | 60FPS"
+        self._draw_string(fb, self.width - 590, 7, telemetry, COLOR_ACCENT_GREEN)
+
+        # Chronos Time-Travel (F9) Quick Toggle Button (Tray)
+        chronos_act = hasattr(self, "chronos") and self.chronos.is_active
+        chronos_bg = COLOR_CHRONOS_BORDER if chronos_act else COLOR_BUTTON_BG
+        chronos_txt = 0x00000000 if chronos_act else COLOR_CHRONOS_BORDER
+        self._draw_button(fb, self.width - 430, 3, 98, 18, "CHRONOS F9", chronos_bg, chronos_txt)
 
         # Theme Switcher Quick Toggle Button
         theme_key = ThemeManager.get_instance().current_key.upper()
@@ -1719,6 +1736,10 @@ class MasterDesktop:
         # 6. Render Internet Flyout Card if open
         if self.net_flyout_open:
             self._render_net_flyout(fb)
+
+        # 7. Render Chronos Time-Travel HUD Overlay if active
+        if hasattr(self, "chronos") and self.chronos.is_active:
+            self.chronos_hud.render(fb, self.chronos, self, self.font)
 
     def _render_sound_flyout(self, fb: bytearray):
         fx = self.width - 240
@@ -1827,6 +1848,11 @@ class MasterDesktop:
     # --------------------------------------------------------------------------
 
     def handle_mouse_down(self, mx: int, my: int) -> Optional[Tuple[str, Any]]:
+        # Chronos HUD click handling
+        if hasattr(self, "chronos") and self.chronos.is_active:
+            if self.chronos_hud.handle_mouse_down(mx, my, self.chronos, self):
+                return ("chronos_click", self.chronos.scrub_index)
+
         # 1. Taskbar Click Handling
         if my < TASKBAR_HEIGHT:
             if 4 <= mx <= 84:
@@ -1868,6 +1894,12 @@ class MasterDesktop:
                             self.status_message = f"Focused window '{w.title}'."
                             return ("switch_window", w)
                     sw_x += 72
+
+            # Chronos Time-Travel (F9) Button click
+            if self.width - 430 <= mx <= self.width - 332:
+                self.chronos.toggle_time_travel(self)
+                self.sound_server.play_ui_sound("click")
+                return ("chronos_toggle", self.chronos.is_active)
 
             # Theme Switcher Button click
             if self.width - 325 <= mx <= self.width - 210:
@@ -2001,13 +2033,46 @@ class MasterDesktop:
         return None
 
     def handle_mouse_up(self, mx: int, my: int):
+        if hasattr(self, "chronos") and self.chronos.is_active:
+            self.chronos_hud.handle_mouse_up(mx, my)
         self.wm.handle_mouse_up(mx, my)
 
     def handle_mouse_move(self, mx: int, my: int):
+        if hasattr(self, "chronos") and self.chronos.is_active:
+            self.chronos_hud.handle_mouse_drag(mx, my, self.chronos, self)
         self.icons.handle_mouse_move(mx, my)
         self.wm.handle_mouse_move(mx, my)
 
     def handle_key(self, key_char: str):
+        if key_char == "F9":
+            self.chronos.toggle_time_travel(self)
+            self.sound_server.play_ui_sound("click")
+            return
+
+        if hasattr(self, "chronos") and self.chronos.is_active:
+            if key_char in ("KEY_LEFT", "LEFT", "a", "A"):
+                self.chronos.step_relative(-1, self)
+                return
+            elif key_char in ("KEY_RIGHT", "RIGHT", "d", "D"):
+                self.chronos.step_relative(1, self)
+                return
+            elif key_char in ("HOME", "SHIFT_HOME"):
+                self.chronos.scrub_to_index(0, self)
+                return
+            elif key_char in ("END", "SHIFT_END"):
+                self.chronos.scrub_to_index(len(self.chronos.frames) - 1, self)
+                return
+            elif key_char in ("\n", "\r", "ENTER"):
+                self.chronos.fork_reality(self)
+                return
+            elif key_char in ("ESCAPE", "ESC"):
+                self.chronos.resume_live(self)
+                return
+            elif key_char == " ":
+                self.chronos.is_playing_reverse = not self.chronos.is_playing_reverse
+                self.chronos.is_playing_forward = False
+                return
+
         active_win = self.wm.windows[-1] if self.wm.windows else None
         if not active_win or not active_win.visible or active_win.minimized:
             return
