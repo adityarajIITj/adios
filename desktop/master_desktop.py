@@ -38,6 +38,7 @@ from .notepad import NotepadApp
 from .browser import WebKitBrowserApp
 from .paint_studio import PaintStudio
 from .calculator import ProgrammableCalculator
+from .sound_tracker import SoundTrackerApp
 from kernel.chronos import ChronosEngine
 from .chronos_hud import ChronosHUD, COLOR_CHRONOS_BORDER
 from .holo_desktop import HoloDesktop, COLOR_HOLO_CYAN
@@ -162,6 +163,9 @@ class MasterDesktop:
 
         # Holo-Mode 3D Spatial Cyberspace Desktop Engine
         self.holo_desktop = HoloDesktop(width=self.width, height=self.height)
+
+        # SoundTracker 8-Channel Polyphonic Synthesizer & Visual DAW
+        self.sound_tracker = SoundTrackerApp(screen_w=self.width, screen_h=self.height)
 
     # --------------------------------------------------------------------------
     # Subsystem Initializations
@@ -499,8 +503,29 @@ class MasterDesktop:
         self.win_webkit.visible = False
         self.wm.add_window(self.win_webkit)
 
+        # 16. SoundTracker 8-Channel Polyphonic Synthesizer & Visual DAW
+        self.win_tracker = Window(
+            "tracker", "AdiOS SoundTracker - 8-Channel Polyphonic Synth & DAW",
+            left_margin + 20, TASKBAR_HEIGHT + 20,
+            min(640, self.width - left_margin - 30),
+            min(440, self.height - TASKBAR_HEIGHT - 35),
+            can_close=True, can_maximize=True, can_minimize=True
+        )
+        self.win_tracker.on_draw_content = self._draw_tracker
+        self.win_tracker.on_click_content = self._click_tracker
+        self.win_tracker.visible = False
+        self.wm.add_window(self.win_tracker)
+
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
+
+    def _draw_tracker(self, win: Window, fb: bytearray, font_dict):
+        if hasattr(self, "sound_tracker"):
+            self.sound_tracker.render(fb, font_dict, win.x, win.y, win.w, win.h)
+
+    def _click_tracker(self, win: Window, rel_x: int, rel_y: int):
+        if hasattr(self, "sound_tracker"):
+            self.sound_tracker.handle_click(rel_x, rel_y)
 
     def _on_explorer_open_file(self, file_path: str):
         """Callback invoked when user opens a file in FileExplorer."""
@@ -512,7 +537,7 @@ class MasterDesktop:
             self.win_studio.open_buffer(file_path)
             self.launch_or_focus("studio")
         elif ext in (".wav", ".mp4", ".webm"):
-            self.launch_or_focus("youtube")
+            self.launch_or_focus("tracker")
 
     # --------------------------------------------------------------------------
     # Drawing Primitives with Scissor Clipping
@@ -1574,6 +1599,10 @@ class MasterDesktop:
         if hasattr(self, "holo_desktop"):
             self.holo_desktop.step(dt=0.033)
 
+        # SoundTracker DSP Step Timing & Spectrum Visualizer
+        if hasattr(self, "sound_tracker") and hasattr(self, "win_tracker") and self.win_tracker.visible and not self.win_tracker.minimized:
+            self.sound_tracker.step()
+
         self.rot_3d.y = (self.rot_3d.y + 2.0) % 360.0
 
         # Games Arcade continuous animation
@@ -1829,7 +1858,7 @@ class MasterDesktop:
         mx = 4
         my = TASKBAR_HEIGHT
         mw = 260
-        mh = 398
+        mh = 418
         clip = (mx, my, mx + mw, my + mh)
 
         # Menu container
@@ -1862,11 +1891,12 @@ class MasterDesktop:
             ("15. 3D Spatial Scene Studio", "scene3d"),
             ("16. AdiOS Notepad (Text)", "notepad"),
             ("17. WebKit Modern Web Browser", "webkit"),
+            ("18. SoundTracker (8-Ch Synth)", "tracker"),
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_ACCENT_GREEN if wid == "bgm" else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
+            color = COLOR_ACCENT_GREEN if wid in ("bgm", "tracker") else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
@@ -2019,14 +2049,14 @@ class MasterDesktop:
 
         # 4. Start Menu Item Click
         if self.start_menu_open:
-            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 398:
+            if 4 <= mx <= 264 and TASKBAR_HEIGHT <= my <= TASKBAR_HEIGHT + 418:
                 if 155 <= my <= 165:
                     self.launch_or_focus("shell")
                     return ("menu_select", "shell")
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
-                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit"
+                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit", "tracker"
                 ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
@@ -2157,6 +2187,9 @@ class MasterDesktop:
                     elif cmd.lower() in ("calc", "calculator", "math", "graph"):
                         self.launch_or_focus("calc")
                         self.shell_history.append("[AdiOS Calculator] Launching Programmable Graphing Calculator...")
+                    elif cmd.lower() in ("tracker", "synth", "daw", "music", "audio", "sound"):
+                        self.launch_or_focus("tracker")
+                        self.shell_history.append("[AdiOS SoundTracker] Launching 8-Channel Polyphonic Synth & Visual DAW...")
                     else:
                         try:
                             out = self.shell.eval(cmd)
@@ -2234,6 +2267,10 @@ class MasterDesktop:
         elif active_win.win_id == "youtube":
             if hasattr(self, "youtube_app"):
                 self.youtube_app.handle_key(key_char)
+
+        elif active_win.win_id == "tracker":
+            if hasattr(self, "sound_tracker"):
+                self.sound_tracker.handle_key(key_char)
 
         elif hasattr(active_win, "handle_key") and callable(active_win.handle_key):
             active_win.handle_key(key_char)
