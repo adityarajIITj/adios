@@ -150,7 +150,7 @@ class AVDecoder:
     Decodes video frames to raw BGRX pixels and extracts audio to WAV.
     """
 
-    def __init__(self, media_path: str, width: int = 640, height: int = 360, fps: Optional[int] = None, duration_s: float = 0.0):
+    def __init__(self, media_path: str, width: int = 640, height: int = 360, fps: Optional[int] = None, duration_s: float = 0.0, use_void_pipe: bool = True):
         self.media_path = media_path
         self.width = width
         self.height = height
@@ -160,13 +160,16 @@ class AVDecoder:
         else:
             self.fps = fps
         self.frame_size = width * height * 4  # BGRX = 4 bytes per pixel
+        self.use_void_pipe = use_void_pipe
 
         self.state = DECODER_IDLE
         self.ffmpeg_bin = _find_ffmpeg()
 
         # Video frame ring buffer (thread-safe)
+        # In Void-Pipe mode, strictly bounded to 2 frames (< 2.0 MB resident memory)
         self._frame_lock = threading.Lock()
-        self._frame_buffer: deque = deque(maxlen=max(120, int(self.fps * 3)))  # 3 seconds buffer
+        max_q = 2 if self.use_void_pipe else max(120, int(self.fps * 3))
+        self._frame_buffer: deque = deque(maxlen=max_q)
         self._frames_decoded: int = 0
         self._last_frame_bytes: Optional[bytes] = None
         self._last_target_pts_s: float = 0.0
@@ -324,6 +327,12 @@ class AVDecoder:
     def frames_decoded(self) -> int:
         return self._frames_decoded
 
+    def get_peak_memory_mb(self) -> float:
+        """Returns physically measured resident buffer footprint in MB."""
+        with self._frame_lock:
+            total_bytes = sum(len(item[1]) if isinstance(item, tuple) else len(item) for item in self._frame_buffer)
+        return round(total_bytes / (1024.0 * 1024.0), 3)
+
     def _video_decode_loop(self, seek_s: float):
         """
         Background thread: spawns ffmpeg to decode video frames and reads
@@ -373,9 +382,10 @@ class AVDecoder:
                 loop_frames += 1
 
                 # Throttle if buffer is getting full (back-pressure)
+                throttle_limit = 1 if self.use_void_pipe else 60
                 while not self._stop_event.is_set():
                     with self._frame_lock:
-                        if len(self._frame_buffer) < 60:
+                        if len(self._frame_buffer) <= throttle_limit:
                             break
                     time.sleep(0.005)
 

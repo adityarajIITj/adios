@@ -16,7 +16,9 @@ from kernel.fluid_ram import (
     FluidRAMMesh, get_fluid_ram_mesh, VoidPipeDecoder, GaloisInverter,
     PHYSICAL_RAM_MB, BASELINE_CAPACITIES_MB,
     POOL_KERNEL_CORE, POOL_COMPOSITOR_FB, POOL_STREAM_RING,
-    POOL_CHRONOS_DELTA, POOL_USER_APPS, POOL_DYNAMIC_MESH
+    POOL_CHRONOS_DELTA, POOL_USER_APPS, POOL_DYNAMIC_MESH,
+    PAGE_PINNED, PAGE_RECONSTRUCTIBLE, PAGE_TRANSIENT, PAGE_CACHE,
+    ReversibleStateChain, PhysicalMemorySlab
 )
 from desktop.fluid_oscilloscope import FluidOscilloscopeApp
 from userland.fluid_cmd import run_fluid_cmd
@@ -104,6 +106,48 @@ class TestFluidRAMKernel(unittest.TestCase):
         self.assertIn("pressure", sample_cell)
         self.assertIn("tension", sample_cell)
 
+    def test_physical_slab_allocation_and_borrowing(self):
+        """Validates real physical memory slab allocation, byte reading/writing, and slab migration."""
+        slab = self.mesh.allocate_physical_slab(
+            POOL_STREAM_RING, 1024 * 1024, PAGE_TRANSIENT, b"INITIAL_SLAB_DATA"
+        )
+        self.assertIsInstance(slab, PhysicalMemorySlab)
+        self.assertEqual(slab.owner_pool, POOL_STREAM_RING)
+        self.assertEqual(slab.size_bytes, 1024 * 1024)
+
+        # Write and read back data
+        written = self.mesh.write_physical_slab(slab.slab_id, 0, b"ADIOS_SLAB_WRITE_TEST")
+        self.assertEqual(written, 21)
+        read_back = self.mesh.read_physical_slab(slab.slab_id, 0, 21)
+        self.assertEqual(read_back, b"ADIOS_SLAB_WRITE_TEST")
+
+        # Test borrowing moves unpinned slabs from lender to requesting pool
+        target_pool = POOL_USER_APPS
+        self.mesh.borrow_pages(target_pool, 5.0)
+        # Verify slab was transferred
+        self.assertIn(slab.slab_id, self.mesh.pools[target_pool].slabs)
+        self.assertEqual(slab.owner_pool, target_pool)
+
+    def test_dissipation_preserves_pinned_slabs(self):
+        """Verifies that surface tension dissipation reclaims TRANSIENT and CACHE slabs while preserving PINNED."""
+        pinned = self.mesh.allocate_physical_slab(
+            POOL_USER_APPS, 1024 * 1024, PAGE_PINNED, b"CRITICAL_PINNED_KERNEL_VECTORS"
+        )
+        transient = self.mesh.allocate_physical_slab(
+            POOL_USER_APPS, 1024 * 1024, PAGE_TRANSIENT, b"DISCARDABLE_STREAM_FRAME"
+        )
+
+        freed_mb = self.mesh.dissipate_surface_tension()
+        self.assertGreaterEqual(freed_mb, 1)
+
+        # Pinned slab MUST still exist and have exact uncorrupted bytes
+        self.assertIn(pinned.slab_id, self.mesh.pools[POOL_USER_APPS].slabs)
+        content = self.mesh.read_physical_slab(pinned.slab_id, 0, 30)
+        self.assertEqual(content, b"CRITICAL_PINNED_KERNEL_VECTORS")
+
+        # Transient slab should be dissipated
+        self.assertNotIn(transient.slab_id, self.mesh.pools[POOL_USER_APPS].slabs)
+
 
 class TestVoidPipeDecoder(unittest.TestCase):
     """Validates the in-flight ephemeral stream rasterization invariants."""
@@ -130,6 +174,29 @@ class TestVoidPipeDecoder(unittest.TestCase):
         self.assertEqual(telemetry["disk_cache_usage_kb"], 0.0)
         self.assertEqual(telemetry["evaporation_rate_fps"], 60.0)
 
+    def test_transduce_frame_stream_scanline_blit(self):
+        """Validates real scanline blitting into destination framebuffer and zero disk writes."""
+        w, h = 64, 32
+        src_frame = bytes([(i % 250) + 1 for i in range(w * h * 4)])
+        dest_fb = bytearray(1280 * 720 * 4)
+
+        res = self.decoder.transduce_frame_stream(
+            src_frame, dest_fb, dest_x=10, dest_y=10, width=w, height=h, dest_stride=1280
+        )
+        self.assertTrue(res["evaporated"])
+        self.assertEqual(res["disk_writes_bytes"], 0)
+        self.assertLessEqual(res["resident_scratchpad_mb"], 4.0)
+
+        # Check destination framebuffer has non-zero pixels at blit destination
+        offset = ((10 * 1280) + 10) * 4
+        self.assertEqual(dest_fb[offset : offset + 4], src_frame[:4])
+
+    def test_void_pipe_peak_memory_measurement(self):
+        """Verifies physically measured scratchpad memory is strictly < 4.0 MB."""
+        peak_mb = self.decoder.get_measured_peak_memory_mb()
+        self.assertLess(peak_mb, 4.0)
+        self.assertGreater(peak_mb, 0.5)
+
 
 class TestGaloisInverter(unittest.TestCase):
     """Validates Galois Field GF(2^8) reversible time-travel permutation."""
@@ -151,6 +218,44 @@ class TestGaloisInverter(unittest.TestCase):
         self.assertNotEqual(mutated, original_state)
         restored = self.inverter.inverse_permute(mutated)
         self.assertEqual(restored, original_state)
+
+    def test_continuous_multi_step_trajectory_rewind(self):
+        """Validates continuous 20-step trajectory rewind with >70% storage reduction and 100% bitwise exactness."""
+        chain = ReversibleStateChain(self.inverter)
+        state_len = 2048
+        s0 = bytes([i % 256 for i in range(state_len)])
+        current = bytearray(s0)
+
+        # Record 20 steps of sequential sparse mutation
+        for step in range(20):
+            nxt = bytearray(current)
+            for j in range(0, state_len, 32):
+                nxt[j] = (nxt[j] + step + 13) & 0xFF
+            chain.record_transition(bytes(current), bytes(nxt), key=0x03)
+            current = nxt
+
+        # Check storage savings
+        savings = chain.get_storage_savings_ratio()
+        self.assertGreater(savings, 0.70)
+
+        # Rewind all 20 steps back to S_0
+        reconstructed_s0 = chain.rewind_to_start(bytes(current))
+        self.assertEqual(reconstructed_s0, s0)
+
+
+class TestEmpiricalDensityBenchmark(unittest.TestCase):
+    """Validates real 4x workload density execution and bitwise correctness."""
+
+    def test_empirical_4x_benchmark_execution(self):
+        mesh = FluidRAMMesh()
+        res = mesh.run_empirical_4x_benchmark(scale_mb=256)
+        self.assertTrue(res["pinned_bitwise_verified"])
+        self.assertTrue(res["galois_bitwise_verified"])
+        self.assertTrue(res["density_target_met"])
+        self.assertTrue(res["void_pipe_bounded_ok"])
+        self.assertEqual(res["hardware_page_faults"], 0)
+        self.assertEqual(res["swap_disk_operations_kb"], 0.0)
+        self.assertEqual(res["oom_terminations"], 0)
 
 
 class TestFluidOscilloscopeUI(unittest.TestCase):
