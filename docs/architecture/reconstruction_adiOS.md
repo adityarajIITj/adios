@@ -98,3 +98,20 @@ The AdiOS system measures multiple empirical and simulated properties. To ensure
 
 > [!IMPORTANT]
 > **Provenance Imperative**: A modeled descriptor count is not a physical hardware bus-counter measurement. A Linux-derived model is not the Linux kernel running on bare-metal hardware. Clear provenance prevents conflating models with physical measurements.
+
+---
+
+## 1.4 Aspirational Mechanisms (Future Hardware & Systems Roadmap)
+
+To bridge the gap between software systems modeling and hardware deployment, the following aspirational mechanisms define the engineering targets of future AdiOS research:
+
+| Aspirational Mechanism | Technical Target | Prerequisite / Roadmap Phase |
+| :--- | :--- | :--- |
+| **Bare-Metal Linux Kernel Harness** | Executing actual compiled Linux kernel binaries on real hardware; reading live `/proc/vmstat`, `/proc/zoneinfo`, and hardware PMU performance counters via `perf_event_open`. | C Benchmark Harness Native Integration (Phase 13). |
+| **Physical CXL 3.0 / PIM Acceleration** | Executing in-slab morphic reductions on real CXL Type-2/Type-3 memory devices and near-memory computing logic rather than host CPU loops. | Post-CMF Hardware Phase. |
+| **Causal Materialization Framework (CMF)** | Formal kernel substrate defining $[C = f(A, B)]$, deterministic replay graphs, cost models, and derivation caches independent of producer processes. | Phases 2 through 13. |
+| **Empirical Entropy Compression** | Replacing static 2.8:1 tensegrity folding ratios with dynamic, content-aware entropy profiling (LZ4, Zstd, dictionary-based compaction). | Phase 7 & 10. |
+| **FPGA / Physical RV32 Silicon Boot** | Synthesizing the AdiOS RV32 instruction emulator into RTL for FPGA deployment or bare-metal RISC-V SoC execution. | Hardware Synthesis Sequence. |
+
+By documenting these aspirational horizons explicitly alongside implemented realities and modeled abstractions, AdiOS maintains strict scientific rigor and clarity of engineering scope.
+
