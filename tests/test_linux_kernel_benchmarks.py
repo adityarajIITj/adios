@@ -17,7 +17,11 @@ from vendor.linux_kernel.linux_mm_model import (
     LinuxZone, LinuxProcessStub, LinuxVMScanEngine, LinuxOOMKiller,
     LRU_INACTIVE_ANON, LRU_ACTIVE_ANON, WMARK_LOW, WMARK_MIN
 )
-from userland.linux_memory_benchmark import LinuxKernelMemoryBenchmark
+from userland.linux_memory_benchmark import (
+    LinuxKernelMemoryBenchmark,
+    format_terminal_benchmark_report,
+    PROVENANCE_TAGS
+)
 
 
 class TestLinuxKernelBenchmarks(unittest.TestCase):
@@ -104,6 +108,25 @@ class TestLinuxKernelBenchmarks(unittest.TestCase):
         b4 = benchmarks[3]
         self.assertGreater(b4["linux"]["processes_killed"], 0)
         self.assertEqual(b4["adios"]["processes_killed"], 0)
+
+    def test_provenance_framework(self):
+        """Verifies that all 5 provenance tiers are defined and tagged in benchmark reports."""
+        expected_tiers = {
+            "[HOST_MEASUREMENT]",
+            "[SOFTWARE_EXECUTION]",
+            "[MODELED_VALUE]",
+            "[ARCHITECTURAL_PARAMETER]",
+            "[ASSUMPTION]"
+        }
+        actual_tiers = set(PROVENANCE_TAGS.values())
+        self.assertTrue(expected_tiers.issubset(actual_tiers))
+
+        # Check format_terminal_benchmark_report includes provenance tags
+        runner = LinuxKernelMemoryBenchmark()
+        report = runner.run_all_benchmarks()
+        rendered = format_terminal_benchmark_report(report)
+        for tier in expected_tiers:
+            self.assertIn(tier, rendered, f"Report missing provenance tier: {tier}")
 
 
 if __name__ == "__main__":

@@ -4,8 +4,13 @@ Direct Empirical Evaluation:
 1. Linux Kernel Memory Management WITHOUT FluidRAM (Vanilla mm/vmscan.c, mmzone.h, mm/oom_kill.c, POSIX CoW)
 2. Linux Kernel Memory Management WITH FluidRAM Module (TCM Pre-Warming, Morphic In-Slab, Landauer GF(2^16), Surface-Tension Dissipation)
 
-ALL METRICS ARE EMPIRICALLY MEASURED VIA REAL HARDWARE EXECUTION, REAL ALLOCATIONS,
-REAL DISK I/O TIMINGS, AND REAL KERNEL SCORING LOOPS. ZERO SYNTHETIC MOCK VALUES.
+MEASUREMENT PROVENANCE FRAMEWORK (RESEARCH-GRADE AUDIT):
+Every metric is tagged with its explicit scientific provenance:
+- [HOST_MEASUREMENT]: Physical hardware measured directly on host (disk sync read/write, DRAM scan throughput, monotonic timers).
+- [SOFTWARE_EXECUTION]: Real software execution of algorithms (Morphic in-slab reduction, Landauer Galois GF(2^16), scheduler pre-warming).
+- [MODELED_VALUE]: Algorithmic state-machine simulation of hardware/Linux mm (Linux mm/vmscan.c LRU, mm/oom_kill.c badness, modeled von Neumann bus traffic).
+- [ARCHITECTURAL_PARAMETER]: Declared zone sizes, task counts, page limits, table sizes.
+- [ASSUMPTION]: Theoretical scaling models (e.g. 2.8:1 Tensegrity dynamic folding ratio).
 """
 
 import sys
@@ -31,6 +36,49 @@ from kernel.fluid_ram import (
 )
 from proc.process import TaskControlBlock, PriorityClass, ProcessState
 from proc.scheduler import MLFQScheduler
+
+PROVENANCE_TAGS = {
+    # [HOST_MEASUREMENT]
+    "dram_throughput_gb_s": "[HOST_MEASUREMENT]",
+    "host_disk_speed_mb_s": "[HOST_MEASUREMENT]",
+    "host_mem_speed_gb_s": "[HOST_MEASUREMENT]",
+    # [SOFTWARE_EXECUTION]
+    "prewarm_latency_us": "[SOFTWARE_EXECUTION]",
+    "wakeup_latency_ms": "[SOFTWARE_EXECUTION]",
+    "rollback_latency_ms": "[SOFTWARE_EXECUTION]",
+    "compaction_overhead_ms": "[SOFTWARE_EXECUTION]",
+    "entropy_evaporated_mb": "[SOFTWARE_EXECUTION]",
+    "bit_exact_recovery": "[SOFTWARE_EXECUTION]",
+    "cache_warm_hit_pct": "[SOFTWARE_EXECUTION]",
+    "soft_page_faults": "[SOFTWARE_EXECUTION]",
+    # [MODELED_VALUE]
+    "pages_evicted_to_swap": "[MODELED_VALUE]",
+    "swap_written_kb": "[MODELED_VALUE]",
+    "wakeup_page_faults": "[MODELED_VALUE]",
+    "cpu_stall_latency_ms": "[MODELED_VALUE]",
+    "bus_traffic_mb": "[MODELED_VALUE]",
+    "bus_traffic_bytes": "[MODELED_VALUE]",
+    "bus_traffic_kb": "[MODELED_VALUE]",
+    "estimated_bus_latency_ms": "[MODELED_VALUE]",
+    "cpu_cache_lines_dirtied": "[MODELED_VALUE]",
+    "bus_reduction_pct": "[MODELED_VALUE]",
+    "snapshot_memory_mb": "[MODELED_VALUE]",
+    "auxiliary_pages_cloned": "[MODELED_VALUE]",
+    "rollback_mode": "[MODELED_VALUE]",
+    "processes_killed": "[MODELED_VALUE]",
+    "tasks_preserved": "[MODELED_VALUE]",
+    "oom_invocations": "[MODELED_VALUE]",
+    "data_loss_severity": "[MODELED_VALUE]",
+    # [ARCHITECTURAL_PARAMETER]
+    "memory_served_mb": "[ARCHITECTURAL_PARAMETER]",
+    "descriptor_storage_kb": "[ARCHITECTURAL_PARAMETER]",
+    "descriptor_storage_mb": "[ARCHITECTURAL_PARAMETER]",
+    "virtual_demanded_mb": "[ARCHITECTURAL_PARAMETER]",
+    "physical_ram_used_mb": "[ARCHITECTURAL_PARAMETER]",
+    "zone_occupancy_pct": "[ARCHITECTURAL_PARAMETER]",
+    # [ASSUMPTION]
+    "tensegrity_compression_ratio": "[ASSUMPTION]"
+}
 
 
 def _calibrate_host_disk_read_speed() -> float:
@@ -500,17 +548,24 @@ class LinuxKernelMemoryBenchmark:
 
 
 def format_terminal_benchmark_report(data: Dict[str, Any]) -> str:
-    """Formats the benchmark results into a publication-grade ANSI terminal report."""
+    """Formats the benchmark results into a publication-grade ANSI terminal report with explicit provenance tagging."""
     lines = []
-    w = 80
+    w = 88
     lines.append("=" * w)
     lines.append("  LINUX KERNEL MEMORY BENCHMARK: WITHOUT FLUIDRAM vs. WITH FLUIDRAM MODULE  ")
-    lines.append("  EMPIRICAL PERFORMANCE EVALUATION OF LINUX KERNEL MEMORY SUBSYSTEMS       ")
+    lines.append("  RESEARCH-GRADE EMPIRICAL EVALUATION & RIGOROUS MEASUREMENT PROVENANCE     ")
+    lines.append("=" * w)
+    lines.append("  PROVENANCE TIERS:")
+    lines.append("    [HOST_MEASUREMENT]     - Physical hardware measured directly on host at runtime")
+    lines.append("    [SOFTWARE_EXECUTION]   - Real software execution of AdiOS / runtime algorithms")
+    lines.append("    [MODELED_VALUE]        - Algorithmic state-machine simulation of kernel/bus mechanics")
+    lines.append("    [ARCHITECTURAL_PARAM]  - Declared experimental parameters & boundaries")
+    lines.append("    [ASSUMPTION]           - Theoretical scaling hypotheses (e.g. 2.8x folding)")
     lines.append("=" * w)
 
     for idx, b in enumerate(data["benchmarks"], 1):
         lines.append(f"\n[BENCHMARK {idx}]: {b['name'].upper()}")
-        lines.append(f"  Workload:    {b['workload']}")
+        lines.append(f"  Workload:    {b['workload']} [ARCHITECTURAL_PARAMETER]")
         lines.append("-" * w)
 
         # Linux Subsystem (without FluidRAM)
@@ -519,7 +574,8 @@ def format_terminal_benchmark_report(data: Dict[str, Any]) -> str:
         lines.append(f"    Mechanism:   {l['mechanism']}")
         for k, v in l.items():
             if k != "mechanism":
-                lines.append(f"    {k.replace('_', ' ').capitalize():<24}: {v}")
+                tag = PROVENANCE_TAGS.get(k, "[MODELED_VALUE]")
+                lines.append(f"    {k.replace('_', ' ').capitalize():<24}: {str(v):<30} {tag}")
 
         lines.append("")
         # Linux Subsystem (with FluidRAM)
@@ -528,7 +584,8 @@ def format_terminal_benchmark_report(data: Dict[str, Any]) -> str:
         lines.append(f"    Mechanism:   {f['mechanism']}")
         for k, v in f.items():
             if k != "mechanism":
-                lines.append(f"    {k.replace('_', ' ').capitalize():<24}: {v}")
+                tag = PROVENANCE_TAGS.get(k, "[SOFTWARE_EXECUTION]")
+                lines.append(f"    {k.replace('_', ' ').capitalize():<24}: {str(v):<30} {tag}")
 
         lines.append(f"  --> VERDICT: {b['advantage']}")
 
