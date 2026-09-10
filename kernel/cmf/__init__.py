@@ -32,6 +32,7 @@ from kernel.cmf.remat_scheduler import (
     MaterializationPolicy,
     RematerializationScheduler
 )
+from kernel.cmf.fluidram_bridge import FluidRAMCMFBridge
 
 __all__ = [
     "MaterializationState",
@@ -52,5 +53,6 @@ __all__ = [
     "MaterializationBudget",
     "RematerializationCostEngine",
     "MaterializationPolicy",
-    "RematerializationScheduler"
+    "RematerializationScheduler",
+    "FluidRAMCMFBridge"
 ]
