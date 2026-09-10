@@ -84,6 +84,59 @@ class ChronosEngine:
         # Telemetry
         self.total_frames_captured: int = 0
         self.reality_forks_count: int = 0
+        self.divergence_forks_count: int = 0
+        self.tcm_engine: Optional[Any] = None
+
+    def connect_tcm_engine(self, tcm_engine: Any):
+        """Connects Chronos time-travel engine to Temporal Causal Memory engine."""
+        self.tcm_engine = tcm_engine
+
+    def get_adaptive_capture_interval(self) -> float:
+        """
+        Dynamically adjusts checkpoint frequency based on active TRC horizon and confidence:
+        High-priority tasks approaching imminent wakeup receive increased checkpoint granularity.
+        """
+        if not self.tcm_engine or not self.tcm_engine.active_contracts:
+            return self.capture_interval_s
+
+        now = time.time()
+        min_dt = 999999.0
+        for trc in self.tcm_engine.active_contracts.values():
+            dt = trc.wake_horizon - now
+            if 0 < dt < min_dt:
+                min_dt = dt
+
+        if min_dt <= 2.0:
+            return 1.0 / 60.0  # 60 FPS fine-grained checkpoints
+        elif min_dt <= 10.0:
+            return 1.0 / 30.0  # 30 FPS standard
+        return 1.0 / 15.0      # 15 FPS relaxed
+
+    def fork_reality_on_divergence(self, desktop: Any, divergence_info: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Closed-Loop Reality Forking on Execution Divergence:
+        If an unpredicted memory access or premature task wakeup occurs, Chronos
+        rolls back to the last verified checkpoint and forks reality to re-replay forward,
+        converting prediction misalignments into supervised online learning signals.
+        """
+        if not self.frames:
+            return False
+
+        # Roll back to the penultimate verified state
+        target_idx = max(0, len(self.frames) - 2)
+        self.is_active = True
+        self.scrub_to_index(target_idx, desktop)
+        self.fork_reality(desktop)
+        self.divergence_forks_count += 1
+
+        if divergence_info and "pid" in divergence_info and self.tcm_engine:
+            pid = divergence_info["pid"]
+            if pid in self.tcm_engine.active_contracts:
+                self.tcm_engine.active_contracts[pid].update_confidence(False)
+
+        if hasattr(desktop, "status_message"):
+            desktop.status_message = "Chronos Divergence Detected. Reality forked to last verified checkpoint."
+        return True
 
     @property
     def frame_count(self) -> int:

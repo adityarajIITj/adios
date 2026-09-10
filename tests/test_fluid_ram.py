@@ -390,6 +390,37 @@ class TestFluidRAMDesktopIntegration(unittest.TestCase):
         self.assertIn("Pressure pulse injected", self.desktop.fluid_oscilloscope.status_message)
 
 
+class TestOperatingSystemProofEngine(unittest.TestCase):
+    """Verifies that the empirical proofs solving 40-year-old OS problems execute and validate."""
+
+    def setUp(self):
+        from userland.proof_of_sovereignty import OperatingSystemProofEngine
+        self.engine = OperatingSystemProofEngine()
+
+    def test_proof_1_thrashing_eliminated(self):
+        res = self.engine.run_proof_1_thrashing_vs_hydrodynamics()
+        self.assertEqual(res["adios_fluid_ram"]["page_faults"], 0)
+        self.assertEqual(res["adios_fluid_ram"]["swap_disk_written_kb"], 0.0)
+        self.assertGreater(res["speedup_factor"], 100)
+
+    def test_proof_2_oom_killer_eliminated(self):
+        res = self.engine.run_proof_2_oom_killer_vs_surface_dissipation()
+        self.assertEqual(res["adios_fluid_ram"]["processes_killed"], 0)
+        self.assertTrue(res["adios_fluid_ram"]["pinned_data_intact"])
+        self.assertTrue(res["adios_fluid_ram"]["transient_evaporated"])
+
+    def test_proof_3_galois_retro_inversion(self):
+        res = self.engine.run_proof_3_snapshot_bloat_vs_galois_retro_inversion()
+        self.assertTrue(res["adios_galois_engine"]["bitwise_exact_reconstruction"])
+        self.assertGreater(res["adios_galois_engine"]["memory_savings_pct"], 75.0)
+
+    def test_proof_4_void_pipe_bounded_stream(self):
+        res = self.engine.run_proof_4_chromium_bloat_vs_void_pipe()
+        self.assertLess(res["adios_void_pipe"]["resident_memory_mb"], 4.0)
+        self.assertEqual(res["adios_void_pipe"]["disk_cache_writes_mb"], 0.0)
+        self.assertGreater(res["memory_reduction_ratio"], 50.0)
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -5,7 +5,7 @@ Implements enterprise-grade preemptive multi-priority scheduling, dynamic quantu
 anti-starvation priority boosting, and timer-driven task wakeup.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from collections import deque
 from proc.process import TaskControlBlock, ProcessState, PriorityClass
 
@@ -26,6 +26,8 @@ class MLFQScheduler:
         self.current_tick: int = 0
         self.ticks_since_boost: int = 0
         self.context_switch_count: int = 0
+        self.tcm_engine: Optional[Any] = None
+        self.prewarm_delta_ticks: int = 2
 
     def add_process(self, proc: TaskControlBlock):
         """Enrolls a new or forked process into the scheduler."""
@@ -33,6 +35,10 @@ class MLFQScheduler:
         proc.state = ProcessState.READY
         prio_idx = int(proc.priority)
         self.queues[prio_idx].append(proc)
+        if proc.active_trc is None:
+            trc = proc.emit_trc(wake_horizon=float(self.current_tick + 1))
+            if self.tcm_engine:
+                self.tcm_engine.register_contract(trc)
 
     def remove_process(self, pid: int):
         """Removes a dead or reclaimed process from all scheduler queues."""
@@ -42,6 +48,8 @@ class MLFQScheduler:
             if proc in self.queues[prio_idx]:
                 self.queues[prio_idx].remove(proc)
             del self.all_processes[pid]
+            if self.tcm_engine:
+                self.tcm_engine.unregister_contract(pid)
             if self.current_process and self.current_process.pid == pid:
                 self.current_process = None
 
@@ -49,13 +57,21 @@ class MLFQScheduler:
         """
         Invoked on each hardware timer interrupt (e.g. 100 Hz / 10ms).
         Updates quantum, wakes sleeping tasks, performs priority boosting,
-        and returns next process to execute.
+        evaluates TCM pre-warming contracts, and returns next process to execute.
         """
         self.current_tick += 1
         self.ticks_since_boost += 1
 
         # 1. Wake up sleeping processes whose timer expired
         self._wake_sleeping_tasks()
+
+        # 1.5. Evaluate TCM Pre-Warming Contracts
+        for proc in self.all_processes.values():
+            if proc.state == ProcessState.SLEEPING and proc.active_trc and not proc.active_trc.prewarmed:
+                if proc.active_trc.is_prewarm_due(float(self.current_tick), float(self.prewarm_delta_ticks)):
+                    if self.tcm_engine:
+                        self.tcm_engine.prewarm_task(proc.pid, float(self.current_tick))
+                    proc.active_trc.prewarmed = True
 
         # 2. Priority Boost: Prevent starvation by promoting all tasks to Band 0/1
         if self.ticks_since_boost >= PRIORITY_BOOST_TICKS:
@@ -84,6 +100,18 @@ class MLFQScheduler:
                 self.context_switch_count += 1
                 next_proc.state = ProcessState.RUNNING
                 next_proc.metrics.context_switches += 1
+                
+                # TCM Dispatch Accounting
+                if next_proc.active_trc and getattr(next_proc.active_trc, "is_suspended", False):
+                    next_proc.active_trc.is_suspended = False
+                    if next_proc.active_trc.prewarmed:
+                        next_proc.metrics.trc_warm_hits += 1
+                        next_proc.metrics.stall_time_saved_us += next_proc.active_trc.recon_cost
+                        next_proc.active_trc.update_confidence(True)
+                    else:
+                        next_proc.metrics.trc_cold_misses += 1
+                        next_proc.active_trc.update_confidence(False)
+                
                 self.current_process = next_proc
 
         return self.current_process
@@ -131,19 +159,35 @@ class MLFQScheduler:
                 self.queues[1].append(p)
 
     def sleep_current(self, ticks: int):
-        """Blocks current process for specified number of ticks."""
+        """Blocks current process for specified number of ticks and emits TRC."""
         if self.current_process:
             self.current_process.state = ProcessState.SLEEPING
             self.current_process.sleep_until_tick = self.current_tick + ticks
+            trc = self.current_process.emit_trc(
+                wake_horizon=float(self.current_process.sleep_until_tick),
+                recon_cost_us=self.current_process.historical_recon_latency_us
+            )
+            trc.is_suspended = True
+            if self.tcm_engine:
+                self.tcm_engine.register_contract(trc)
             self.current_process = None
 
     def yield_current(self):
-        """Voluntary yield: Current process relinquishes CPU without priority penalty."""
+        """Voluntary yield: Current process relinquishes CPU without priority penalty and emits TRC."""
         if self.current_process and self.current_process.state == ProcessState.RUNNING:
             curr = self.current_process
             curr.state = ProcessState.READY
             curr.quantum_left = self._get_quantum_for_priority(curr.priority)
             self.queues[int(curr.priority)].append(curr)
+            depth = sum(len(q) for q in self.queues)
+            wake_tick = self.current_tick + max(1, depth * 5)
+            trc = curr.emit_trc(
+                wake_horizon=float(wake_tick),
+                recon_cost_us=curr.historical_recon_latency_us
+            )
+            trc.is_suspended = True
+            if self.tcm_engine:
+                self.tcm_engine.register_contract(trc)
             self.current_process = None
 
     def get_queue_depth(self, priority: PriorityClass) -> int:

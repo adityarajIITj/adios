@@ -27,6 +27,9 @@ from vm.vm import VM
 def test_proc_block_h_suite():
     print("[Test Proc Block H] Initializing Process Management, Signals & IPC Verification...")
 
+    # Reset PID counter for clean test isolation
+    TaskControlBlock._next_pid = 1
+
     # 1. Test Process TCB & Hierarchy
     print("  -> Testing Process Control Block & Hierarchy...")
     init_task = TaskControlBlock("init", parent_pid=0, priority=PriorityClass.REALTIME)

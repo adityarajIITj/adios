@@ -10,7 +10,9 @@ STRICT ZERO EMOJI POLICY ENFORCED.
 """
 
 import time
+import math
 from enum import IntEnum
+from collections import deque
 from typing import Dict, List, Optional, Any, Tuple
 
 class ProcessState(IntEnum):
@@ -27,6 +29,74 @@ class PriorityClass(IntEnum):
     HIGH     = 1  # Interactive UI, Window Manager, Shell
     NORMAL   = 2  # Standard userland computing tasks
     IDLE     = 3  # Background housekeeping, entropy harvesting, memory compaction
+
+class TemporalResidencyContract:
+    """
+    Temporal Residency Contract (TRC):
+    Formally couples CPU execution scheduling horizons with physical memory residency:
+    TRC_i = (T_i, W_i, P_i, kappa_i, R_i, sigma_i)
+    - wake_horizon: Predicted horizon (in ticks or timestamp) until next execution.
+    - working_set: Predicted list of physical slab IDs or virtual page ranges.
+    - priority: PriorityClass of the owning process.
+    - kappa: Hydraulic conductivity weight governing FluidRAM flow urgency.
+    - recon_cost: Refault and reconstruction cost if evicted (microseconds).
+    - confidence: Prediction confidence sigma in [0.0, 1.0], updated online via Bayesian smoothing.
+    """
+    def __init__(
+        self,
+        pid: int,
+        wake_horizon: float,
+        working_set: Optional[List[int]] = None,
+        priority: PriorityClass = PriorityClass.NORMAL,
+        kappa: float = 1.0,
+        recon_cost: float = 250.0,
+        confidence: float = 0.8,
+        owner_pool: str = "USER_APPS"
+    ):
+        self.pid = pid
+        self.wake_horizon = float(wake_horizon)
+        self.working_set: List[int] = list(working_set) if working_set is not None else []
+        self.priority = priority
+        self.kappa = float(kappa)
+        self.recon_cost = float(recon_cost)
+        self.confidence = max(0.05, min(1.0, float(confidence)))
+        self.creation_time = time.time()
+        self.prewarmed = False
+        self.owner_pool = owner_pool
+        self.is_suspended = False
+
+    def evaluate_hold_pressure(self, t_now: float, tau: float = 1000.0) -> float:
+        """
+        Computes forward-looking expected future stall avoided per byte held:
+        Eviction_Cost = Priority_weight * sigma_i * R_i * exp(-(T_i - t_now) / tau)
+        """
+        prio_weights = {
+            PriorityClass.REALTIME: 4.0,
+            PriorityClass.HIGH: 2.0,
+            PriorityClass.NORMAL: 1.0,
+            PriorityClass.IDLE: 0.25
+        }
+        p_weight = prio_weights.get(self.priority, 1.0)
+        dt = self.wake_horizon - t_now
+        if dt <= 0:
+            decay = 1.0
+        else:
+            decay = math.exp(-dt / max(1.0, tau))
+        return p_weight * self.confidence * self.recon_cost * decay
+
+    def update_confidence(self, actual_hit: bool, learning_rate: float = 0.1) -> float:
+        """
+        Online Bayesian exponential smoothing update:
+        sigma_{t+1} = sigma_t + eta * (target - sigma_t)
+        """
+        target = 1.0 if actual_hit else 0.0
+        self.confidence += learning_rate * (target - self.confidence)
+        self.confidence = max(0.05, min(1.0, self.confidence))
+        return self.confidence
+
+    def is_prewarm_due(self, t_now: float, delta: float) -> bool:
+        """Checks if current time t_now has crossed pre-warming horizon T_i - Delta_i."""
+        return t_now >= (self.wake_horizon - delta)
 
 # POSIX waitpid options
 WNOHANG    = 0x00000001
@@ -131,6 +201,10 @@ class ProcessMetrics:
         self.page_faults = 0
         self.io_bytes_read = 0
         self.io_bytes_written = 0
+        self.trc_predictions_total = 0
+        self.trc_warm_hits = 0
+        self.trc_cold_misses = 0
+        self.stall_time_saved_us = 0.0
 
 class VirtualMemoryArea:
     """
@@ -210,6 +284,40 @@ class TaskControlBlock:
         # Sleep / Block tracking
         self.sleep_until_tick = 0
         self.wait_channel: Optional[str] = None
+
+        # Temporal Causal Memory (TCM) & Temporal Residency Contract (TRC)
+        self.active_trc: Optional[TemporalResidencyContract] = None
+        self.causal_working_set: List[int] = []
+        self.historical_wake_intervals: deque = deque(maxlen=16)
+        self.historical_recon_latency_us: float = 150.0
+
+    def emit_trc(
+        self,
+        wake_horizon: float,
+        working_set: Optional[List[int]] = None,
+        recon_cost_us: float = 250.0,
+        kappa: float = 1.0,
+        owner_pool: str = "UserApps"
+    ) -> TemporalResidencyContract:
+        """
+        Emits a formal Temporal Residency Contract when yielding, sleeping, or blocking.
+        """
+        ws = working_set if working_set is not None else list(self.causal_working_set)
+        conf = self.active_trc.confidence if self.active_trc else 0.8
+        trc = TemporalResidencyContract(
+            pid=self.pid,
+            wake_horizon=wake_horizon,
+            working_set=ws,
+            priority=self.priority,
+            kappa=kappa,
+            recon_cost=recon_cost_us,
+            confidence=conf,
+            owner_pool=owner_pool
+        )
+        trc.is_suspended = False
+        self.active_trc = trc
+        self.metrics.trc_predictions_total += 1
+        return trc
 
     def _init_default_fds(self):
         """Initializes standard I/O file descriptors."""
@@ -371,6 +479,10 @@ class TaskControlBlock:
         # Inherit signal state
         child.signal_blocked_mask = self.signal_blocked_mask
         child.signal_handlers = dict(self.signal_handlers)
+
+        # Inherit TCM causal working set configuration
+        child.causal_working_set = list(self.causal_working_set)
+        child.historical_recon_latency_us = self.historical_recon_latency_us
 
         # Establish hierarchy
         child.parent = self
