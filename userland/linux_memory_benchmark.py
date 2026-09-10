@@ -42,6 +42,10 @@ PROVENANCE_TAGS = {
     "dram_throughput_gb_s": "[HOST_MEASUREMENT]",
     "host_disk_speed_mb_s": "[HOST_MEASUREMENT]",
     "host_mem_speed_gb_s": "[HOST_MEASUREMENT]",
+    "live_os_page_faults": "[HOST_MEASUREMENT]",
+    "working_set_delta_kb": "[HOST_MEASUREMENT]",
+    "physical_allocation_ms": "[HOST_MEASUREMENT]",
+    "harness_mode": "[HOST_MEASUREMENT]",
     # [SOFTWARE_EXECUTION]
     "prewarm_latency_us": "[SOFTWARE_EXECUTION]",
     "wakeup_latency_ms": "[SOFTWARE_EXECUTION]",
@@ -129,12 +133,219 @@ def _calibrate_host_memory_read_speed() -> float:
     return _calibrate_host_memory_read_speed._cached_speed
 
 
+class NativeKernelMemoryHarness:
+    """
+    Native physical operating system memory harness.
+    Samples live OS performance counters and performs real hardware allocations:
+    - Windows: PSAPI GetProcessMemoryInfo (PageFaultCount, WorkingSetSize, PagefileUsage),
+      and kernel32 VirtualAlloc / VirtualFree.
+    - POSIX (Linux/macOS): resource.getrusage (ru_minflt, ru_majflt, ru_maxrss),
+      /proc/self/status (VmSwap), and mmap.
+    - Fallback: Bytearray buffer manipulation and monotonic timers.
+    """
+
+    def __init__(self):
+        self.platform = sys.platform
+        self.has_native = False
+        self._init_os_bindings()
+
+    def _init_os_bindings(self):
+        if self.platform == "win32":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                    _fields_ = [
+                        ("cb", wintypes.DWORD),
+                        ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t),
+                        ("PeakPagefileUsage", ctypes.c_size_t),
+                    ]
+
+                self._PMC = PROCESS_MEMORY_COUNTERS
+                self._psapi = ctypes.WinDLL("psapi")
+                self._kernel32 = ctypes.WinDLL("kernel32")
+                self._psapi.GetProcessMemoryInfo.argtypes = [
+                    wintypes.HANDLE, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), wintypes.DWORD
+                ]
+                self._psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+                self._kernel32.VirtualAlloc.restype = ctypes.c_void_p
+                self._kernel32.VirtualAlloc.argtypes = [
+                    ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD, wintypes.DWORD
+                ]
+                self._kernel32.VirtualFree.restype = wintypes.BOOL
+                self._kernel32.VirtualFree.argtypes = [
+                    ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD
+                ]
+                self.has_native = True
+            except Exception:
+                self.has_native = False
+        elif self.platform.startswith("linux") or self.platform == "darwin":
+            try:
+                import resource
+                self._resource = resource
+                self.has_native = True
+            except Exception:
+                self.has_native = False
+
+    def sample_counters(self) -> Dict[str, Any]:
+        """Reads live physical operating system kernel performance counters."""
+        ts = time.perf_counter() * 1000.0
+        if self.has_native and self.platform == "win32":
+            try:
+                import ctypes
+                pmc = self._PMC()
+                pmc.cb = ctypes.sizeof(self._PMC)
+                handle = self._kernel32.GetCurrentProcess()
+                if self._psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
+                    return {
+                        "timestamp_ms": ts,
+                        "page_faults": int(pmc.PageFaultCount),
+                        "working_set_kb": int(pmc.WorkingSetSize // 1024),
+                        "peak_working_set_kb": int(pmc.PeakWorkingSetSize // 1024),
+                        "swap_kb": int(pmc.PagefileUsage // 1024),
+                        "mode": "WINDOWS_NATIVE_PSAPI",
+                        "is_live_kernel": True
+                    }
+            except Exception:
+                pass
+        elif self.has_native and (self.platform.startswith("linux") or self.platform == "darwin"):
+            try:
+                u = self._resource.getrusage(self._resource.RUSAGE_SELF)
+                vmswap_kb = 0
+                if os.path.exists("/proc/self/status"):
+                    with open("/proc/self/status", "r") as f:
+                        for line in f:
+                            if line.startswith("VmSwap:"):
+                                vmswap_kb = int(line.split()[1])
+                                break
+                rss_kb = int(u.ru_maxrss if self.platform.startswith("linux") else u.ru_maxrss // 1024)
+                return {
+                    "timestamp_ms": ts,
+                    "page_faults": int(u.ru_minflt + u.ru_majflt),
+                    "minor_faults": int(u.ru_minflt),
+                    "major_faults": int(u.ru_majflt),
+                    "working_set_kb": rss_kb,
+                    "peak_working_set_kb": rss_kb,
+                    "swap_kb": vmswap_kb,
+                    "mode": "POSIX_NATIVE_RUSAGE",
+                    "is_live_kernel": True
+                }
+            except Exception:
+                pass
+
+        return {
+            "timestamp_ms": ts,
+            "page_faults": 0,
+            "working_set_kb": 0,
+            "peak_working_set_kb": 0,
+            "swap_kb": 0,
+            "mode": "SIMULATED_VM",
+            "is_live_kernel": False
+        }
+
+    def allocate_and_touch(self, size_bytes: int) -> Dict[str, Any]:
+        """
+        Allocates physical memory via OS kernel APIs, touches every 4KB page
+        to trigger demand-zero minor page faults, and measures the empirical delta.
+        """
+        page_size = 4096
+        pages = max(1, size_bytes // page_size)
+        c_pre = self.sample_counters()
+        t0 = time.perf_counter()
+
+        if self.has_native and self.platform == "win32":
+            import ctypes
+            MEM_COMMIT = 0x1000
+            MEM_RESERVE = 0x2000
+            PAGE_READWRITE = 0x04
+            MEM_RELEASE = 0x8000
+            ptr = self._kernel32.VirtualAlloc(None, size_bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
+            if ptr:
+                for offset in range(0, size_bytes, page_size):
+                    ctypes.memset(ptr + offset, 0x55, 1)
+                c_mid = self.sample_counters()
+                self._kernel32.VirtualFree(ptr, 0, MEM_RELEASE)
+                c_post = self.sample_counters()
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                delta_faults = max(0, c_mid["page_faults"] - c_pre["page_faults"])
+                delta_ws = max(0, c_mid["working_set_kb"] - c_pre["working_set_kb"])
+                return {
+                    "allocated_bytes": size_bytes,
+                    "pages_touched": pages,
+                    "delta_page_faults": delta_faults,
+                    "delta_working_set_kb": delta_ws,
+                    "elapsed_ms": round(elapsed_ms, 3),
+                    "harness_mode": "WINDOWS_VIRTUAL_ALLOC",
+                    "is_empirical": True
+                }
+        elif self.has_native and (self.platform.startswith("linux") or self.platform == "darwin"):
+            try:
+                import mmap
+                mm = mmap.mmap(-1, size_bytes, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS, prot=mmap.PROT_READ | mmap.PROT_WRITE)
+                for offset in range(0, size_bytes, page_size):
+                    mm[offset] = 0x55
+                c_mid = self.sample_counters()
+                mm.close()
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                delta_faults = max(0, c_mid["page_faults"] - c_pre["page_faults"])
+                delta_ws = max(0, c_mid["working_set_kb"] - c_pre["working_set_kb"])
+                return {
+                    "allocated_bytes": size_bytes,
+                    "pages_touched": pages,
+                    "delta_page_faults": delta_faults,
+                    "delta_working_set_kb": delta_ws,
+                    "elapsed_ms": round(elapsed_ms, 3),
+                    "harness_mode": "POSIX_MMAP",
+                    "is_empirical": True
+                }
+            except Exception:
+                pass
+
+        # Portable Fallback
+        buf = bytearray(size_bytes)
+        for offset in range(0, size_bytes, page_size):
+            buf[offset] = 0x55
+        c_mid = self.sample_counters()
+        del buf
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        return {
+            "allocated_bytes": size_bytes,
+            "pages_touched": pages,
+            "delta_page_faults": pages,
+            "delta_working_set_kb": size_bytes // 1024,
+            "elapsed_ms": round(elapsed_ms, 3),
+            "harness_mode": "PYTHON_BUFFER_FALLBACK",
+            "is_empirical": False
+        }
+
+
+_GLOBAL_HARNESS: Optional[NativeKernelMemoryHarness] = None
+
+
+def get_global_memory_harness() -> NativeKernelMemoryHarness:
+    """Returns the process-wide NativeKernelMemoryHarness singleton."""
+    global _GLOBAL_HARNESS
+    if _GLOBAL_HARNESS is None:
+        _GLOBAL_HARNESS = NativeKernelMemoryHarness()
+    return _GLOBAL_HARNESS
+
+
 class LinuxKernelMemoryBenchmark:
     """Executes empirical benchmarks comparing Linux kernel mm without FluidRAM vs with FluidRAM."""
 
     def __init__(self):
         self.disk_speed_mb_s = _calibrate_host_disk_read_speed()
         self.mem_speed_gb_s = _calibrate_host_memory_read_speed()
+        self.harness = get_global_memory_harness()
 
     def run_benchmark_1_sleeping_wake_refault(self, task_count: int = 10, pages_per_task: int = 128, pressure: str = "HIGH") -> Dict[str, Any]:
         """

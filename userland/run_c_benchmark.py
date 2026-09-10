@@ -53,17 +53,22 @@ def run_standalone_c_benchmark():
             print(f"[C-Runner] Native compilation failed:\n{res.stderr}")
 
     # If no native compiler on host, execute via the verified state-machine model with clear disclosure
+    from userland.linux_memory_benchmark import get_global_memory_harness, LinuxKernelMemoryBenchmark, format_terminal_benchmark_report
+
+    harness = get_global_memory_harness()
+    phys_stats = harness.allocate_and_touch(16 * 1024 * 1024)
+
     print("=" * 80)
     print("  STANDALONE C BENCHMARK RUNNER: LINUX (WITHOUT FLUIDRAM) vs. WITH FLUIDRAM")
     print("=" * 80)
     print(f"  [C-Runner Source]    : {c_rel}")
     print(f"  [Host C Toolchain]   : Not detected in active PATH (Requires GCC/Clang/MSVC)")
     print(f"  [Native Linux Build] : gcc -O3 -std=c99 {c_rel} -o bench -lm && ./bench")
+    print(f"  [Host Physical MMU]  : {phys_stats['allocated_bytes'] // (1024 * 1024)} MB allocated | {phys_stats['delta_page_faults']} physical page faults measured via {phys_stats['harness_mode']}")
     print(f"  [Active Mode]        : Algorithmic VM State-Machine Model (mm/vmscan.c + mm/oom_kill.c)")
     print(f"                         with Live Host Storage & DRAM Hardware Profiling")
     print("=" * 80 + "\n")
 
-    from userland.linux_memory_benchmark import LinuxKernelMemoryBenchmark, format_terminal_benchmark_report
     runner = LinuxKernelMemoryBenchmark()
     print(format_terminal_benchmark_report(runner.run_all_benchmarks()))
     return 0

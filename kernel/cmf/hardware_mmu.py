@@ -144,6 +144,14 @@ class CausalMMU:
         self.standard_page_faults += 1
         raise MemoryError(f"Standard page fault: non-causal unmapped page at VPN {vpn}")
 
+    def handle_causal_fault(self, vpn: int) -> bool:
+        """Convenience trap handler returning True if causal fault was successfully resolved."""
+        try:
+            _, status = self.translate_and_read(vpn)
+            return status in ("FAULT_CAUSAL_RESOLVED", "TLB_HIT")
+        except Exception:
+            return False
+
     def evaporate_page(self, vpn: int) -> bool:
         """
         Hardware/OS clears the physical frame of an evaporable page.

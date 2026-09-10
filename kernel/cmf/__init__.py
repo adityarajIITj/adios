@@ -62,7 +62,7 @@ from kernel.cmf.security_guard import (
     ProcessSecurityContext,
     CMFSecurityGuard
 )
-from kernel.cmf.unified_kernel import AdiOSUnifiedKernel
+from kernel.cmf.unified_kernel import AdiOSUnifiedKernel, FirstImplementationSequence
 
 __all__ = [
     "MaterializationState",
@@ -104,5 +104,6 @@ __all__ = [
     "CausalPermission",
     "ProcessSecurityContext",
     "CMFSecurityGuard",
-    "AdiOSUnifiedKernel"
+    "AdiOSUnifiedKernel",
+    "FirstImplementationSequence"
 ]
