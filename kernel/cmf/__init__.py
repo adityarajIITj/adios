@@ -23,6 +23,15 @@ from kernel.cmf.derivation_pipeline import (
     DerivationPipeline,
     DAGExecutionEngine
 )
+from kernel.cmf.cost_model import (
+    CostModelParameters,
+    MaterializationBudget,
+    RematerializationCostEngine
+)
+from kernel.cmf.remat_scheduler import (
+    MaterializationPolicy,
+    RematerializationScheduler
+)
 
 __all__ = [
     "MaterializationState",
@@ -38,5 +47,10 @@ __all__ = [
     "OpReduceSum",
     "OpGaloisPermute",
     "DerivationPipeline",
-    "DAGExecutionEngine"
+    "DAGExecutionEngine",
+    "CostModelParameters",
+    "MaterializationBudget",
+    "RematerializationCostEngine",
+    "MaterializationPolicy",
+    "RematerializationScheduler"
 ]
