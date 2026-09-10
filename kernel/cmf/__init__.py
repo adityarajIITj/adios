@@ -14,6 +14,15 @@ from kernel.cmf.causal_object import (
     compute_derivation_hash
 )
 from kernel.cmf.object_store import CausalObjectStore
+from kernel.cmf.derivation_pipeline import (
+    DerivationOp,
+    OpMap,
+    OpFilter,
+    OpReduceSum,
+    OpGaloisPermute,
+    DerivationPipeline,
+    DAGExecutionEngine
+)
 
 __all__ = [
     "MaterializationState",
@@ -22,5 +31,12 @@ __all__ = [
     "CausalMemoryObject",
     "CausalObject",
     "compute_derivation_hash",
-    "CausalObjectStore"
+    "CausalObjectStore",
+    "DerivationOp",
+    "OpMap",
+    "OpFilter",
+    "OpReduceSum",
+    "OpGaloisPermute",
+    "DerivationPipeline",
+    "DAGExecutionEngine"
 ]
