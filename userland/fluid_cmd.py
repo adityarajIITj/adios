@@ -168,9 +168,27 @@ def run_fluid_cmd(args: List[str]) -> str:
             f" Verdict:                     {p['verdict']}\n"
             "================================================================================"
         )
+    elif args[0] in ("linux-import", "import-linux"):
+        from vendor.linux_kernel.downloader import import_linux_kernel_sources
+        res = import_linux_kernel_sources()
+        lines = [
+            "================================================================================",
+            "          LINUX KERNEL MEMORY MANAGEMENT SOURCE IMPORT (torvalds/linux)         ",
+            "================================================================================"
+        ]
+        for name, info in res.items():
+            b = info.get("bytes", 0)
+            st = info.get("status", "UNKNOWN")
+            lines.append(f"  {name:<16}: [{st}] ({b:,} bytes imported from torvalds/linux)")
+        lines.append("================================================================================")
+        return "\n".join(lines)
+    elif args[0] in ("linux-bench", "linux", "kernel-bench", "linux-comp"):
+        from userland.linux_memory_benchmark import LinuxKernelMemoryBenchmark, format_terminal_benchmark_report
+        runner = LinuxKernelMemoryBenchmark()
+        return format_terminal_benchmark_report(runner.run_all_benchmarks())
     elif args[0] in ("--help", "-h", "help"):
         return (
-            "Usage: fluid [status | --challenge | proof | trc | morph | thermo | causal | compact | pulse]\n\n"
+            "Usage: fluid [status | --challenge | proof | trc | morph | thermo | causal | linux-import | linux-bench | compact | pulse]\n\n"
             "Options:\n"
             "  status                   Display real-time hydrodynamic pool metrics and Void-Pipe stats\n"
             "  --challenge              Execute 50-task 60 FPS sovereign density stress benchmark\n"
@@ -179,6 +197,8 @@ def run_fluid_cmd(args: List[str]) -> str:
             "  morph [id] [op]          Execute in-slab morphic operations (reduce, scan, convolve)\n"
             "  thermo [id] [steps]      Execute zero-snapshot Landauer reversible rollback\n"
             "  causal                   Run live TCM vs Retrospective LRU comparative benchmark\n"
+            "  linux-import             Import official Linux kernel memory management C sources\n"
+            "  linux-bench              Run head-to-head Linux mm vs AdiOS sovereign memory benchmarks\n"
             "  compact                  Force harmonic tensegrity cable compaction\n"
             "  pulse                    Inject synthetic pressure wave across the 32x32 RAM grid\n"
         )
