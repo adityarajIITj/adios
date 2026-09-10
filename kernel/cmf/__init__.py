@@ -9,10 +9,18 @@ from kernel.cmf.causal_types import (
     DerivationRecipe,
     CausalMemoryObject
 )
+from kernel.cmf.causal_object import (
+    CausalObject,
+    compute_derivation_hash
+)
+from kernel.cmf.object_store import CausalObjectStore
 
 __all__ = [
     "MaterializationState",
     "PurityLevel",
     "DerivationRecipe",
-    "CausalMemoryObject"
+    "CausalMemoryObject",
+    "CausalObject",
+    "compute_derivation_hash",
+    "CausalObjectStore"
 ]
