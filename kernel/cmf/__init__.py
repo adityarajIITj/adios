@@ -54,6 +54,14 @@ from kernel.cmf.comparative_engine import (
     ArchitectureParadigm,
     ComparativeArchitectureEngine
 )
+from kernel.cmf.security_guard import (
+    CausalAccessViolation,
+    CausalDepthExceeded,
+    CausalQuotaExceeded,
+    CausalPermission,
+    ProcessSecurityContext,
+    CMFSecurityGuard
+)
 
 __all__ = [
     "MaterializationState",
@@ -88,5 +96,11 @@ __all__ = [
     "CausalPageTableEntry",
     "CausalMMU",
     "ArchitectureParadigm",
-    "ComparativeArchitectureEngine"
+    "ComparativeArchitectureEngine",
+    "CausalAccessViolation",
+    "CausalDepthExceeded",
+    "CausalQuotaExceeded",
+    "CausalPermission",
+    "ProcessSecurityContext",
+    "CMFSecurityGuard"
 ]
