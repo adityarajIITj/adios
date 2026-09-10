@@ -2,6 +2,9 @@
 
 This document specifies the bare-metal kernel architecture, memory layout, interrupt handling, and system call ABI for AdiOS on 32-bit RISC-V (RV32IM).
 
+> [!NOTE]
+> **Substrate Grounding**: This architecture is implemented as an executable software-defined environment and systems model in Python/C. See [`reconstruction_adiOS.md`](reconstruction_adiOS.md) for the verified distinction between implemented mechanisms and modeled abstractions.
+
 ---
 
 ## 1. Physical Memory Map

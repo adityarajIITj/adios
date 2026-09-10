@@ -1,9 +1,12 @@
 # AdiOS
 
-> **A sovereign operating system written from scratch with a radically different thesis:**  
+> **An experimental sovereign operating system and systems model written from scratch with a radically different thesis:**  
 > *What if memory behaved like a fluid, computed in-place, and knew what your CPU was about to execute?*
 
-Runs a complete 1280x720 HD desktop workstation, 8-channel polyphonic DAW, browser, 3D engine, and POSIX shell inside 1024 MB of RAM—with **zero disk swap, zero cold-wake stalls, and zero OOM kills**.
+Runs a complete 1280x720 HD desktop workstation, 8-channel polyphonic DAW, browser, 3D engine, and POSIX shell inside a 1024 MB modeled RAM space—with **zero disk swap, zero cold-wake stalls, and zero OOM kills**.
+
+> [!NOTE]
+> **Architectural Reality & Scope**: AdiOS is an experimental software operating system and systems model exploring radical memory paradigms. Review the [Phase 1 Substrate Grounding Audit](docs/architecture/reconstruction_adiOS.md) for the explicit distinction between verified software-executable mechanisms and modeled architectural abstractions.
 
 ---
 
