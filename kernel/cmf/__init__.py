@@ -39,6 +39,11 @@ from kernel.cmf.purity_sandbox import (
     ResourceBoundExceeded,
     PuritySandbox
 )
+from kernel.cmf.spatial_distributed import (
+    SpatialMemoryTier,
+    SpatialCostMatrix,
+    DistributedCMFNode
+)
 
 __all__ = [
     "MaterializationState",
@@ -64,5 +69,8 @@ __all__ = [
     "PurityViolation",
     "CausalIntegrityViolation",
     "ResourceBoundExceeded",
-    "PuritySandbox"
+    "PuritySandbox",
+    "SpatialMemoryTier",
+    "SpatialCostMatrix",
+    "DistributedCMFNode"
 ]
