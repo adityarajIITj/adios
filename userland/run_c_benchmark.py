@@ -52,10 +52,17 @@ def run_standalone_c_benchmark():
         else:
             print(f"[C-Runner] Native compilation failed:\n{res.stderr}")
 
-    # If no native compiler on host, execute via the verified C-derived benchmark engine
-    print(f"[C-Runner] Pure C source code available at: {c_rel}")
-    print(f"[C-Runner] To compile on any Linux/Unix/Mac terminal: gcc -O3 -std=c99 {c_rel} -o bench -lm && ./bench")
-    print(f"[C-Runner] Executing verified C-algorithmic model in terminal:\n")
+    # If no native compiler on host, execute via the verified state-machine model with clear disclosure
+    print("=" * 80)
+    print("  STANDALONE C BENCHMARK RUNNER: LINUX (WITHOUT FLUIDRAM) vs. WITH FLUIDRAM")
+    print("=" * 80)
+    print(f"  [C-Runner Source]    : {c_rel}")
+    print(f"  [Host C Toolchain]   : Not detected in active PATH (Requires GCC/Clang/MSVC)")
+    print(f"  [Native Linux Build] : gcc -O3 -std=c99 {c_rel} -o bench -lm && ./bench")
+    print(f"  [Active Mode]        : Algorithmic VM State-Machine Model (mm/vmscan.c + mm/oom_kill.c)")
+    print(f"                         with Live Host Storage & DRAM Hardware Profiling")
+    print("=" * 80 + "\n")
+
     from userland.linux_memory_benchmark import LinuxKernelMemoryBenchmark, format_terminal_benchmark_report
     runner = LinuxKernelMemoryBenchmark()
     print(format_terminal_benchmark_report(runner.run_all_benchmarks()))

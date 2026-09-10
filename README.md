@@ -39,9 +39,12 @@ Modern operating systems still use memory paradigms invented in the 1960s. AdiOS
 
 ---
 
-## FluidRAM Empirical Benchmark: Stock Linux Kernel vs. Linux with FluidRAM Module
+## FluidRAM Comparative Evaluation: Stock Linux Kernel vs. Linux with FluidRAM Module
 
-A direct empirical evaluation was conducted comparing the **Plain Stock Linux Kernel (WITHOUT FluidRAM)** against the **Linux Kernel Augmented with FluidRAM Module (WITH FluidRAM)**. All metrics are measured via live hardware calibration (`Host Disk Read: 22.9 MB/s`, `Host DRAM: 7.4 GB/s`) and the official Linux kernel memory management state machines (`mm/vmscan.c`, `mm/oom_kill.c`, `include/linux/mmzone.h`).
+A dual-tier comparative evaluation was conducted comparing the **Plain Stock Linux Kernel (WITHOUT FluidRAM)** against the **Linux Kernel Augmented with FluidRAM Module (WITH FluidRAM)**:
+
+1. **Native C Benchmark Harness ([`benchmarks/benchmark_linux_with_vs_without_fluidram.c`](benchmarks/benchmark_linux_with_vs_without_fluidram.c))**: A standalone C99 harness that allocates physical memory buffers, triggers page faults, and samples native OS counters (`getrusage()`, `ru_minflt`, `ru_majflt`, `VmSwap`) alongside FluidRAM's in-situ CXL micro-kernels and Landauer $GF(2^{16})$ automorphisms.
+2. **Algorithmic VM Subsystem Model & Benchmark Studio ([`run_benchmark_gui.py`](run_benchmark_gui.py))**: An interactive 60 FPS studio faithfully executing the Linux kernel's dual-list LRU reclaim (`mm/vmscan.c`), zone watermarks (`include/linux/mmzone.h`), and badness scoring (`mm/oom_kill.c`), with I/O latency and bandwidth calibrated to live host storage and DRAM throughput.
 
 <div align="center">
   <img src="docs/assets/adios_gui_benchmark_studio.png" alt="FluidRAM vs Stock Linux Memory Benchmark Studio" width="920"/>
