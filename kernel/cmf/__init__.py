@@ -50,6 +50,10 @@ from kernel.cmf.hardware_mmu import (
     CausalPageTableEntry,
     CausalMMU
 )
+from kernel.cmf.comparative_engine import (
+    ArchitectureParadigm,
+    ComparativeArchitectureEngine
+)
 
 __all__ = [
     "MaterializationState",
@@ -82,5 +86,7 @@ __all__ = [
     "PTE_V", "PTE_R", "PTE_W", "PTE_X", "PTE_U", "PTE_G", "PTE_A", "PTE_D",
     "PTE_CAUSAL", "PTE_REVERSIBLE", "PTE_EVAPORABLE",
     "CausalPageTableEntry",
-    "CausalMMU"
+    "CausalMMU",
+    "ArchitectureParadigm",
+    "ComparativeArchitectureEngine"
 ]
