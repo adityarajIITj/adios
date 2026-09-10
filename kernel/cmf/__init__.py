@@ -33,6 +33,12 @@ from kernel.cmf.remat_scheduler import (
     RematerializationScheduler
 )
 from kernel.cmf.fluidram_bridge import FluidRAMCMFBridge
+from kernel.cmf.purity_sandbox import (
+    PurityViolation,
+    CausalIntegrityViolation,
+    ResourceBoundExceeded,
+    PuritySandbox
+)
 
 __all__ = [
     "MaterializationState",
@@ -54,5 +60,9 @@ __all__ = [
     "RematerializationCostEngine",
     "MaterializationPolicy",
     "RematerializationScheduler",
-    "FluidRAMCMFBridge"
+    "FluidRAMCMFBridge",
+    "PurityViolation",
+    "CausalIntegrityViolation",
+    "ResourceBoundExceeded",
+    "PuritySandbox"
 ]
