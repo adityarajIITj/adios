@@ -62,6 +62,7 @@ from kernel.cmf.security_guard import (
     ProcessSecurityContext,
     CMFSecurityGuard
 )
+from kernel.cmf.unified_kernel import AdiOSUnifiedKernel
 
 __all__ = [
     "MaterializationState",
@@ -102,5 +103,6 @@ __all__ = [
     "CausalQuotaExceeded",
     "CausalPermission",
     "ProcessSecurityContext",
-    "CMFSecurityGuard"
+    "CMFSecurityGuard",
+    "AdiOSUnifiedKernel"
 ]
