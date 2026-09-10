@@ -30,8 +30,8 @@ if hasattr(sys.stderr, "reconfigure"):
 
 from userland.linux_memory_benchmark import _calibrate_host_disk_read_speed, _calibrate_host_memory_read_speed
 
-# Output directory for plots
-OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docs", "assets"))
+# Output directory for reports (isolated from docs/assets to prevent stale/misleading images)
+OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "reports"))
 ARTIFACT_DIR = r"C:\Users\adity\.gemini\antigravity-ide\brain\be57f96d-e384-4618-b183-01ec07bc4748"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(ARTIFACT_DIR, exist_ok=True)
@@ -274,10 +274,10 @@ def plot_wakeup_latency(data: dict):
 
     # FluidRAM latency in ms (f_w1_total_wake_ms)
     ax1.plot(runs, data["f_w1_total_wake_ms"], color=COLOR_FLUIDRAM_CYAN, linewidth=1.5, label=f"Linux with FluidRAM TCM 50-Task Wake (~{np.mean(data['f_w1_total_wake_ms']):.2f} ms / {np.mean(data['f_w1_wake_us']):.1f} us per task)")
-
-    ax1.set_title("50-Task Wakeup Stall Latency\n(Stock Linux Swap Disk Wait vs. FluidRAM TCM Pre-Warming)", fontsize=13, fontweight="bold", color=TEXT_COLOR, pad=12)
+    ax1.set_yscale("log")
+    ax1.set_title("50-Task Wakeup Stall Latency\n(Stock Linux Swap Disk Wait vs. FluidRAM TCM Pre-Warming, Log Scale)", fontsize=13, fontweight="bold", color=TEXT_COLOR, pad=12)
     ax1.set_xlabel("Stress Test Run Index", fontsize=12, color=TEXT_COLOR, labelpad=8)
-    ax1.set_ylabel("Execution Stall Latency (Milliseconds)", fontsize=12, color=TEXT_COLOR, labelpad=8)
+    ax1.set_ylabel("Execution Stall Latency (Milliseconds, Log Scale)", fontsize=12, color=TEXT_COLOR, labelpad=8)
     ax1.xaxis.set_major_formatter(FuncFormatter(format_comma))
     ax1.legend(loc="upper right", framealpha=0.8, facecolor=BG_DARK, edgecolor=GRID_COLOR, fontsize=10.5)
 
@@ -374,33 +374,34 @@ def plot_rollback_and_executive_summary(data: dict):
     # Panel 1: W1 - Wakeup Stall Latency
     ax1.plot(runs[::20], data["l_w1_stall_ms"][::20], color=COLOR_LINUX_RED, alpha=0.5, linewidth=0.8, label=f"Stock Linux: ~{np.mean(data['l_w1_stall_ms']):.1f} ms stall")
     ax1.plot(runs[::20], data["f_w1_total_wake_ms"][::20], color=COLOR_FLUIDRAM_CYAN, linewidth=1.5, label=f"Linux+FluidRAM: ~{np.mean(data['f_w1_total_wake_ms']):.2f} ms 50-task wake")
-    ax1.set_title("1. Sleeping Task Wakeup Stall Under CRIT Pressure", fontsize=12, fontweight="bold", color=TEXT_COLOR)
+    ax1.set_yscale("log")
+    ax1.set_title("1. Sleeping Task Wakeup Stall Under CRIT Pressure (Log Scale)", fontsize=12, fontweight="bold", color=TEXT_COLOR)
     ax1.set_xlabel("Run Index", fontsize=11, color=TEXT_COLOR)
-    ax1.set_ylabel("Wakeup Stall (ms)", fontsize=11, color=TEXT_COLOR)
+    ax1.set_ylabel("Wakeup Stall (ms, Log Scale)", fontsize=11, color=TEXT_COLOR)
     ax1.legend(loc="upper right", framealpha=0.8, facecolor=BG_DARK, edgecolor=GRID_COLOR, fontsize=10)
     ax1.xaxis.set_major_formatter(FuncFormatter(format_comma))
 
     # Panel 2: W2 - Cumulative Bus Traffic
     l_cum_bus_gb = np.cumsum(data["l_w2_bus_mb"]) / 1024.0
     f_cum_bus_mb = np.cumsum(data["f_w2_bus_mb"])
-    ax2.plot(runs, l_cum_bus_gb, color=COLOR_LINUX_ORANGE, linewidth=2.2, label=f"Stock Linux: {l_cum_bus_gb[-1]:,.1f} GB bus read")
-    ax2.plot(runs, f_cum_bus_mb / 1024.0, color=COLOR_FLUIDRAM_VIOLET, linewidth=2.5, label=f"Linux+FluidRAM: {f_cum_bus_mb[-1]:.1f} MB CXL RPC")
-    ax2.set_title("2. 64MB In-Slab Bus Traffic Saturation", fontsize=12, fontweight="bold", color=TEXT_COLOR)
+    ax2.plot(runs[10:], l_cum_bus_gb[10:], color=COLOR_LINUX_ORANGE, linewidth=2.2, label=f"Stock Linux: {l_cum_bus_gb[-1]:,.1f} GB bus read")
+    ax2.plot(runs[10:], (f_cum_bus_mb[10:] / 1024.0), color=COLOR_FLUIDRAM_VIOLET, linewidth=2.5, label=f"Linux+FluidRAM: {f_cum_bus_mb[-1]:.1f} MB CXL RPC")
+    ax2.set_yscale("log")
+    ax2.set_title("2. 64MB In-Slab Bus Traffic Saturation (Log Scale)", fontsize=12, fontweight="bold", color=TEXT_COLOR)
     ax2.set_xlabel("Run Index", fontsize=11, color=TEXT_COLOR)
-    ax2.set_ylabel("Cumulative Bus Data (GB)", fontsize=11, color=TEXT_COLOR)
+    ax2.set_ylabel("Cumulative Bus Data (GB, Log Scale)", fontsize=11, color=TEXT_COLOR)
     ax2.legend(loc="upper left", framealpha=0.8, facecolor=BG_DARK, edgecolor=GRID_COLOR, fontsize=10)
     ax2.xaxis.set_major_formatter(FuncFormatter(format_comma))
 
     # Panel 3: W3 - Rollback Snapshot Overhead Bloat
     l_cum_cow_gb = np.cumsum(data["l_w3_cow_mb"]) / 1024.0
     f_cum_desc_mb = np.cumsum(data["f_w3_desc_kb"]) / 1024.0
-    ax3.plot(runs, l_cum_cow_gb, color=COLOR_LINUX_AMBER, linewidth=2.2, label=f"Stock Linux COW: {l_cum_cow_gb[-1]:,.1f} GB table clones")
-    ax3.plot(runs, f_cum_desc_mb / 1024.0, color=COLOR_FLUIDRAM_EMERALD, linewidth=2.5, label=f"Linux+FluidRAM: {f_cum_desc_mb[-1]/1024.0:.2f} GB Galois descriptors")
-    ax3.fill_between(runs, l_cum_cow_gb, color=COLOR_LINUX_AMBER, alpha=0.15)
-    ax3.fill_between(runs, f_cum_desc_mb / 1024.0, color=COLOR_FLUIDRAM_EMERALD, alpha=0.15)
-    ax3.set_title("3. Transaction Rollback Auxiliary Memory Bloat", fontsize=12, fontweight="bold", color=TEXT_COLOR)
+    ax3.plot(runs[10:], l_cum_cow_gb[10:], color=COLOR_LINUX_AMBER, linewidth=2.2, label=f"Stock Linux COW: {l_cum_cow_gb[-1]:,.1f} GB table clones")
+    ax3.plot(runs[10:], (f_cum_desc_mb[10:] / 1024.0), color=COLOR_FLUIDRAM_EMERALD, linewidth=2.5, label=f"Linux+FluidRAM: {f_cum_desc_mb[-1]/1024.0:.2f} GB Galois descriptors")
+    ax3.set_yscale("log")
+    ax3.set_title("3. Transaction Rollback Auxiliary Memory Bloat (Log Scale)", fontsize=12, fontweight="bold", color=TEXT_COLOR)
     ax3.set_xlabel("Run Index", fontsize=11, color=TEXT_COLOR)
-    ax3.set_ylabel("Cumulative Auxiliary Memory (GB)", fontsize=11, color=TEXT_COLOR)
+    ax3.set_ylabel("Cumulative Auxiliary Memory (GB, Log Scale)", fontsize=11, color=TEXT_COLOR)
     ax3.legend(loc="upper left", framealpha=0.8, facecolor=BG_DARK, edgecolor=GRID_COLOR, fontsize=10)
     ax3.xaxis.set_major_formatter(FuncFormatter(format_comma))
 
