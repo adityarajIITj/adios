@@ -40,6 +40,7 @@ from .paint_studio import PaintStudio
 from .calculator import ProgrammableCalculator
 from .sound_tracker import SoundTrackerApp
 from .fluid_oscilloscope import FluidOscilloscopeApp
+from .memory_benchmark_studio import MemoryBenchmarkStudioApp
 from kernel.fluid_ram import get_fluid_ram_mesh
 from kernel.chronos import ChronosEngine
 from .chronos_hud import ChronosHUD, COLOR_CHRONOS_BORDER
@@ -172,6 +173,7 @@ class MasterDesktop:
         # FluidRAM Autonomous Dynamic Memory Mesh & Oscilloscope Visualizer
         self.fluid_ram = get_fluid_ram_mesh()
         self.fluid_oscilloscope = FluidOscilloscopeApp(screen_w=self.width, screen_h=self.height)
+        self.benchmark_studio = MemoryBenchmarkStudioApp(screen_w=self.width, screen_h=self.height)
 
     # --------------------------------------------------------------------------
     # Subsystem Initializations
@@ -535,6 +537,19 @@ class MasterDesktop:
         self.win_fluid.visible = False
         self.wm.add_window(self.win_fluid)
 
+        # 18. Linux Kernel Memory Benchmark & Stress Studio
+        self.win_benchmark = Window(
+            "benchmark_studio", "Linux Memory Benchmark Studio (With FluidRAM vs Without FluidRAM)",
+            left_margin + 30, TASKBAR_HEIGHT + 30,
+            min(820, self.width - left_margin - 30),
+            min(540, self.height - TASKBAR_HEIGHT - 35),
+            can_close=True, can_maximize=True, can_minimize=True
+        )
+        self.win_benchmark.on_draw_content = self._draw_benchmark_studio
+        self.win_benchmark.on_click_content = self._click_benchmark_studio
+        self.win_benchmark.visible = False
+        self.wm.add_window(self.win_benchmark)
+
         # Default Active Window: Browser
         self.wm.focus_window(self.win_browser)
 
@@ -553,6 +568,14 @@ class MasterDesktop:
     def _click_fluid_ram(self, win: Window, rel_x: int, rel_y: int):
         if hasattr(self, "fluid_oscilloscope"):
             self.fluid_oscilloscope.handle_click(rel_x, rel_y, win.w, win.h - 22)
+
+    def _draw_benchmark_studio(self, win: Window, fb: bytearray, font_dict):
+        if hasattr(self, "benchmark_studio"):
+            self.benchmark_studio.render(fb, font_dict, win.x, win.y + 22, win.w, win.h - 22)
+
+    def _click_benchmark_studio(self, win: Window, rel_x: int, rel_y: int):
+        if hasattr(self, "benchmark_studio"):
+            self.benchmark_studio.handle_click(rel_x, rel_y, win.w, win.h - 22)
 
     def _on_explorer_open_file(self, file_path: str):
         """Callback invoked when user opens a file in FileExplorer."""
@@ -1636,6 +1659,10 @@ class MasterDesktop:
         if hasattr(self, "fluid_oscilloscope") and hasattr(self, "win_fluid") and self.win_fluid.visible and not self.win_fluid.minimized:
             self.fluid_oscilloscope.step()
 
+        # Memory Benchmark Studio step simulation
+        if hasattr(self, "benchmark_studio") and hasattr(self, "win_benchmark") and self.win_benchmark.visible and not self.win_benchmark.minimized:
+            self.benchmark_studio.step()
+
         self.rot_3d.y = (self.rot_3d.y + 2.0) % 360.0
 
         # Games Arcade continuous animation
@@ -1929,11 +1956,12 @@ class MasterDesktop:
             ("17. WebKit Modern Web Browser", "webkit"),
             ("18. SoundTracker (8-Ch Synth)", "tracker"),
             ("19. FluidRAM Oscilloscope", "fluid_ram"),
+            ("20. Linux Memory Benchmark (FluidRAM)", "benchmark_studio"),
         ]
 
         for idx, (label, wid) in enumerate(items):
             iy = my + 30 + idx * 20
-            color = COLOR_ACCENT_GREEN if wid in ("bgm", "tracker", "fluid_ram") else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
+            color = COLOR_ACCENT_GREEN if wid in ("bgm", "tracker", "fluid_ram", "benchmark_studio") else (COLOR_YOUTUBE_RED if wid == "youtube" else (COLOR_ACCENT_YELLOW if wid in ("games", "scene3d") else (COLOR_ACCENT_CYAN if wid in ("wallpaper", "studio", "files") else COLOR_TEXT_PRIMARY)))
             self._draw_string(fb, mx + 14, iy, label, color, clip)
 
     # --------------------------------------------------------------------------
@@ -2093,7 +2121,7 @@ class MasterDesktop:
                 rel_item = (my - (TASKBAR_HEIGHT + 30)) // 20
                 items_map = [
                     "browser", "sql", "lisp", "gl", "files", "netmon", "shell",
-                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit", "tracker", "fluid_ram"
+                    "paint", "calc", "games", "wallpaper", "youtube", "bgm", "studio", "scene3d", "notepad", "webkit", "tracker", "fluid_ram", "benchmark_studio"
                 ]
                 if 0 <= rel_item < len(items_map):
                     action_id = items_map[rel_item]
@@ -2230,6 +2258,9 @@ class MasterDesktop:
                     elif cmd.lower() in ("fluid", "fluidram", "ram", "oscilloscope", "manifold"):
                         self.launch_or_focus("fluid_ram")
                         self.shell_history.append("[AdiOS FluidRAM] Launching 60 FPS FluidRAM Oscilloscope...")
+                    elif cmd.lower() in ("bench", "benchmark", "stress", "linux-bench", "studio-bench"):
+                        self.launch_or_focus("benchmark_studio")
+                        self.shell_history.append("[AdiOS Benchmark Studio] Launching Memory Benchmark Studio...")
                     else:
                         try:
                             out = self.shell.eval(cmd)

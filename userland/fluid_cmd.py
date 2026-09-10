@@ -186,9 +186,18 @@ def run_fluid_cmd(args: List[str]) -> str:
         from userland.linux_memory_benchmark import LinuxKernelMemoryBenchmark, format_terminal_benchmark_report
         runner = LinuxKernelMemoryBenchmark()
         return format_terminal_benchmark_report(runner.run_all_benchmarks())
+    elif args[0] in ("c-bench", "c-runner", "native-bench"):
+        from userland.run_c_benchmark import run_standalone_c_benchmark
+        run_standalone_c_benchmark()
+        return ""
+    elif args[0] in ("gui-bench", "gui", "bench-gui", "studio-gui"):
+        import subprocess
+        launcher = os.path.join(os.path.dirname(__file__), "..", "run_benchmark_gui.py")
+        subprocess.run([sys.executable, launcher] + args[1:])
+        return ""
     elif args[0] in ("--help", "-h", "help"):
         return (
-            "Usage: fluid [status | --challenge | proof | trc | morph | thermo | causal | linux-import | linux-bench | compact | pulse]\n\n"
+            "Usage: fluid [status | --challenge | proof | trc | morph | thermo | causal | linux-import | linux-bench | c-bench | gui-bench | compact | pulse]\n\n"
             "Options:\n"
             "  status                   Display real-time hydrodynamic pool metrics and Void-Pipe stats\n"
             "  --challenge              Execute 50-task 60 FPS sovereign density stress benchmark\n"
@@ -199,6 +208,8 @@ def run_fluid_cmd(args: List[str]) -> str:
             "  causal                   Run live TCM vs Retrospective LRU comparative benchmark\n"
             "  linux-import             Import official Linux kernel memory management C sources\n"
             "  linux-bench              Run head-to-head Linux mm vs AdiOS sovereign memory benchmarks\n"
+            "  c-bench                  Execute the standalone C benchmark harness (GCC/Clang/MSVC)\n"
+            "  gui-bench                Launch the 60 FPS interactive GUI Benchmark Studio with live graphs\n"
             "  compact                  Force harmonic tensegrity cable compaction\n"
             "  pulse                    Inject synthetic pressure wave across the 32x32 RAM grid\n"
         )

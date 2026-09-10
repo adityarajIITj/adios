@@ -8,7 +8,11 @@ Verifies:
 """
 
 import os
+import sys
 import unittest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from vendor.linux_kernel.linux_mm_model import (
     LinuxZone, LinuxProcessStub, LinuxVMScanEngine, LinuxOOMKiller,
     LRU_INACTIVE_ANON, LRU_ACTIVE_ANON, WMARK_LOW, WMARK_MIN
