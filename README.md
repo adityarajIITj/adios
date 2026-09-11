@@ -118,7 +118,7 @@ python run_desktop.py
 Inspect, test, and interact with the memory manifold from your terminal:
 
 ```bash
-# 1. Run all 7 scientific proof benchmarks
+# 1. Run all 8 scientific proof benchmarks
 python userland/proof_of_sovereignty.py
 
 # 2. Inspect real-time Temporal Residency Contracts (TRC)
@@ -131,7 +131,7 @@ python -m userland.fluid_cmd morph 7 scan
 # 4. Execute zero-snapshot Landauer reversible rollback
 python -m userland.fluid_cmd thermo 7 1
 
-# 5. Run the full regression test suite (263 passing tests, 0 failures)
+# 5. Run the full regression test suite (326 passing tests, 0 failures)
 python -m pytest -q
 ```
 
@@ -155,12 +155,13 @@ python -m pytest -q
 ```text
 adios/
 ├── kernel/         # FluidRAM mesh, TCM engine, Chronos time travel, and RV32 trap handler
+│   └── cmf/        # Causal Materialization Framework: DAG engine, cost model, Sv32 MMU, security
 ├── proc/           # MLFQ scheduler, TaskControlBlock, TRC contracts, signals, and IPC
 ├── vm/             # RV32IM CPU emulator, 1024 MB physical memory manager, and VPU
 ├── desktop/        # Master compositor, window manager, Code Studio, and browser
 ├── audio/          # Low-latency 8-channel polyphonic SoundTracker synthesizer
 ├── userland/       # Proof of Sovereignty engine, fluid CLI, POSIX shell, and coreutils
-└── tests/          # 263 automated unit tests verifying 100% system integrity
+└── tests/          # 326 automated unit tests verifying 100% system integrity
 ```
 
 ---
