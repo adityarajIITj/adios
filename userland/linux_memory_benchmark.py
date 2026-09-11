@@ -177,6 +177,7 @@ class NativeKernelMemoryHarness:
                 ]
                 self._psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
 
+                # Explicit 64-bit void pointer precision for Windows kernel VirtualAlloc/VirtualFree
                 self._kernel32.VirtualAlloc.restype = ctypes.c_void_p
                 self._kernel32.VirtualAlloc.argtypes = [
                     ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD, wintypes.DWORD
