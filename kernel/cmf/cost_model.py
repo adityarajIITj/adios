@@ -62,7 +62,12 @@ class RematerializationCostEngine:
     def calculate_rematerialization_cost_us(self, obj: CausalObject, input_sizes: Optional[List[int]] = None) -> float:
         """
         Calculates T_remat(obj) in microseconds:
-            Cost = T_compute_ema + (Input Bytes / Mem Bus Bandwidth)
+            T_remat(obj) = T_compute_ema(obj) + T_bus_inputs(obj)
+            
+        Where:
+            T_bus_inputs = (sum(Input_Bytes) / Host_Memory_Bandwidth) * 1e6
+        
+        Root objects have no derivation recipe and are assigned cost = infinity.
         """
         if obj.is_root:
             return float('inf')  # Root objects cannot be computed
