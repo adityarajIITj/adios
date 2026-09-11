@@ -71,7 +71,14 @@ class DerivationRecipe:
         self.total_compute_time_us = 0.0
 
     def compute(self, input_payloads: List[bytes]) -> bytes:
-        """Executes the transform on given input payloads and updates telemetry."""
+        """
+        Executes the transform on given input payloads and updates latency telemetry.
+        
+        Mathematical latency tracking applies an exponential moving average (EMA):
+            EMA_t = 0.7 * EMA_{t-1} + 0.3 * elapsed_t
+        
+        If validation_hash is configured, output data integrity is audited via SHA-256.
+        """
         t0 = time.perf_counter()
         result = self.transform(input_payloads, self.parameters)
         elapsed_us = (time.perf_counter() - t0) * 1e6
