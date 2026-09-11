@@ -25,7 +25,8 @@ PTE_G = 1 << 5   # Global mapping
 PTE_A = 1 << 6   # Accessed
 PTE_D = 1 << 7   # Dirty
 
-# AdiOS CMF Hardware PTE Extensions (Bits 8-10, reserved for OS/hardware in standard Sv32)
+# AdiOS CMF Hardware PTE Extensions (Bits 8-10):
+# Co-designed using the RISC-V Privileged Architecture RSW (Reserved for Supervisor Software) bits:
 PTE_CAUSAL     = 1 << 8   # Page is causally recomputable via CMF derivation recipe
 PTE_REVERSIBLE = 1 << 9   # Page is part of a Chronos Galois-reversible thermodynamic chain
 PTE_EVAPORABLE = 1 << 10  # Hardware/kernel may evaporate this physical frame without saving to disk
