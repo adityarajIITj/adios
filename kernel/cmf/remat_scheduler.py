@@ -43,7 +43,10 @@ class RematerializationScheduler:
         self.prewarm_queue: List[Tuple[str, int]] = []
 
     def schedule_prewarm(self, object_id: str, target_tick: int):
-        """Enqueues an object to be eagerly pre-warmed prior to target_tick."""
+        """
+        Enqueues a causal object to be eagerly pre-warmed prior to target_tick.
+        Binds to Temporal Residency Contracts (TRCs) emitted by sleeping processes.
+        """
         self.prewarm_queue.append((object_id, target_tick))
 
     def on_tick(self, current_tick: int, system_pressure: float) -> Dict[str, Any]:
