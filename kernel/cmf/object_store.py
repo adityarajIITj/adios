@@ -75,7 +75,10 @@ class CausalObjectStore:
         return obj
 
     def _is_ancestor(self, candidate_ancestor: str, current_node: str) -> bool:
-        """Helper to recursively detect cycles."""
+        """
+        Recursively traverses upstream parent pointers to detect circular dependencies (DFS).
+        Returns True if candidate_ancestor is reachable from current_node, preventing cycles.
+        """
         if candidate_ancestor == current_node:
             return True
         node = self._objects.get(current_node)
@@ -87,11 +90,14 @@ class CausalObjectStore:
         return False
 
     def get(self, object_id: str) -> Optional[CausalObject]:
-        """Retrieves a causal object by ID."""
+        """Retrieves a causal object by ID from the registry."""
         return self._objects.get(object_id)
 
     def lookup_by_derivation_hash(self, derivation_hash: str) -> Optional[CausalObject]:
-        """Content-addressable lookup of existing identical derivation."""
+        """
+        Content-addressable lookup of existing identical derivation.
+        Ensures isomorphic recipes map to identical causal memory nodes.
+        """
         obj_id = self._hash_index.get(derivation_hash)
         if obj_id:
             return self._objects.get(obj_id)
