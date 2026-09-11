@@ -71,11 +71,17 @@ class CMFSecurityGuard:
         return self.contexts[pid]
 
     def set_object_acl(self, object_id: str, owner_uid: int, permissions: int):
-        """Sets access control list for an object."""
+        """
+        Configures Access Control List (ACL) bitmask permissions for a causal memory object.
+        Supported bits: CausalPermission.READ, DERIVE, MUTATE, INVALIDATE, ADMIN.
+        """
         self.acls[object_id] = (owner_uid, permissions)
 
     def check_read_permission(self, caller_ctx: ProcessSecurityContext, object_id: str):
-        """Asserts that caller has permission to read the causal object."""
+        """
+        Asserts that caller context is authorized to read the causal object bytes.
+        Kernel context bypasses ACL checks; unassigned objects default to public read.
+        """
         if caller_ctx.is_kernel:
             return  # Kernel has unrestricted access
 
