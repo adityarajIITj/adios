@@ -107,8 +107,11 @@ class CausalObject:
 
     def evaporate(self) -> int:
         """
-        Evaporates physical memory bytes, reverting to EVICTED.
-        Returns bytes reclaimed.
+        Evaporates physical memory bytes while preserving the DerivationRecipe.
+        
+        Transitions object state from MATERIALIZED to EVICTED and unlinks any
+        backing FluidRAM physical slab, returning the total bytes reclaimed.
+        Subsequent read attempts trigger on-demand re-materialization.
         """
         if self.is_root:
             raise PermissionError(f"Root causal object '{self.object_id}' cannot be evaporated without backing store.")
